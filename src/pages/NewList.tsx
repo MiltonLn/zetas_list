@@ -7,21 +7,23 @@ import type { ParseResult } from '../types'
 
 const EXAMPLE = `VOLEY ING 6x6 VIE 17 ABR *7:50PM*
 
-1.COPETE (830 pm)
-2. Sam
+1. Jugador1
+2. Jugador2
 3. 🟥
-4. Juan
+4. Jugador4
 5. 🙋🏻‍♂️
-6. sara liz
-7. Isabella
-8. Julián
-9. Jaime
-10. Cabrera
+6. Jugador6 (8:30pm)
+7. Jugador7
+8. 🔵
+9. Jugador9
+10. Jugador10 8:30
 
-Espera:
-1. Monica (Juan)
-2. Keny (Juan)
-3. Fernando (Yeison)`
+Espera o Inv 1:30pm:
+1. Jugador1 (Jugador2)
+2. 🟩
+3. Jugador3
+4. ⁠Jugador4 (si alguien de buen corazón se baja)
+5. 🛌`
 
 export default function NewList() {
   const navigate = useNavigate()
