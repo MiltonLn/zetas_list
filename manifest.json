@@ -1,0 +1,19 @@
+{
+  "name": "Asistencia Zetas",
+  "short_name": "Zetas",
+  "description": "Control de asistencia y pagos del equipo Zetas Volleyball",
+  "start_url": "/zetas_list/",
+  "scope": "/zetas_list/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1020",
+  "theme_color": "#1a1b2e",
+  "icons": [
+    {
+      "src": "/zetas_list/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
