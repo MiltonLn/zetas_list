@@ -1,43 +1,126 @@
 import type { ParseResult, ParseWarning, Player } from '../types';
 
-const PLAYER_LINE_RE = /^(\d+)[.\s]\s*(.*)$/u;
+// ─── Phase 1: Normalize ───────────────────────────────────────────────────────
 
-function parsePlayerLine(raw: string): { position: number; name: string; note: string } | null {
-  const match = raw.trim().match(PLAYER_LINE_RE);
-  if (!match) return null;
+// Invisible Unicode characters commonly inserted by WhatsApp and other apps.
+// U+200C (ZWNJ) and U+200D (ZWJ) are intentionally excluded: they are part of
+// emoji sequences like 🙋🏻‍♂️ and stripping them would corrupt those glyphs.
+// U+200B zero-width space, U+2060 word joiner (WhatsApp's main culprit),
+// U+FEFF BOM / zero-width no-break space, U+00A0 non-breaking space,
+// U+2062-U+2064 invisible operators, U+180E Mongolian vowel separator
+const INVISIBLE_RE = /[\u200B\u2060\uFEFF\u00A0\u2062\u2063\u2064\u180E]/g;
 
-  const position = parseInt(match[1], 10);
-  const rest = match[2].trim();
+// WhatsApp inline formatting markers: *bold*, _italic_, ~strikethrough~
+const WA_FORMAT_RE = /[*_~]/g;
 
-  // Extract note in parentheses at end: "COPETE (830 pm)" -> name="COPETE", note="830 pm"
-  const noteMatch = rest.match(/^(.*?)\s*\(([^)]+)\)\s*$/u);
-  if (noteMatch) {
-    return { position, name: noteMatch[1].trim(), note: noteMatch[2].trim() };
+/**
+ * Phase 1 – Normalize.
+ * Takes the raw pasted text and returns an array of clean lines.
+ * This is the ONLY phase that touches the raw string; all other phases
+ * receive already-normalized input.
+ */
+export function normalize(raw: string): string[] {
+  return raw
+    .split('\n')
+    .map((line) =>
+      line
+        .replace(INVISIBLE_RE, ' ')
+        .replace(WA_FORMAT_RE, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    )
+    .filter(Boolean);
+}
+
+// ─── Phase 2: Tokenize ───────────────────────────────────────────────────────
+
+// Requires digits (1-3), followed by a dot or closing paren, then at least one
+// whitespace, then optional content. This avoids false positives on years
+// ("2024 was fun") or bare-digit lines.
+const PLAYER_LINE_RE = /^(\d{1,3})[.)]\s+(.*)$/u;
+
+// Note in trailing parentheses: "Name (some note)" → name + note
+const NOTE_PARENS_RE = /^(.*?)\s*\(([^)]+)\)\s*$/u;
+
+export type LineToken =
+  | { type: 'player'; position: number; name: string; note: string; raw: string }
+  | { type: 'section_header'; kind: 'waitlist'; raw: string }
+  | { type: 'text'; content: string; raw: string };
+
+/**
+ * Detect section-header lines that introduce a wait / invite list.
+ * The pattern must be anchored to the START of the line so "Méndez Inv Sara"
+ * or "Steven (Inv Estiven)" never match.
+ */
+function isWaitListHeader(line: string): boolean {
+  return /^(lista\s+de\s+)?espera\b|^invitad|^inv\s/i.test(line);
+}
+
+function tokenizeLine(raw: string): LineToken {
+  const playerMatch = raw.match(PLAYER_LINE_RE);
+
+  if (playerMatch) {
+    const position = parseInt(playerMatch[1], 10);
+    const rest = playerMatch[2].trim();
+
+    const noteMatch = rest.match(NOTE_PARENS_RE);
+    if (noteMatch) {
+      return {
+        type: 'player',
+        position,
+        name: noteMatch[1].trim(),
+        note: noteMatch[2].trim(),
+        raw,
+      };
+    }
+
+    return { type: 'player', position, name: rest, note: '', raw };
   }
 
-  return { position, name: rest, note: '' };
+  if (isWaitListHeader(raw)) {
+    return { type: 'section_header', kind: 'waitlist', raw };
+  }
+
+  return { type: 'text', content: raw, raw };
 }
 
-function isWaitListHeader(line: string): boolean {
-  return /espera|lista\s+de\s+espera|inv\s|invitad/i.test(line);
+/**
+ * Phase 2 – Tokenize.
+ * Classifies each normalized line into a typed token.
+ * Has no knowledge of where in the message a line appears.
+ */
+export function tokenize(lines: string[]): LineToken[] {
+  return lines.map(tokenizeLine);
 }
 
-export function parseMessage(raw: string): ParseResult {
+// ─── Phase 3: Assemble + Validate ────────────────────────────────────────────
+
+function buildPlayer(token: Extract<LineToken, { type: 'player' }>): Player {
+  return {
+    id: crypto.randomUUID(),
+    position: token.position,
+    name: token.name,
+    note: token.note,
+    attended: false,
+    paid: false,
+  };
+}
+
+/**
+ * Phase 3 – Assemble.
+ * Uses the ordered token stream to derive title, mainList, waitList.
+ * Runs validation and emits warnings for gaps, duplicates, empty names,
+ * and unrecognised lines that appear after the list starts.
+ */
+export function assemble(tokens: LineToken[]): ParseResult {
   const errors: ParseResult['errors'] = [];
   const warnings: ParseWarning[] = [];
 
-  const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean);
+  // ── Partition token stream ──────────────────────────────────────────────
 
-  if (lines.length === 0) {
-    return {
-      success: false,
-      errors: [{ type: 'invalid_format', message: 'El mensaje está vacío.' }],
-      warnings: [],
-    };
-  }
+  // Everything before the first player token = title candidates
+  const firstPlayerIdx = tokens.findIndex((t) => t.type === 'player');
 
-  // Find title: all lines before the first numbered entry
-  const firstPlayerIdx = lines.findIndex((l) => PLAYER_LINE_RE.test(l));
   if (firstPlayerIdx === -1) {
     return {
       success: false,
@@ -46,86 +129,98 @@ export function parseMessage(raw: string): ParseResult {
     };
   }
 
-  const titleLines = lines.slice(0, firstPlayerIdx);
-  const title = titleLines.join(' ').replace(/\*/g, '').trim();
+  const titleTokens = tokens.slice(0, firstPlayerIdx);
+  const title = titleTokens
+    .filter((t) => t.type === 'text')
+    .map((t) => t.content)
+    .join(' ')
+    .trim();
 
   if (!title) {
     errors.push({ type: 'no_title', message: 'No se encontró un título para la lista.' });
   }
 
-  // Split remaining lines into main list and wait list
-  const rest = lines.slice(firstPlayerIdx);
-  let waitListStartIdx = rest.findIndex((l, i) => i > 0 && isWaitListHeader(l));
+  // After the first player token, split on the first waitlist section_header
+  const bodyTokens = tokens.slice(firstPlayerIdx);
+  const waitHeaderIdx = bodyTokens.findIndex((t) => t.type === 'section_header');
 
-  const mainLines = waitListStartIdx === -1 ? rest : rest.slice(0, waitListStartIdx);
-  const waitLines = waitListStartIdx === -1 ? [] : rest.slice(waitListStartIdx + 1);
+  const mainTokens = waitHeaderIdx === -1 ? bodyTokens : bodyTokens.slice(0, waitHeaderIdx);
+  const waitTokens = waitHeaderIdx === -1 ? [] : bodyTokens.slice(waitHeaderIdx + 1);
 
-  function parseSection(sectionLines: string[], lineOffset: number): Player[] {
+  // ── Build and validate each section ────────────────────────────────────
+
+  function parseSection(
+    sectionTokens: LineToken[],
+    globalOffset: number,
+    section: 'main' | 'wait',
+  ): Player[] {
     const players: Player[] = [];
     const seenPositions = new Set<number>();
 
-    for (let i = 0; i < sectionLines.length; i++) {
-      const line = sectionLines[i];
-      const absoluteLine = lineOffset + i + 1;
-      const parsed = parsePlayerLine(line);
+    for (let i = 0; i < sectionTokens.length; i++) {
+      const token = sectionTokens[i];
+      const absoluteLine = globalOffset + i + 1;
 
-      if (!parsed) {
+      if (token.type === 'section_header') {
+        // A second section header mid-section — just skip, don't warn
+        continue;
+      }
+
+      if (token.type === 'text') {
+        // Non-player, non-header text after the list started
         warnings.push({
           type: 'skipped_line',
           line: absoluteLine,
-          raw: line,
-          message: `Línea ignorada (formato no reconocido): "${line}"`,
+          raw: token.raw,
+          message: `Línea ignorada (formato no reconocido): "${token.raw}"`,
         });
         continue;
       }
 
-      if (seenPositions.has(parsed.position)) {
+      // token.type === 'player'
+      const { position, name } = token;
+
+      if (seenPositions.has(position)) {
         warnings.push({
           type: 'duplicate_number',
           line: absoluteLine,
-          raw: line,
-          message: `Número duplicado ${parsed.position}: "${line}"`,
+          raw: token.raw,
+          message: `Número duplicado ${position}: "${token.raw}"`,
         });
       }
-      seenPositions.add(parsed.position);
+      seenPositions.add(position);
 
-      if (!parsed.name) {
+      if (!name) {
         warnings.push({
           type: 'empty_name',
           line: absoluteLine,
-          raw: line,
-          message: `Cupo ${parsed.position} sin nombre.`,
+          raw: token.raw,
+          message: `Cupo ${position} sin nombre.`,
         });
       }
 
-      // Check for gap
-      if (players.length > 0) {
+      // Gap check — only within the same section (numbering resets across sections)
+      if (players.length > 0 && section === 'main') {
         const lastPos = players[players.length - 1].position;
-        if (parsed.position !== lastPos + 1 && !seenPositions.has(lastPos + 1)) {
+        if (position !== lastPos + 1 && !seenPositions.has(lastPos + 1)) {
           warnings.push({
             type: 'gap_in_numbers',
             line: absoluteLine,
-            raw: line,
-            message: `Salto en la numeración: se esperaba ${lastPos + 1} pero se encontró ${parsed.position}.`,
+            raw: token.raw,
+            message: `Salto en la numeración: se esperaba ${lastPos + 1} pero se encontró ${position}.`,
           });
         }
       }
 
-      players.push({
-        id: crypto.randomUUID(),
-        position: parsed.position,
-        name: parsed.name,
-        note: parsed.note,
-        attended: false,
-        paid: false,
-      });
+      players.push(buildPlayer(token));
     }
 
     return players;
   }
 
-  const mainList = parseSection(mainLines, firstPlayerIdx);
-  const waitList = parseSection(waitLines, firstPlayerIdx + (waitListStartIdx === -1 ? 0 : waitListStartIdx + 1));
+  const mainList = parseSection(mainTokens, firstPlayerIdx, 'main');
+  const waitListOffset = firstPlayerIdx + (waitHeaderIdx === -1 ? 0 : waitHeaderIdx + 1);
+  const waitList = parseSection(waitTokens, waitListOffset, 'wait');
 
   if (mainList.length === 0) {
     errors.push({ type: 'no_players', message: 'No se encontraron jugadores en la lista principal.' });
@@ -141,4 +236,25 @@ export function parseMessage(raw: string): ParseResult {
     errors: [],
     warnings,
   };
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+/**
+ * Parse a WhatsApp-style volleyball roster message into a structured result.
+ * Runs three internal phases: normalize → tokenize → assemble.
+ * The public signature and return type are unchanged.
+ */
+export function parseMessage(raw: string): ParseResult {
+  if (!raw.trim()) {
+    return {
+      success: false,
+      errors: [{ type: 'invalid_format', message: 'El mensaje está vacío.' }],
+      warnings: [],
+    };
+  }
+
+  const lines = normalize(raw);
+  const tokens = tokenize(lines);
+  return assemble(tokens);
 }
