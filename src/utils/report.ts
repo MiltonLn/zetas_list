@@ -54,5 +54,8 @@ export function generateWhatsAppReport(game: GameList): string {
     lines.push('✔️ *Todos los asistentes pagaron*');
   }
 
+  lines.push('');
+  lines.push('_Generado por la app Asistencia Zetas_');
+
   return lines.join('\n');
 }
