@@ -3,36 +3,57 @@ import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
-async function main() {
-  const existingAdmin = await prisma.user.findFirst({
-    where: { role: Role.admin },
-  });
+const ADMINS = [
+  {
+    username: 'yamijuan',
+    name: 'Juan Diego García',
+    phone: process.env.SEED_PHONE_YAMIJUAN || '0000000001',
+  },
+  {
+    username: 'MiltonLn',
+    name: 'Milton Lenis',
+    phone: process.env.SEED_PHONE_MILTONLN || '0000000002',
+  },
+];
 
-  if (existingAdmin) {
-    console.log('Admin ya existe, saltando seed inicial.');
-    return;
+async function upsertAdmin(data: { username: string; name: string; phone: string }) {
+  const existing = await prisma.user.findUnique({ where: { username: data.username } });
+  if (existing) {
+    console.log(`  ✓ Ya existe: ${data.username}`);
+    return existing;
   }
 
   const passwordHash = await bcrypt.hash('Admin1234!', 12);
-
-  const admin = await prisma.user.create({
+  const user = await prisma.user.create({
     data: {
-      username: 'admin',
+      username: data.username,
       passwordHash,
-      name: 'Administrador',
-      phone: '0000000000',
+      name: data.name,
+      phone: data.phone,
       role: Role.admin,
       status: UserStatus.active,
     },
   });
 
-  console.log(`Admin creado: ${admin.username} (${admin.id})`);
-  console.log('Contraseña inicial: Admin1234! — cámbiala inmediatamente.');
+  console.log(`  ✓ Creado: ${user.username} — ${user.name} (${user.id})`);
+  return user;
+}
+
+async function main() {
+  console.log('🌱 Iniciando seed de administradores...\n');
+
+  for (const admin of ADMINS) {
+    await upsertAdmin(admin);
+  }
+
+  console.log('\n✅ Seed completado.');
+  console.log('🔑 Contraseña inicial de todos los admins: Admin1234!');
+  console.log('⚠️  Recuerda actualizar los números de teléfono reales en la app.');
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    console.error('❌ Error en el seed:', e);
     process.exit(1);
   })
   .finally(async () => {
