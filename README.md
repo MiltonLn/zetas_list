@@ -38,8 +38,7 @@ Una app web full-stack para que los integrantes del grupo de volley puedan anota
 
 ### Requisitos
 
-- [Docker](https://www.docker.com/) y Docker Compose
-- Node.js 20+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop) — es lo único que necesitas
 
 ### 1. Clonar y configurar
 
@@ -62,7 +61,7 @@ JWT_SECRET=una_clave_larga_y_aleatoria
 make up
 ```
 
-Eso levanta PostgreSQL, el backend NestJS y el frontend React.
+Eso levanta PostgreSQL, el backend NestJS y el frontend React. No se necesita Node.js local ni instalar dependencias — todo corre dentro de Docker.
 
 ### 3. Migrar y hacer seed
 
@@ -116,11 +115,11 @@ make help          # Lista todos los comandos
 
 | Comando | Descripción |
 |---------|-------------|
-| `make install` | Instala dependencias (frontend + backend) |
-| `make build` | Build de producción |
-| `make lint` | Linter en ambos proyectos |
-| `make test` | Tests en ambos proyectos |
-| `make nuke` | ⚠️ Para todo + limpia volúmenes y node_modules |
+| `make build` | Build de producción (dentro de Docker) |
+| `make lint` | Linter en ambos proyectos (dentro de Docker) |
+| `make test` | Tests en ambos proyectos (dentro de Docker) |
+| `make clean` | ⚠️ Para todo + borra volúmenes Docker (DB incluida) |
+| `make nuke` | ⚠️ Para todo + borra volúmenes e imágenes Docker |
 
 ---
 
