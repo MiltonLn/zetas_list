@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  member
+}
+
+enum UserStatus {
+  active
+  inactive
+  banned
+}
+
+enum Position {
+  auxiliar
+  libero
+  armador
+  central
+  opuesto
+}
+
+enum Gender {
+  masculino
+  femenino
+  otro
+}
+
+enum Modalidad {
+  seis_x_seis
+  cuatro_x_cuatro
+  torneo
+}
+
+enum GameStatus {
+  scheduled
+  registration_open
+  in_progress
+  completed
+  cancelled
+}
+
+enum AuditAction {
+  player_registered
+  player_removed
+  player_promoted
+  player_reordered
+  attendance_toggled
+  payment_toggled
+  note_updated
+  game_created
+  game_updated
+  game_cancelled
+  game_completed
+  game_status_changed
+  user_created
+  user_updated
+  user_status_changed
+}
+
+model User {
+  id           String     @id @default(uuid())
+  username     String     @unique
+  passwordHash String
+  name         String
+  phone        String     @unique
+  role         Role       @default(member)
+  position     Position?
+  gender       Gender?
+  heightCm     Int?
+  birthDate    DateTime?
+  photoUrl     String?
+  status       UserStatus @default(active)
+  banReason    String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  createdGames  Game[]             @relation("CreatedBy")
+  registrations GameRegistration[] @relation("RegisteredUser")
+  registeredBy  GameRegistration[] @relation("RegisteredBy")
+  auditLogs     AuditLog[]         @relation("AuditActor")
+  targetLogs    AuditLog[]         @relation("AuditTarget")
+
+  @@map("users")
+}
+
+model Game {
+  id                 String     @id @default(uuid())
+  title              String
+  modalidad          Modalidad
+  gameDate           DateTime   @db.Date
+  startTime          String     @default("19:50")
+  registrationOpenAt DateTime
+  maxMainSpots       Int
+  pricePerPlayer     Int        @default(2000)
+  status             GameStatus @default(scheduled)
+  cancellationReason String?
+  createdById        String
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  createdBy     User               @relation("CreatedBy", fields: [createdById], references: [id])
+  registrations GameRegistration[]
+  auditLogs     AuditLog[]
+
+  @@map("games")
+}
+
+model GameRegistration {
+  id           String   @id @default(uuid())
+  gameId       String
+  userId       String
+  position     Int
+  isWaitingList Boolean  @default(false)
+  attended     Boolean  @default(false)
+  paid         Boolean  @default(false)
+  note         String?
+  fromWaitList Boolean  @default(false)
+  registeredAt DateTime @default(now())
+  registeredById String
+
+  game         Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user         User @relation("RegisteredUser", fields: [userId], references: [id])
+  registeredBy User @relation("RegisteredBy", fields: [registeredById], references: [id])
+
+  @@unique([gameId, userId])
+  @@unique([gameId, position, isWaitingList])
+  @@map("game_registrations")
+}
+
+model AuditLog {
+  id           String      @id @default(uuid())
+  gameId       String?
+  actorId      String
+  targetUserId String?
+  action       AuditAction
+  details      Json        @default("{}")
+  createdAt    DateTime    @default(now())
+
+  game       Game? @relation(fields: [gameId], references: [id], onDelete: SetNull)
+  actor      User  @relation("AuditActor", fields: [actorId], references: [id])
+  targetUser User? @relation("AuditTarget", fields: [targetUserId], references: [id])
+
+  @@map("audit_logs")
+}

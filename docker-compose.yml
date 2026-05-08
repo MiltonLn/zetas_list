@@ -1,0 +1,61 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: zetas
+      POSTGRES_USER: zetas
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-devpassword}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zetas"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://zetas:${DB_PASSWORD:-devpassword}@db:5432/zetas
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-in-production}
+      NODE_ENV: development
+      PORT: 3000
+      WHATSAPP_MODE: ${WHATSAPP_MODE:-cli}
+      WHATSAPP_GROUP_ID: ${WHATSAPP_GROUP_ID:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      APP_URL: ${APP_URL:-http://localhost:5173}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+      - whatsapp_session:/app/whatsapp-session
+    depends_on:
+      db:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:3000/api
+      VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+
+volumes:
+  pgdata:
+  whatsapp_session:

@@ -1,5 +1,22 @@
 node_modules/
 dist/
 .env
+.env.local
+.env.*.local
 .DS_Store
 *.local
+
+# WhatsApp session
+whatsapp-session/
+backend/whatsapp-session/
+
+# Build artifacts
+frontend/dist/
+backend/dist/
+
+# Prisma
+backend/prisma/migrations/**/migration_lock.toml
+
+# Logs
+*.log
+npm-debug.log*

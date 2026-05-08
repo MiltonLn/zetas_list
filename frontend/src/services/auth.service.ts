@@ -1,0 +1,21 @@
+import { api } from './api';
+import { AuthUser } from '../types';
+
+export interface LoginResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: AuthUser;
+}
+
+export const authService = {
+  login: (username: string, password: string) =>
+    api.post<LoginResponse>('/auth/login', { username, password }),
+
+  refresh: (refreshToken: string) =>
+    api.post<{ accessToken: string; refreshToken: string }>('/auth/refresh', { refreshToken }),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post('/auth/change-password', { currentPassword, newPassword }),
+
+  me: () => api.get<AuthUser>('/auth/me'),
+};

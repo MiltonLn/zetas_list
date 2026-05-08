@@ -1,0 +1,29 @@
+---
+description: Project-wide standards for Zetas List monorepo
+alwaysApply: true
+---
+
+# Zetas List — Principios Generales
+
+## Idioma
+- Toda la UI, mensajes de error, notificaciones y comentarios dirigidos al usuario deben estar en **español**.
+- Código, variables, nombres de funciones, comentarios técnicos: **inglés**.
+
+## TypeScript
+- Modo estricto siempre. No usar `any`.
+- Preferir tipos explícitos sobre inferencia en firmas de funciones públicas.
+
+## Entorno
+- Variables de entorno nunca hardcodeadas. Siempre desde `process.env` (backend) o `import.meta.env` (frontend).
+- Guardar secretos solo en `.env` (no commitear `.env`, está en `.gitignore`).
+
+## Errores y monitoreo
+- Sentry está integrado en frontend y backend. No swallowear errores silenciosamente.
+- Errores 5xx del backend: siempre loggear + capturar en Sentry.
+
+## Docker
+- Desarrollo local vía `docker-compose.yml` en la raíz. No instalar PostgreSQL localmente.
+
+## Git
+- Todo el trabajo de Phase 1 va en `feat/phase-1-full-stack`.
+- No pushear directamente a `main` sin PR.

@@ -1,0 +1,48 @@
+---
+description: NestJS backend conventions for Zetas List
+globs: backend/**/*.ts
+alwaysApply: false
+---
+
+# Backend — Convenciones NestJS
+
+## Estructura de módulos
+Cada feature tiene: `controller`, `service`, `module`, y carpeta `dto/`.
+
+```
+games/
+  dto/create-game.dto.ts
+  games.controller.ts
+  games.service.ts
+  games.module.ts
+```
+
+## DTOs y validación
+- Siempre validar requests con `class-validator` en DTOs.
+- Usar `@IsNotEmpty()`, `@IsEnum()`, `@IsString()` apropiadamente.
+- No aceptar datos sin validar en controladores.
+
+## Prisma
+- Usar `PrismaService` inyectado, nunca instanciar `PrismaClient` directo.
+- Mutaciones multi-paso: siempre dentro de `prisma.$transaction()`.
+- Operaciones de registro de juego: usar `FOR UPDATE` lock + `Serializable` isolation.
+
+```typescript
+// ✅ CORRECTO
+return this.prisma.$transaction(async (tx) => {
+  await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
+  // ... resto de la operación
+}, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+```
+
+## Audit logging
+- Toda mutación sobre registros de partidos (registro, remoción, promoción, reordenamiento, asistencia, pago) DEBE llamar a `AuditService.log()`.
+- Sin excepción.
+
+## Guards
+- Endpoints admin-only: `@Roles(Role.admin)` + `RolesGuard`.
+- Endpoints autenticados: `@UseGuards(JwtAuthGuard)`.
+
+## Errores
+- Usar excepciones de NestJS: `NotFoundException`, `BadRequestException`, `ConflictException`, `ForbiddenException`.
+- Mensajes de error en **español** (son visibles al usuario final).
