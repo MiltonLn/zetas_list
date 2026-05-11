@@ -1,5 +1,5 @@
 import { api } from './api';
-import { User, Role, Position, Gender, UserStatus } from '../types';
+import type { User, Role, Position, Gender, UserStatus } from '../types';
 
 export interface CreateUserPayload {
   username: string;

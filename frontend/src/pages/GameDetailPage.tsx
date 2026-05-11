@@ -7,8 +7,8 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  DragEndEvent,
 } from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
 import {
   SortableContext,
   sortableKeyboardCoordinates,
@@ -18,7 +18,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { gamesService } from '../services/games.service';
-import { Game, GameRegistration, AuditLog, MODALIDAD_LABELS } from '../types';
+import type { Game, GameRegistration, AuditLog } from '../types';
+import { MODALIDAD_LABELS } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useGameStream } from '../hooks/useGameStream';
 import { Header } from '../components/Header';
@@ -457,7 +458,7 @@ export default function GameDetailPage() {
           </div>
         )}
 
-        {isOpen && !isAdmin && (
+        {isOpen && (
           <div style={{ marginBottom: 20, textAlign: 'center' }}>
             {isAlreadyRegistered ? (
               <div style={{

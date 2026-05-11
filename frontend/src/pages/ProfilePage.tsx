@@ -1,8 +1,10 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { usersService, UpdateUserPayload } from '../services/users.service';
+import { usersService } from '../services/users.service';
+import type { UpdateUserPayload } from '../services/users.service';
 import { authService } from '../services/auth.service';
-import { User, Position, Gender, POSITION_LABELS } from '../types';
+import type { User, Position, Gender } from '../types';
+import { POSITION_LABELS } from '../types';
 import { Header } from '../components/Header';
 import { Spinner } from '../components/Spinner';
 import { getApiError } from '../services/api';

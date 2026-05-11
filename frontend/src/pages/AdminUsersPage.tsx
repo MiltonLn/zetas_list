@@ -1,6 +1,8 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { usersService, CreateUserPayload } from '../services/users.service';
-import { User, UserStatus, Role, Position, Gender, POSITION_LABELS } from '../types';
+import { usersService } from '../services/users.service';
+import type { CreateUserPayload } from '../services/users.service';
+import type { User, UserStatus, Role, Position, Gender } from '../types';
+import { POSITION_LABELS } from '../types';
 import { Header } from '../components/Header';
 import { Spinner } from '../components/Spinner';
 import { getApiError } from '../services/api';

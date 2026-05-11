@@ -1,4 +1,5 @@
-import { GameStatus, GAME_STATUS_LABELS } from '../types';
+import type { GameStatus } from '../types';
+import { GAME_STATUS_LABELS } from '../types';
 
 const STATUS_COLORS: Record<GameStatus, string> = {
   scheduled: '#7c8db5',

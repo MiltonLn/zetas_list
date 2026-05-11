@@ -25,9 +25,15 @@ export class CreateGameDto {
   @Matches(/^\d{2}:\d{2}$/, { message: 'Formato de hora inválido (HH:mm)' })
   startTime?: string;
 
-  @ApiProperty({ example: '2026-05-15T20:00:00.000Z', description: 'Fecha y hora en que se abre el registro' })
-  @IsDateString()
-  registrationOpenAt: string;
+  @ApiPropertyOptional({
+    example: '10:00',
+    default: '10:00',
+    description: 'Hora a la que se abre el registro (mismo día del partido). Default: 10:00 AM Colombia',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{2}:\d{2}$/, { message: 'Formato de hora inválido (HH:mm)' })
+  registrationOpenTime?: string;
 
   @ApiPropertyOptional({ example: 2000, default: 2000 })
   @IsOptional()
@@ -40,4 +46,9 @@ export class CreateGameDto {
   @IsInt()
   @Min(2)
   maxMainSpots?: number;
+
+  @ApiPropertyOptional({ description: 'Título personalizado (se auto-genera si no se provee)' })
+  @IsOptional()
+  @IsString()
+  customTitle?: string;
 }

@@ -1,7 +1,9 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { gamesService, CreateGamePayload } from '../services/games.service';
-import { Modalidad, MODALIDAD_LABELS } from '../types';
+import { gamesService } from '../services/games.service';
+import type { CreateGamePayload } from '../services/games.service';
+import type { Modalidad } from '../types';
+import { MODALIDAD_LABELS } from '../types';
 import { Header } from '../components/Header';
 import { getApiError } from '../services/api';
 
@@ -11,9 +13,13 @@ const MODALIDAD_SPOTS: Record<Modalidad, number> = {
   torneo: 18,
 };
 
-function toLocalDateTimeString(date: Date) {
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+function buildAutoTitle(modalidad: Modalidad, gameDate: string, startTime: string) {
+  if (!gameDate) return `Volley Ingenio ${MODALIDAD_LABELS[modalidad]} DD/MM/AAAA ${startTime}pm`;
+  const date = new Date(gameDate + 'T00:00:00');
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
+  return `Volley Ingenio ${MODALIDAD_LABELS[modalidad]} ${day}/${month}/${year} ${startTime}pm`;
 }
 
 export default function CreateGamePage() {
@@ -21,18 +27,15 @@ export default function CreateGamePage() {
   const [modalidad, setModalidad] = useState<Modalidad>('seis_x_seis');
   const [gameDate, setGameDate] = useState('');
   const [startTime, setStartTime] = useState('19:50');
-  const [registrationOpenAt, setRegistrationOpenAt] = useState('');
+  const [registrationOpenTime, setRegistrationOpenTime] = useState('10:00');
   const [pricePerPlayer, setPricePerPlayer] = useState('2000');
   const [maxMainSpots, setMaxMainSpots] = useState('');
+  const [customTitle, setCustomTitle] = useState('');
+  const [useCustomTitle, setUseCustomTitle] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  function handleModalidadChange(m: Modalidad) {
-    setModalidad(m);
-    if (!maxMainSpots) {
-      // auto-fill will happen via placeholder
-    }
-  }
+  const autoTitle = buildAutoTitle(modalidad, gameDate, startTime);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -43,9 +46,10 @@ export default function CreateGamePage() {
         modalidad,
         gameDate,
         startTime,
-        registrationOpenAt: new Date(registrationOpenAt).toISOString(),
+        registrationOpenTime,
         pricePerPlayer: pricePerPlayer ? parseInt(pricePerPlayer) : undefined,
         maxMainSpots: maxMainSpots ? parseInt(maxMainSpots) : undefined,
+        customTitle: useCustomTitle && customTitle.trim() ? customTitle.trim() : undefined,
       };
       const { data } = await gamesService.create(payload);
       navigate(`/game/${data.id}`);
@@ -56,9 +60,7 @@ export default function CreateGamePage() {
     }
   }
 
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const defaultDate = tomorrow.toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
 
   return (
     <div style={{ minHeight: '100vh', background: '#0f1020' }}>
@@ -76,7 +78,7 @@ export default function CreateGamePage() {
                   <button
                     key={m}
                     type="button"
-                    onClick={() => handleModalidadChange(m)}
+                    onClick={() => setModalidad(m)}
                     style={{
                       flex: 1,
                       padding: '10px 4px',
@@ -106,7 +108,7 @@ export default function CreateGamePage() {
                   type="date"
                   value={gameDate}
                   onChange={(e) => setGameDate(e.target.value)}
-                  min={defaultDate}
+                  min={today}
                   required
                 />
               </div>
@@ -126,17 +128,18 @@ export default function CreateGamePage() {
 
             <div>
               <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
-                Abrir registro el
+                Hora de apertura del registro
               </label>
               <input
                 className="zetas-input"
-                type="datetime-local"
-                value={registrationOpenAt}
-                onChange={(e) => setRegistrationOpenAt(e.target.value)}
+                type="time"
+                value={registrationOpenTime}
+                onChange={(e) => setRegistrationOpenTime(e.target.value)}
                 required
               />
               <p style={{ color: '#7c8db5', fontSize: 12, marginTop: 4 }}>
-                En este momento se envía automáticamente el mensaje a WhatsApp
+                El registro se abre el mismo día del partido a esta hora (Colombia).
+                En este momento se envía automáticamente el mensaje a WhatsApp.
               </p>
             </div>
 
@@ -178,9 +181,35 @@ export default function CreateGamePage() {
                 padding: '12px 16px',
               }}
             >
-              <p style={{ color: '#6e8efb', fontSize: 13, margin: 0 }}>
-                📋 Título generado: <strong>Volley Ingenio {MODALIDAD_LABELS[modalidad]} {gameDate || 'DD/MM/AAAA'} {startTime}pm</strong>
-              </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: useCustomTitle ? 10 : 0 }}>
+                <p style={{ color: '#6e8efb', fontSize: 13, margin: 0 }}>
+                  📋 Título: <strong>{useCustomTitle && customTitle.trim() ? customTitle.trim() : autoTitle}</strong>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseCustomTitle(!useCustomTitle);
+                    if (!useCustomTitle) setCustomTitle('');
+                  }}
+                  style={{
+                    background: 'none', border: 'none', color: '#6e8efb',
+                    cursor: 'pointer', fontSize: 12, textDecoration: 'underline',
+                    padding: 0, marginLeft: 8, whiteSpace: 'nowrap',
+                  }}
+                >
+                  {useCustomTitle ? 'Usar automático' : 'Personalizar'}
+                </button>
+              </div>
+              {useCustomTitle && (
+                <input
+                  className="zetas-input"
+                  type="text"
+                  value={customTitle}
+                  onChange={(e) => setCustomTitle(e.target.value)}
+                  placeholder={autoTitle}
+                  style={{ marginTop: 0 }}
+                />
+              )}
             </div>
 
             {error && (

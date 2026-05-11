@@ -1,5 +1,5 @@
 import { api } from './api';
-import { AuthUser } from '../types';
+import type { AuthUser } from '../types';
 
 export interface LoginResponse {
   accessToken: string;

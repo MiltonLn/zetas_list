@@ -6,7 +6,7 @@ import {
   useCallback,
   ReactNode,
 } from 'react';
-import { AuthUser } from '../types';
+import type { AuthUser } from '../types';
 import { authService } from '../services/auth.service';
 
 interface AuthContextValue {

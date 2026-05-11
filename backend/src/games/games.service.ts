@@ -61,8 +61,15 @@ export class GamesService {
 
   async create(dto: CreateGameDto, actorId: string) {
     const startTime = dto.startTime ?? '19:50';
-    const title = this.buildTitle(dto.modalidad, dto.gameDate, startTime);
+    const title = dto.customTitle?.trim() || this.buildTitle(dto.modalidad, dto.gameDate, startTime);
     const maxMainSpots = dto.maxMainSpots ?? DEFAULT_SPOTS[dto.modalidad];
+
+    const registrationOpenTime = dto.registrationOpenTime ?? '10:00';
+    const registrationOpenAt = new Date(`${dto.gameDate}T${registrationOpenTime}:00-05:00`);
+
+    const now = new Date();
+    const initialStatus =
+      registrationOpenAt <= now ? GameStatus.registration_open : GameStatus.scheduled;
 
     const game = await this.prisma.game.create({
       data: {
@@ -70,9 +77,10 @@ export class GamesService {
         modalidad: dto.modalidad,
         gameDate: new Date(dto.gameDate + 'T00:00:00'),
         startTime,
-        registrationOpenAt: new Date(dto.registrationOpenAt),
+        registrationOpenAt,
         maxMainSpots,
         pricePerPlayer: dto.pricePerPlayer ?? 2000,
+        status: initialStatus,
         createdById: actorId,
       },
       include: { createdBy: { select: { id: true, name: true } } },
@@ -131,8 +139,8 @@ export class GamesService {
   async register(gameId: string, userId: string, registeredById: string) {
     return this.prisma.$transaction(
       async (tx) => {
-        const game = await tx.$queryRaw<Array<{ id: string; status: string; max_main_spots: number }>>`
-          SELECT id, status, max_main_spots FROM games WHERE id = ${gameId} FOR UPDATE
+        const game = await tx.$queryRaw<Array<{ id: string; status: string; maxMainSpots: number }>>`
+          SELECT id, status, "maxMainSpots" FROM games WHERE id = ${gameId} FOR UPDATE
         `;
 
         if (!game.length) throw new NotFoundException('Partido no encontrado');
@@ -152,7 +160,7 @@ export class GamesService {
         const mainCount = await tx.gameRegistration.count({
           where: { gameId, isWaitingList: false },
         });
-        const isWaitingList = mainCount >= g.max_main_spots;
+        const isWaitingList = mainCount >= g.maxMainSpots;
 
         const maxPositionResult = await tx.gameRegistration.aggregate({
           where: { gameId, isWaitingList },

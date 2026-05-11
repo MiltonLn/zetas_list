@@ -1,13 +1,14 @@
 import { api } from './api';
-import { Game, GameStatus, Modalidad, AuditLog } from '../types';
+import type { Game, GameStatus, Modalidad, AuditLog } from '../types';
 
 export interface CreateGamePayload {
   modalidad: Modalidad;
   gameDate: string;
   startTime?: string;
-  registrationOpenAt: string;
+  registrationOpenTime?: string;
   pricePerPlayer?: number;
   maxMainSpots?: number;
+  customTitle?: string;
 }
 
 export const gamesService = {
