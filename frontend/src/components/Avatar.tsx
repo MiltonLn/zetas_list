@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+import { BASE_URL } from '../services/api';
 
 function getInitials(name: string): string {
   return name
@@ -22,7 +22,7 @@ function hashColor(name: string): string {
 // eslint-disable-next-line react-refresh/only-export-components
 export function resolvePhotoUrl(url: string): string {
   if (url.startsWith('http')) return url;
-  const base = API_URL.replace(/\/api\/?$/, '');
+  const base = BASE_URL.replace(/\/api\/?$/, '');
   return `${base}${url}`;
 }
 

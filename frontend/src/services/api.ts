@@ -2,7 +2,7 @@ import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
 type RetryConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
-const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+export const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 export const api = axios.create({
   baseURL: BASE_URL,

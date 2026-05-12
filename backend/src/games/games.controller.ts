@@ -28,6 +28,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { JwtUser } from '../auth/jwt-user.interface';
 import { AuditService } from '../audit/audit.service';
 
 @ApiTags('games')
@@ -43,7 +44,7 @@ export class GamesController {
 
   @Roles(Role.admin)
   @Post()
-  create(@Body() dto: CreateGameDto, @CurrentUser() user: any) {
+  create(@Body() dto: CreateGameDto, @CurrentUser() user: JwtUser) {
     return this.gamesService.create(dto, user.id);
   }
 
@@ -57,7 +58,7 @@ export class GamesController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   findAll(
-    @CurrentUser() user: any,
+    @CurrentUser() user: JwtUser,
     @Query('status') status?: GameStatus,
     @Query('excludeStatus') excludeStatus?: string,
     @Query('modalidad') modalidad?: Modalidad,
@@ -87,7 +88,7 @@ export class GamesController {
   }
 
   @Post(':id/register')
-  register(@Param('id') id: string, @CurrentUser() user: any) {
+  register(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     return this.gamesService.register(id, user.id, user.id);
   }
 
@@ -96,7 +97,7 @@ export class GamesController {
   registerUser(
     @Param('id') id: string,
     @Param('userId') userId: string,
-    @CurrentUser() user: any,
+    @CurrentUser() user: JwtUser,
   ) {
     return this.gamesService.register(id, userId, user.id);
   }
@@ -105,7 +106,7 @@ export class GamesController {
   removeRegistration(
     @Param('id') id: string,
     @Param('userId') userId: string,
-    @CurrentUser() user: any,
+    @CurrentUser() user: JwtUser,
   ) {
     return this.gamesService.removeRegistration(id, userId, user.id, user.role);
   }
@@ -116,7 +117,7 @@ export class GamesController {
     @Param('id') id: string,
     @Param('regId') regId: string,
     @Body() dto: UpdateRegistrationDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: JwtUser,
   ) {
     return this.gamesService.updateRegistration(regId, dto, user.id, id);
   }
@@ -126,7 +127,7 @@ export class GamesController {
   promote(
     @Param('id') id: string,
     @Param('regId') regId: string,
-    @CurrentUser() user: any,
+    @CurrentUser() user: JwtUser,
   ) {
     return this.gamesService.promote(id, regId, user.id);
   }
@@ -136,7 +137,7 @@ export class GamesController {
   reorder(
     @Param('id') id: string,
     @Body() dto: ReorderDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: JwtUser,
   ) {
     return this.gamesService.reorder(id, dto, user.id);
   }
@@ -146,14 +147,14 @@ export class GamesController {
   cancel(
     @Param('id') id: string,
     @Body() dto: CancelGameDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: JwtUser,
   ) {
     return this.gamesService.cancel(id, dto, user.id);
   }
 
   @Roles(Role.admin)
   @Post(':id/complete')
-  complete(@Param('id') id: string, @CurrentUser() user: any) {
+  complete(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     return this.gamesService.complete(id, user.id);
   }
 

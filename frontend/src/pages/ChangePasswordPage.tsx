@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/auth.service';
+import { getApiError } from '../services/api';
 
 export default function ChangePasswordPage() {
   const { user, setUser, logout } = useAuth();
@@ -44,12 +45,7 @@ export default function ChangePasswordPage() {
       }
       navigate('/', { replace: true });
     } catch (err: unknown) {
-      const msg =
-        err && typeof err === 'object' && 'response' in err
-          ? (err as { response: { data: { message: string } } }).response?.data
-              ?.message
-          : 'Error al cambiar la contraseña';
-      setError(typeof msg === 'string' ? msg : 'Error al cambiar la contraseña');
+      setError(getApiError(err));
     } finally {
       setLoading(false);
     }

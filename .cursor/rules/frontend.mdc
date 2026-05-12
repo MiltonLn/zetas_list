@@ -10,19 +10,21 @@ alwaysApply: false
 - Solo componentes funcionales con hooks. Nunca class components.
 - Lógica reutilizable en hooks personalizados en `src/hooks/`.
 - Componentes compartidos en `src/components/`.
+- Modales: usar el componente compartido `<Modal>` de `components/Modal.tsx`. No crear overlays inline.
+- Componentes grandes (>300 líneas): extraer sub-componentes a archivos separados en `components/`.
 
 ## API calls
 - Todas las llamadas a la API pasan por los servicios en `src/services/`.
 - Nunca hacer `fetch()` o `axios` directo dentro de componentes o hooks.
 - Usar `getApiError()` de `services/api.ts` para extraer mensajes de error del backend.
+- `BASE_URL` está exportado desde `services/api.ts`. No redefinir en otros archivos.
 
 ```typescript
 // ✅ CORRECTO
-import { gamesService } from '../services/games.service';
-const { data } = await gamesService.get(id);
+import { BASE_URL } from '../services/api';
 
 // ❌ INCORRECTO
-const res = await fetch('/api/games/' + id);
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 ```
 
 ## Auth
@@ -44,3 +46,4 @@ const res = await fetch('/api/games/' + id);
 - Todos los textos visibles al usuario en **español**.
 - Botón de registro principal: siempre "¡Anotame!" (con `!` al inicio).
 - Empty state cuando no hay partido activo: "No hay ninguna lista abierta en el momento, vuelve después."
+- Labels compartidos (`GENDER_LABELS`, `USER_STATUS_LABELS`, `USER_STATUS_COLORS`, `POSITION_LABELS`, `MODALIDAD_LABELS`) viven en `types.ts`. No duplicar.

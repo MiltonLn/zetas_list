@@ -2,7 +2,6 @@ import {
   Injectable,
   UnauthorizedException,
   ForbiddenException,
-  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -119,12 +118,8 @@ export class AuthService {
       where: { username },
     });
 
-    if (!user) {
-      throw new NotFoundException('No se encontró un usuario con ese nombre');
-    }
-
-    if (user.status !== 'active') {
-      throw new ForbiddenException('Tu cuenta no está activa. Contacta a un administrador.');
+    if (!user || user.status !== 'active') {
+      return { message: 'Si el usuario existe, se envió una contraseña temporal a su WhatsApp' };
     }
 
     const tempPassword = generateTempPassword();
@@ -147,6 +142,6 @@ export class AuthService {
 
     await this.whatsapp.sendMessage(user.phone, message);
 
-    return { message: 'Se envió una contraseña temporal a tu WhatsApp' };
+    return { message: 'Si el usuario existe, se envió una contraseña temporal a su WhatsApp' };
   }
 }

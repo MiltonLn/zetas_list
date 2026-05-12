@@ -115,6 +115,24 @@ export const POSITION_LABELS: Record<Position, string> = {
   opuesto: 'Opuesto',
 };
 
+export const GENDER_LABELS: Record<Gender, string> = {
+  masculino: 'Masculino',
+  femenino: 'Femenino',
+  otro: 'Otro',
+};
+
+export const USER_STATUS_LABELS: Record<UserStatus, string> = {
+  active: 'Activo',
+  inactive: 'Inactivo',
+  banned: 'Baneado',
+};
+
+export const USER_STATUS_COLORS: Record<UserStatus, string> = {
+  active: '#2da44e',
+  inactive: '#7c8db5',
+  banned: '#e03131',
+};
+
 export const GAME_STATUS_LABELS: Record<GameStatus, string> = {
   scheduled: 'Programado',
   registration_open: 'Registro Abierto',

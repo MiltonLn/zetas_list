@@ -27,3 +27,14 @@ alwaysApply: true
 ## Git
 - Todo el trabajo de Phase 1 va en `feat/phase-1-full-stack`.
 - No pushear directamente a `main` sin PR.
+- Pre-commit hooks activos (`.husky/pre-commit`): lint en archivos staged. Activar con `make hooks`.
+
+## CI
+- GitHub Actions corre en push/PR a `main` y `feat/phase-1-full-stack`.
+- Ambos sub-proyectos: typecheck → lint (0 warnings) → tests.
+- Backend usa `npm ci` con `package-lock.json`. No commitear sin lockfile.
+
+## Testing
+- Backend: Jest con mocks de PrismaService, AuditService, WhatsappService vía `@nestjs/testing`.
+- Frontend: Vitest.
+- Todos los tests deben ser unitarios sin dependencias externas (sin Docker, sin Postgres).

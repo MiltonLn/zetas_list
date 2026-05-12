@@ -109,7 +109,10 @@ export class UsersService {
   }
 
   async findByPhone(phone: string) {
-    return this.prisma.user.findUnique({ where: { phone } });
+    return this.prisma.user.findUnique({
+      where: { phone },
+      select: { id: true, name: true, phone: true, role: true, status: true },
+    });
   }
 
   async update(

@@ -13,201 +13,21 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
-  useSortable,
   arrayMove,
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import { gamesService } from '../services/games.service';
 import type { Game, GameRegistration, AuditLog } from '../types';
-import { MODALIDAD_LABELS, AUDIT_ACTION_LABELS } from '../types';
+import { MODALIDAD_LABELS } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useGameStream } from '../hooks/useGameStream';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { Spinner } from '../components/Spinner';
-import { Avatar } from '../components/Avatar';
 import { PlayerProfileModal } from '../components/PlayerProfileModal';
+import { SortableRegistrationRow } from '../components/SortableRegistrationRow';
+import { GameAuditModal } from '../components/GameAuditModal';
+import { GameCancelModal } from '../components/GameCancelModal';
 import { getApiError } from '../services/api';
-
-function SortableRow({
-  reg,
-  index,
-  isAdmin,
-  onToggleAttended,
-  onTogglePaid,
-  onPromote,
-  onRemove,
-  isSelf,
-  allowSelfRemove,
-  draggable,
-  onNameClick,
-}: {
-  reg: GameRegistration;
-  index: number;
-  isAdmin: boolean;
-  onToggleAttended?: () => void;
-  onTogglePaid?: () => void;
-  onPromote?: () => void;
-  onRemove?: () => void;
-  isSelf: boolean;
-  allowSelfRemove: boolean;
-  draggable: boolean;
-  onNameClick: () => void;
-}) {
-  const [confirmRemove, setConfirmRemove] = useState(false);
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: reg.id, disabled: !draggable });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{
-        ...style,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '10px 12px',
-        background: isSelf ? '#3b5bdb11' : '#1a1d38',
-        borderRadius: 10,
-        border: isSelf ? '1px solid #3b5bdb44' : '1px solid #2a2f5a',
-        marginBottom: 6,
-      }}
-    >
-      {draggable && (
-        <span
-          {...attributes}
-          {...listeners}
-          style={{ color: '#2a2f5a', cursor: 'grab', fontSize: 18, lineHeight: 1, touchAction: 'none' }}
-        >
-          ⠿
-        </span>
-      )}
-
-      <span style={{ color: '#7c8db5', fontSize: 13, minWidth: 22, textAlign: 'right' }}>
-        {index + 1}.
-      </span>
-
-      <div
-        onClick={onNameClick}
-        style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, cursor: 'pointer' }}
-      >
-        <Avatar name={reg.user.name} photoUrl={reg.user.photoUrl} size={30} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <span style={{ color: '#e8eaf6', fontSize: 14, fontWeight: isSelf ? 700 : 500 }}>
-            {reg.user.name}
-            {isSelf && <span style={{ color: '#6e8efb', fontSize: 11, marginLeft: 6 }}>Tú</span>}
-          </span>
-          {reg.note && (
-            <span style={{ color: '#7c8db5', fontSize: 12, marginLeft: 6 }}>({reg.note})</span>
-          )}
-          {reg.fromWaitList && (
-            <span style={{ color: '#e3a008', fontSize: 11, marginLeft: 6 }}>↑ espera</span>
-          )}
-        </div>
-      </div>
-
-      {isAdmin && (
-        <>
-          <button
-            onClick={onToggleAttended}
-            title="Asistió"
-            style={{
-              background: reg.attended ? '#2da44e22' : 'none',
-              border: reg.attended ? '1px solid #2da44e55' : '1px solid #2a2f5a',
-              borderRadius: 6, padding: '4px 8px',
-              color: reg.attended ? '#2da44e' : '#7c8db5', cursor: 'pointer', fontSize: 13,
-            }}
-          >
-            ✓
-          </button>
-          <button
-            onClick={onTogglePaid}
-            title="Pagó"
-            style={{
-              background: reg.paid ? '#e3a00822' : 'none',
-              border: reg.paid ? '1px solid #e3a00855' : '1px solid #2a2f5a',
-              borderRadius: 6, padding: '4px 8px',
-              color: reg.paid ? '#e3a008' : '#7c8db5', cursor: 'pointer', fontSize: 13,
-            }}
-          >
-            $
-          </button>
-          {reg.isWaitingList && (
-            <button
-              onClick={onPromote}
-              title="Promover a lista principal"
-              style={{
-                background: 'none', border: '1px solid #3b5bdb55',
-                borderRadius: 6, padding: '4px 8px',
-                color: '#6e8efb', cursor: 'pointer', fontSize: 13,
-              }}
-            >
-              ↑
-            </button>
-          )}
-        </>
-      )}
-
-      {isAdmin && (
-        <button
-          onClick={() => {
-            if (confirmRemove) {
-              if (confirmTimer.current) clearTimeout(confirmTimer.current);
-              setConfirmRemove(false);
-              onRemove?.();
-            } else {
-              setConfirmRemove(true);
-              confirmTimer.current = setTimeout(() => setConfirmRemove(false), 3000);
-            }
-          }}
-          title={confirmRemove ? 'Confirmar eliminación' : 'Eliminar'}
-          style={{
-            background: confirmRemove ? '#e031311a' : 'none',
-            border: confirmRemove ? '1px solid #e0313155' : '1px solid #2a2f5a',
-            borderRadius: 6, padding: '4px 8px',
-            color: confirmRemove ? '#ff6b6b' : '#7c8db5', cursor: 'pointer',
-            fontSize: confirmRemove ? 11 : 13, fontWeight: confirmRemove ? 600 : 400,
-            transition: 'all 0.15s ease', whiteSpace: 'nowrap',
-          }}
-        >
-          {confirmRemove ? '¿Seguro?' : '✕'}
-        </button>
-      )}
-
-      {!isAdmin && allowSelfRemove && isSelf && (
-        <button
-          onClick={() => {
-            if (confirmRemove) {
-              if (confirmTimer.current) clearTimeout(confirmTimer.current);
-              setConfirmRemove(false);
-              onRemove?.();
-            } else {
-              setConfirmRemove(true);
-              confirmTimer.current = setTimeout(() => setConfirmRemove(false), 3000);
-            }
-          }}
-          style={{
-            background: confirmRemove ? '#e031311a' : 'none',
-            border: confirmRemove ? '1px solid #e0313155' : '1px solid #2a2f5a',
-            borderRadius: 8, padding: '4px 10px',
-            color: confirmRemove ? '#ff6b6b' : '#7c8db5', cursor: 'pointer',
-            fontSize: 12, fontWeight: 600, transition: 'all 0.15s ease', whiteSpace: 'nowrap',
-          }}
-        >
-          {confirmRemove ? '¿Seguro?' : 'Salirme'}
-        </button>
-      )}
-    </div>
-  );
-}
 
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -228,8 +48,6 @@ export default function GameDetailPage() {
   const [auditLoading, setAuditLoading] = useState(false);
 
   const [showCancel, setShowCancel] = useState(false);
-  const [cancelReason, setCancelReason] = useState('');
-  const [cancelling, setCancelling] = useState(false);
 
   const [selectedReg, setSelectedReg] = useState<GameRegistration | null>(null);
 
@@ -359,17 +177,14 @@ export default function GameDetailPage() {
     }
   }
 
-  async function handleCancel() {
-    if (!id || !cancelReason.trim()) return;
-    setCancelling(true);
+  async function handleCancel(reason: string) {
+    if (!id) return;
     try {
-      await gamesService.cancel(id, cancelReason);
+      await gamesService.cancel(id, reason);
       setShowCancel(false);
       fetchGame();
     } catch (e) {
       setError(getApiError(e));
-    } finally {
-      setCancelling(false);
     }
   }
 
@@ -569,7 +384,7 @@ export default function GameDetailPage() {
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDragEnd(e, 'main')}>
             <SortableContext items={mainList.map((r) => r.id)} strategy={verticalListSortingStrategy}>
               {mainList.map((reg, i) => (
-                <SortableRow
+                <SortableRegistrationRow
                   key={reg.id}
                   reg={reg}
                   index={i}
@@ -587,7 +402,7 @@ export default function GameDetailPage() {
           </DndContext>
         ) : (
           mainList.map((reg, i) => (
-            <SortableRow
+            <SortableRegistrationRow
               key={reg.id}
               reg={reg}
               index={i}
@@ -622,7 +437,7 @@ export default function GameDetailPage() {
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDragEnd(e, 'wait')}>
                 <SortableContext items={waitList.map((r) => r.id)} strategy={verticalListSortingStrategy}>
                   {waitList.map((reg, i) => (
-                    <SortableRow
+                    <SortableRegistrationRow
                       key={reg.id}
                       reg={reg}
                       index={i}
@@ -641,7 +456,7 @@ export default function GameDetailPage() {
               </DndContext>
             ) : (
               waitList.map((reg, i) => (
-                <SortableRow
+                <SortableRegistrationRow
                   key={reg.id}
                   reg={reg}
                   index={i}
@@ -687,72 +502,19 @@ export default function GameDetailPage() {
         />
       )}
 
-      {showAudit && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: '#000b', zIndex: 300, overflowY: 'auto' }}
-          onClick={() => setShowAudit(false)}
-        >
-          <div
-            style={{
-              background: '#161829', margin: '40px auto', maxWidth: 640,
-              borderRadius: 16, padding: 24, border: '1px solid #2a2f5a',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ color: '#e8eaf6', margin: 0 }}>Registro de Actividad</h3>
-              <button onClick={() => setShowAudit(false)} style={{ background: 'none', border: 'none', color: '#7c8db5', cursor: 'pointer', fontSize: 20 }}>✕</button>
-            </div>
-            {auditLogs.map((log) => (
-              <div key={log.id} style={{ borderBottom: '1px solid #2a2f5a', paddingBottom: 12, marginBottom: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <span style={{ color: '#e8eaf6', fontSize: 13, fontWeight: 600 }}>{AUDIT_ACTION_LABELS[log.action] ?? log.action}</span>
-                  <span style={{ color: '#7c8db5', fontSize: 11 }}>{new Date(log.createdAt).toLocaleString('es-CO')}</span>
-                </div>
-                <p style={{ color: '#7c8db5', fontSize: 12, margin: '4px 0 0' }}>
-                  Por {log.actor.name}
-                  {log.targetUser && ` → ${log.targetUser.name}`}
-                </p>
-              </div>
-            ))}
-            {auditLogs.length === 0 && <p style={{ color: '#7c8db5', textAlign: 'center' }}>Sin actividad registrada</p>}
-          </div>
-        </div>
-      )}
+      <GameAuditModal
+        open={showAudit}
+        onClose={() => setShowAudit(false)}
+        logs={auditLogs}
+        loading={auditLoading}
+      />
 
-      {showCancel && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: '#000a', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 16 }}
-          onClick={() => setShowCancel(false)}
-        >
-          <div
-            style={{ background: '#161829', borderRadius: 16, padding: 24, width: '100%', maxWidth: 480, border: '1px solid #2a2f5a' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ color: '#e8eaf6', marginTop: 0, marginBottom: 16 }}>Cancelar Partido</h3>
-            <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
-              Razón de cancelación
-            </label>
-            <input
-              className="zetas-input"
-              value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              placeholder="No hay suficientes jugadores, lluvia..."
-            />
-            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-              <button className="btn" style={{ flex: 1 }} onClick={() => setShowCancel(false)}>Volver</button>
-              <button
-                className="btn"
-                style={{ flex: 1, color: '#e03131', borderColor: '#e031312a' }}
-                onClick={handleCancel}
-                disabled={cancelling || !cancelReason.trim()}
-              >
-                {cancelling ? 'Cancelando...' : 'Confirmar cancelación'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <GameCancelModal
+        open={showCancel}
+        onClose={() => setShowCancel(false)}
+        onConfirm={handleCancel}
+        gameTitle={game?.title ?? 'Partido'}
+      />
     </>
   );
 }

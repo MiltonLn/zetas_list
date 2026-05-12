@@ -30,14 +30,7 @@ export class GameSchedulerService {
       try {
         await this.games.openRegistration(game.id);
 
-        const appUrl = process.env.APP_URL || 'https://zetas.miltonln.site';
-        const gameUrl = `${appUrl}/game/${game.id}`;
-        const message =
-          `🏐 *${game.title}*\n\n` +
-          `¡La inscripción está abierta! 🎉\n\n` +
-          `Anótate aquí: ${gameUrl}\n\n` +
-          `O escríbeme aquí: *@Z anotame*`;
-
+        const message = this.games.buildRegistrationOpenMessage(game);
         await this.whatsapp.sendToGroup(message);
         this.logger.log(`Registro abierto para: ${game.title}`);
       } catch (e) {

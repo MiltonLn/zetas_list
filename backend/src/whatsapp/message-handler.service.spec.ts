@@ -13,6 +13,7 @@ const mockGames = {
   findOne: jest.fn(),
   complete: jest.fn(),
   formatListForWhatsapp: jest.fn(),
+  buildCounts: jest.fn().mockReturnValue('📊 *1/18* cupos ocupados (17 disponibles)'),
 };
 const mockUsers = { findByPhone: jest.fn() };
 const mockPrisma = { game: { findFirst: jest.fn() } };

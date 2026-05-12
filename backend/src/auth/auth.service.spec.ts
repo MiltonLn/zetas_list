@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UnauthorizedException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
@@ -177,14 +177,16 @@ describe('AuthService', () => {
   // ─── recoverPassword ───────────────────────────────────────────────────────
 
   describe('recoverPassword', () => {
-    it('lanza NotFoundException si el usuario no existe', async () => {
+    it('devuelve mensaje genérico si el usuario no existe', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
-      await expect(service.recoverPassword('noone')).rejects.toThrow(NotFoundException);
+      const result = await service.recoverPassword('noone');
+      expect(result.message).toBe('Si el usuario existe, se envió una contraseña temporal a su WhatsApp');
     });
 
-    it('lanza ForbiddenException si el usuario no está activo', async () => {
+    it('devuelve mensaje genérico si el usuario no está activo', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(makeDbUser({ status: 'banned' }));
-      await expect(service.recoverPassword('testuser')).rejects.toThrow(ForbiddenException);
+      const result = await service.recoverPassword('testuser');
+      expect(result.message).toBe('Si el usuario existe, se envió una contraseña temporal a su WhatsApp');
     });
 
     it('actualiza la contraseña y establece mustChangePassword a true', async () => {

@@ -34,3 +34,8 @@ Usar `Prisma.TransactionIsolationLevel.Serializable` en transacciones de registr
 ## Nomenclatura
 - Tablas: snake_case plural (`game_registrations`, `audit_logs`).
 - Campos: camelCase en el schema Prisma, se mapea automáticamente.
+
+## Índices
+- Agregar `@@index` para queries frecuentes (cron scheduler, filtros admin, modales de auditoría).
+- Índices actuales: `games(status, registrationOpenAt)`, `games(gameDate, status)`, `audit_logs(gameId, createdAt)`.
+- Al agregar columnas usadas en WHERE/ORDER BY frecuentes, considerar si necesitan índice.

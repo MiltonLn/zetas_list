@@ -5,18 +5,12 @@ import { usersService } from '../services/users.service';
 import type { UpdateUserPayload } from '../services/users.service';
 import { authService } from '../services/auth.service';
 import type { User, Position, Gender } from '../types';
-import { POSITION_LABELS } from '../types';
+import { POSITION_LABELS, GENDER_LABELS } from '../types';
 import { PageHeader } from '../components/PageHeader';
 import { Avatar } from '../components/Avatar';
 import { ImageCropModal } from '../components/ImageCropModal';
 import { Spinner } from '../components/Spinner';
 import { getApiError } from '../services/api';
-
-const GENDER_LABELS: Record<Gender, string> = {
-  masculino: 'Masculino',
-  femenino: 'Femenino',
-  otro: 'Otro',
-};
 
 export default function ProfilePage() {
   const { user: authUser } = useAuth();

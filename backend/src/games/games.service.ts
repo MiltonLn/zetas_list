@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   Inject,
   forwardRef,
+  Logger,
 } from '@nestjs/common';
 import { Prisma, Role, GameStatus, Modalidad } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -59,7 +60,9 @@ export class GamesService {
     private whatsapp: WhatsappService,
   ) {}
 
-  private buildCounts(game: { maxMainSpots: number; registrations: Array<{ isWaitingList: boolean }> }): string {
+  private readonly logger = new Logger(GamesService.name);
+
+  buildCounts(game: { maxMainSpots: number; registrations: Array<{ isWaitingList: boolean }> }): string {
     const mainCount = game.registrations.filter((r) => !r.isWaitingList).length;
     const waitCount = game.registrations.filter((r) => r.isWaitingList).length;
     const max = game.maxMainSpots;
@@ -78,6 +81,17 @@ export class GamesService {
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const year = date.getFullYear();
     return `Volley Ingenio ${MODALIDAD_LABEL[modalidad]} ${day}/${month}/${year} ${startTime}pm`;
+  }
+
+  buildRegistrationOpenMessage(game: { id: string; title: string }): string {
+    const appUrl = process.env.APP_URL || 'https://zetas.miltonln.site';
+    const gameUrl = `${appUrl}/game/${game.id}`;
+    return (
+      `🏐 *${game.title}*\n\n` +
+      `¡La inscripción está abierta! 🎉\n\n` +
+      `Anótate aquí: ${gameUrl}\n\n` +
+      `O escríbeme aquí: *@Z anotame*`
+    );
   }
 
   async create(dto: CreateGameDto, actorId: string) {
@@ -130,15 +144,8 @@ export class GamesService {
     });
 
     if (initialStatus === GameStatus.registration_open) {
-      const appUrl = process.env.APP_URL || 'https://zetas.miltonln.site';
-      const gameUrl = `${appUrl}/game/${game.id}`;
-      const message =
-        `🏐 *${game.title}*\n\n` +
-        `¡La inscripción está abierta! 🎉\n\n` +
-        `Anótate aquí: ${gameUrl}\n\n` +
-        `O escríbeme aquí: *@Z anotame*`;
-
-      this.whatsapp.sendToGroup(message).catch(() => {});
+      const message = this.buildRegistrationOpenMessage(game);
+      this.whatsapp.sendToGroup(message).catch((e) => this.logger.warn('WhatsApp send failed', e));
     }
 
     return game;
@@ -283,7 +290,7 @@ export class GamesService {
     if (!options?.silent) {
       this.whatsapp
         .sendToGroup(`✅ *${userName}* se anotó ${spot}! 🏐\n${this.buildCounts(updated)}`)
-        .catch(() => {});
+        .catch((e) => this.logger.warn('WhatsApp send failed', e));
     }
 
     return registration;
@@ -315,11 +322,11 @@ export class GamesService {
     const updated = await this.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
 
-    const userName = (reg as any).user?.name || 'Alguien';
+    const userName = reg.user?.name || 'Alguien';
     if (!options?.silent) {
       this.whatsapp
         .sendToGroup(`👋 *${userName}* salió de la lista.\n${this.buildCounts(updated)}`)
-        .catch(() => {});
+        .catch((e) => this.logger.warn('WhatsApp send failed', e));
     }
 
     return updated;
@@ -417,14 +424,14 @@ export class GamesService {
       await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
 
       for (let i = 0; i < dto.mainList.length; i++) {
-        await tx.gameRegistration.update({
-          where: { id: dto.mainList[i] },
+        await tx.gameRegistration.updateMany({
+          where: { id: dto.mainList[i], gameId },
           data: { position: i + 1, isWaitingList: false },
         });
       }
       for (let i = 0; i < dto.waitList.length; i++) {
-        await tx.gameRegistration.update({
-          where: { id: dto.waitList[i] },
+        await tx.gameRegistration.updateMany({
+          where: { id: dto.waitList[i], gameId },
           data: { position: i + 1, isWaitingList: true },
         });
       }
@@ -465,7 +472,7 @@ export class GamesService {
     const reasonText = dto.reason ? `\nMotivo: ${dto.reason}` : '';
     this.whatsapp
       .sendToGroup(`❌ *${game.title}* ha sido cancelado.${reasonText}`)
-      .catch(() => {});
+      .catch((e) => this.logger.warn('WhatsApp send failed', e));
 
     return updated;
   }
@@ -498,7 +505,7 @@ export class GamesService {
     if (!options?.silent) {
       this.whatsapp
         .sendToGroup(report)
-        .catch(() => {});
+        .catch((e) => this.logger.warn('WhatsApp send failed', e));
     }
 
     return { game: updated, report };

@@ -3,24 +3,13 @@ import type { FormEvent } from 'react';
 import { usersService } from '../services/users.service';
 import type { CreateUserPayload } from '../services/users.service';
 import type { User, UserStatus, Role, Position, Gender } from '../types';
-import { POSITION_LABELS } from '../types';
+import { POSITION_LABELS, GENDER_LABELS, USER_STATUS_LABELS, USER_STATUS_COLORS } from '../types';
 import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
 import { Avatar } from '../components/Avatar';
 import { PlayerProfileModal } from '../components/PlayerProfileModal';
+import { Modal } from '../components/Modal';
 import { getApiError } from '../services/api';
-
-const STATUS_LABELS: Record<UserStatus, string> = {
-  active: 'Activo',
-  inactive: 'Inactivo',
-  banned: 'Baneado',
-};
-
-const STATUS_COLORS: Record<UserStatus, string> = {
-  active: '#2da44e',
-  inactive: '#7c8db5',
-  banned: '#e03131',
-};
 
 
 export default function AdminUsersPage() {
@@ -204,12 +193,12 @@ export default function AdminUsersPage() {
                     )}
                     <span
                       style={{
-                        color: STATUS_COLORS[user.status],
+                        color: USER_STATUS_COLORS[user.status],
                         fontSize: 11,
                         fontWeight: 600,
                       }}
                     >
-                      ● {STATUS_LABELS[user.status]}
+                      ● {USER_STATUS_LABELS[user.status]}
                     </span>
                   </div>
                   <div style={{ color: '#7c8db5', fontSize: 12, marginTop: 2 }}>
@@ -245,89 +234,62 @@ export default function AdminUsersPage() {
         )}
       </div>
 
-      {showCreate && (
-        <div
-          style={{
-            position: 'fixed', inset: 0, background: '#000a', display: 'flex',
-            alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 16, overflowY: 'auto',
-          }}
-          onClick={() => setShowCreate(false)}
-        >
-          <div
-            style={{
-              background: '#161829', borderRadius: 16, padding: 24,
-              width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto',
-              border: '1px solid #2a2f5a',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ color: '#e8eaf6', fontWeight: 700, marginTop: 0, marginBottom: 20 }}>
-              Crear Usuario
-            </h3>
-            <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Usuario *</label>
-                  <input className="zetas-input" value={username} onChange={(e) => setUsername(e.target.value)} required />
-                </div>
-              </div>
-              <div>
-                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Nombre completo *</label>
-                <input className="zetas-input" value={name} onChange={(e) => setName(e.target.value)} required />
-              </div>
-              <div>
-                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Teléfono (WhatsApp) *</label>
-                <input className="zetas-input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="3001234567" required />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Rol</label>
-                  <select className="zetas-input" value={role} onChange={(e) => setRole(e.target.value as Role)} style={{ cursor: 'pointer' }}>
-                    <option value="member">Miembro</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Posición</label>
-                  <select className="zetas-input" value={position} onChange={(e) => setPosition(e.target.value as Position | '')} style={{ cursor: 'pointer' }}>
-                    <option value="">--</option>
-                    {Object.entries(POSITION_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Género</label>
-                  <select className="zetas-input" value={gender} onChange={(e) => setGender(e.target.value as Gender | '')} style={{ cursor: 'pointer' }}>
-                    <option value="">--</option>
-                    <option value="masculino">Masculino</option>
-                    <option value="femenino">Femenino</option>
-                    <option value="otro">Otro</option>
-                  </select>
-                </div>
-              </div>
-              {createError && <p style={{ color: '#ff6b6b', fontSize: 13, margin: 0 }}>{createError}</p>}
-              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                <button type="button" className="btn" style={{ flex: 1 }} onClick={() => setShowCreate(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={creating}>
-                  {creating ? 'Creando...' : 'Crear usuario'}
-                </button>
-              </div>
-            </form>
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Crear Usuario" width={560}>
+        <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Usuario *</label>
+              <input className="zetas-input" value={username} onChange={(e) => setUsername(e.target.value)} required />
+            </div>
           </div>
-        </div>
-      )}
+          <div>
+            <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Nombre completo *</label>
+            <input className="zetas-input" value={name} onChange={(e) => setName(e.target.value)} required />
+          </div>
+          <div>
+            <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Teléfono (WhatsApp) *</label>
+            <input className="zetas-input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="3001234567" required />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Rol</label>
+              <select className="zetas-input" value={role} onChange={(e) => setRole(e.target.value as Role)} style={{ cursor: 'pointer' }}>
+                <option value="member">Miembro</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Posición</label>
+              <select className="zetas-input" value={position} onChange={(e) => setPosition(e.target.value as Position | '')} style={{ cursor: 'pointer' }}>
+                <option value="">--</option>
+                {Object.entries(POSITION_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Género</label>
+              <select className="zetas-input" value={gender} onChange={(e) => setGender(e.target.value as Gender | '')} style={{ cursor: 'pointer' }}>
+                <option value="">--</option>
+                {Object.entries(GENDER_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+          </div>
+          {createError && <p style={{ color: '#ff6b6b', fontSize: 13, margin: 0 }}>{createError}</p>}
+          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+            <button type="button" className="btn" style={{ flex: 1 }} onClick={() => setShowCreate(false)}>Cancelar</button>
+            <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={creating}>
+              {creating ? 'Creando...' : 'Crear usuario'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
-      {selectedUser && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: '#000a', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 16 }}
-          onClick={() => { setSelectedUser(null); setStatusAction(null); setBanReason(''); }}
-        >
-          <div
-            style={{ background: '#161829', borderRadius: 16, padding: 24, width: '100%', maxWidth: 480, border: '1px solid #2a2f5a' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ color: '#e8eaf6', fontWeight: 700, marginTop: 0, marginBottom: 4 }}>
-              {selectedUser.name}
-            </h3>
+      <Modal
+        open={!!selectedUser}
+        onClose={() => { setSelectedUser(null); setStatusAction(null); setBanReason(''); }}
+        title={selectedUser?.name}
+      >
+        {selectedUser && (
+          <>
             <p style={{ color: '#7c8db5', fontSize: 13, marginTop: 0, marginBottom: 20 }}>
               @{selectedUser.username} · {selectedUser.phone}
             </p>
@@ -364,9 +326,9 @@ export default function AdminUsersPage() {
                 {statusSaving ? 'Aplicando...' : 'Confirmar'}
               </button>
             )}
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
 
       {profileUser && (
         <PlayerProfileModal

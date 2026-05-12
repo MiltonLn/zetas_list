@@ -113,6 +113,8 @@ model Game {
   auditLogs     AuditLog[]
 
   @@map("games")
+  @@index([status, registrationOpenAt])
+  @@index([gameDate, status])
 }
 
 model GameRegistration {
@@ -151,4 +153,5 @@ model AuditLog {
   targetUser User? @relation("AuditTarget", fields: [targetUserId], references: [id])
 
   @@map("audit_logs")
+  @@index([gameId, createdAt])
 }

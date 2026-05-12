@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Avatar, resolvePhotoUrl } from './Avatar';
-import { POSITION_LABELS } from '../types';
+import { POSITION_LABELS, GENDER_LABELS } from '../types';
 import type { Position, Gender } from '../types';
 
 export interface ProfileUser {
@@ -37,11 +37,7 @@ export function PlayerProfileModal({ user: u, listInfo, onClose }: Props) {
         : null,
     [u.birthDate],
   );
-  const genderLabel =
-    u.gender === 'masculino' ? 'Masculino'
-    : u.gender === 'femenino' ? 'Femenino'
-    : u.gender === 'otro' ? 'Otro'
-    : null;
+  const genderLabel = u.gender ? GENDER_LABELS[u.gender] : null;
 
   const infoItems: { label: string; value: string }[] = [];
   if (u.position) infoItems.push({ label: 'Posición', value: POSITION_LABELS[u.position] || u.position });

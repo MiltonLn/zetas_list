@@ -11,6 +11,9 @@ const CMD_UNREGISTER = /^@z\s+(salirme|s[aá]came|qu[ií]tame|no\s+voy|no\s+jueg
 const CMD_LIST = /^@z\s+(lista|cupos|qui[eé]nes?\s+van|cu[aá]ntos)\b/i;
 const CMD_FINISH = /^@z\s+(terminar|cerrar|finalizar|completar)\b/i;
 
+const MSG_NO_ACTIVE_GAME = 'No hay ninguna lista abierta en el momento 🤷';
+const MSG_USER_NOT_FOUND = '❌ No encontré tu número registrado en el sistema. Pídele a un administrador que te cree una cuenta primero.';
+
 @Injectable()
 export class MessageHandlerService {
   private readonly logger = new Logger(MessageHandlerService.name);
@@ -48,7 +51,7 @@ export class MessageHandlerService {
 
     if (isListCmd) {
       if (!activeGame) {
-        await this.wp.sendToGroup('No hay ninguna lista abierta en el momento 🤷');
+        await this.wp.sendToGroup(MSG_NO_ACTIVE_GAME);
         return;
       }
       const list = this.games.formatListForWhatsapp(activeGame as any);
@@ -80,32 +83,19 @@ export class MessageHandlerService {
 
     if (isUnregisterCmd) {
       if (!activeGame) {
-        await this.wp.sendToGroup('No hay ninguna lista abierta en el momento 🤷');
+        await this.wp.sendToGroup(MSG_NO_ACTIVE_GAME);
         return;
       }
 
       if (!user) {
-        await this.wp.sendToGroup(
-          `❌ No encontré tu número registrado en el sistema. Pídele a un administrador que te cree una cuenta primero.`,
-        );
+        await this.wp.sendToGroup(MSG_USER_NOT_FOUND);
         return;
       }
 
       try {
         await this.games.removeRegistration(activeGame.id, user.id, user.id, user.role, { silent: true });
         const updated = await this.games.findOne(activeGame.id);
-        const mainCount = updated.registrations.filter((r: any) => !r.isWaitingList).length;
-        const waitCount = updated.registrations.filter((r: any) => r.isWaitingList).length;
-        const maxSpots = updated.maxMainSpots;
-
-        let counts = `📊 *${mainCount}/${maxSpots}* cupos ocupados`;
-        if (mainCount >= maxSpots) {
-          counts = `📊 Lista principal *llena* (${mainCount}/${maxSpots})`;
-          if (waitCount > 0) counts += ` · ${waitCount} en espera`;
-        } else {
-          counts += ` (${maxSpots - mainCount} disponibles)`;
-        }
-
+        const counts = this.games.buildCounts(updated);
         await this.wp.sendToGroup(`👋 *${user.name}* salió de la lista.\n${counts}`);
       } catch (e: any) {
         if (e.message?.includes('No estás anotado') || e.message?.includes('not found')) {
@@ -120,14 +110,12 @@ export class MessageHandlerService {
 
     if (isRegisterCmd) {
       if (!activeGame) {
-        await this.wp.sendToGroup('No hay ninguna lista abierta en el momento 🤷');
+        await this.wp.sendToGroup(MSG_NO_ACTIVE_GAME);
         return;
       }
 
       if (!user) {
-        await this.wp.sendToGroup(
-          `❌ No encontré tu número registrado en el sistema. Pídele a un administrador que te cree una cuenta primero.`,
-        );
+        await this.wp.sendToGroup(MSG_USER_NOT_FOUND);
         return;
       }
 
@@ -139,22 +127,10 @@ export class MessageHandlerService {
       try {
         const reg = await this.games.register(activeGame.id, user.id, user.id, { silent: true });
         const updated = await this.games.findOne(activeGame.id);
-        const mainCount = updated.registrations.filter((r: any) => !r.isWaitingList).length;
-        const waitCount = updated.registrations.filter((r: any) => r.isWaitingList).length;
-        const maxSpots = updated.maxMainSpots;
-
+        const counts = this.games.buildCounts(updated);
         const spot = reg.isWaitingList
           ? `en la *lista de espera* en el puesto ${reg.position}`
           : `en la *lista principal* en el puesto ${reg.position}`;
-
-        let counts = `📊 *${mainCount}/${maxSpots}* cupos ocupados`;
-        if (mainCount >= maxSpots) {
-          counts = `📊 Lista principal *llena* (${mainCount}/${maxSpots})`;
-          if (waitCount > 0) counts += ` · ${waitCount} en espera`;
-        } else {
-          counts += ` (${maxSpots - mainCount} disponibles)`;
-        }
-
         await this.wp.sendToGroup(`✅ *${user.name}* se anotó ${spot}! 🏐\n${counts}`);
       } catch (e: any) {
         if (e.message?.includes('Ya estás anotado')) {

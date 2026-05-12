@@ -26,6 +26,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { JwtUser } from '../auth/jwt-user.interface';
 
 const UPLOADS_DIR = join(__dirname, '..', '..', 'uploads', 'avatars');
 if (!existsSync(UPLOADS_DIR)) mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -46,12 +47,12 @@ export class UsersController {
 
   @Roles(Role.admin)
   @Post()
-  create(@Body() dto: CreateUserDto, @CurrentUser() user: any) {
+  create(@Body() dto: CreateUserDto, @CurrentUser() user: JwtUser) {
     return this.usersService.create(dto, user.id);
   }
 
   @Get('me')
-  getMe(@CurrentUser() user: any) {
+  getMe(@CurrentUser() user: JwtUser) {
     return this.usersService.findOne(user.id);
   }
 
@@ -64,7 +65,7 @@ export class UsersController {
   update(
     @Param('id') id: string,
     @Body() dto: UpdateUserDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: JwtUser,
   ) {
     return this.usersService.update(id, dto, user.id, user.role);
   }
@@ -74,7 +75,7 @@ export class UsersController {
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateStatusDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: JwtUser,
   ) {
     return this.usersService.updateStatus(id, dto, user.id);
   }
@@ -84,7 +85,7 @@ export class UsersController {
   resetPassword(
     @Param('id') id: string,
     @Body('newPassword') newPassword: string,
-    @CurrentUser() user: any,
+    @CurrentUser() user: JwtUser,
   ) {
     return this.usersService.resetPassword(id, newPassword, user.id);
   }
@@ -114,7 +115,7 @@ export class UsersController {
   async uploadPhoto(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
-    @CurrentUser() user: any,
+    @CurrentUser() user: JwtUser,
   ) {
     if (!file) throw new BadRequestException('No se envió ninguna imagen');
     const photoUrl = `/uploads/avatars/${file.filename}`;
