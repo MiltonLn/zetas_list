@@ -6,7 +6,7 @@
         restart-frontend restart-backend \
         shell-backend shell-db \
         migrate migrate-deploy seed reset-db generate studio \
-        build lint test clean nuke
+        build lint test hooks clean nuke
 
 # Colores
 CYAN  := \033[0;36m
@@ -94,6 +94,10 @@ reset-db: ## ⚠️  Borra y recrea la base de datos completa + seed
 	@echo "$(GREEN)✓ Base de datos reiniciada$(RESET)"
 
 # ── Build y calidad ───────────────────────────────────────
+
+hooks: ## Activa los pre-commit hooks (solo se necesita hacer una vez por clon)
+	git config core.hooksPath .husky
+	@echo "$(GREEN)✓ Pre-commit hooks activados$(RESET)"
 
 build: ## Build de producción (dentro de Docker)
 	docker compose exec frontend npm run build
