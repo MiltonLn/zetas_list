@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import {
   DndContext,
   closestCenter,
@@ -212,7 +212,6 @@ function SortableRow({
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user, isAdmin } = useAuth();
-  const navigate = useNavigate();
 
   const [game, setGame] = useState<Game | null>(null);
   const [loading, setLoading] = useState(true);

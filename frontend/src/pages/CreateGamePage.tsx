@@ -1,4 +1,5 @@
-import { useState, FormEvent } from 'react';
+import { useState } from 'react';
+import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { gamesService } from '../services/games.service';
 import type { CreateGamePayload } from '../services/games.service';

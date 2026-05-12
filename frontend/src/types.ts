@@ -123,6 +123,36 @@ export const GAME_STATUS_LABELS: Record<GameStatus, string> = {
   cancelled: 'Cancelado',
 };
 
+// ─── Parser types (used by src/utils/parser.ts) ───────────────────────────────
+
+export interface Player {
+  id: string;
+  position: number;
+  name: string;
+  note: string;
+  attended: boolean;
+  paid: boolean;
+}
+
+export interface ParseWarning {
+  type: 'skipped_line' | 'duplicate_number' | 'empty_name' | 'gap_in_numbers';
+  line: number;
+  raw: string;
+  message: string;
+}
+
+export interface ParseError {
+  type: string;
+  message: string;
+}
+
+export interface ParseResult {
+  success: boolean;
+  data?: { title: string; mainList: Player[]; waitList: Player[] };
+  errors: ParseError[];
+  warnings: ParseWarning[];
+}
+
 export const AUDIT_ACTION_LABELS: Record<string, string> = {
   player_registered: 'Jugador anotado',
   player_removed: 'Jugador eliminado',

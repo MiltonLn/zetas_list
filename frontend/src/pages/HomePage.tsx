@@ -9,13 +9,6 @@ import { StatusBadge } from '../components/StatusBadge';
 import { PageHeader } from '../components/PageHeader';
 import { getApiError } from '../services/api';
 
-const STATUS_PRIORITY: Record<GameStatus, number> = {
-  registration_open: 0,
-  in_progress: 1,
-  scheduled: 2,
-  completed: 3,
-  cancelled: 4,
-};
 
 const MONTHS = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -32,7 +25,7 @@ function getMonthRange(year: number, month: number): { dateFrom: string; dateTo:
 const PAGE_SIZE = 15;
 
 export default function HomePage() {
-  const { user, isAdmin } = useAuth();
+  const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 

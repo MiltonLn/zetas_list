@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, FormEvent } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import type { FormEvent } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { usersService } from '../services/users.service';
 import type { UpdateUserPayload } from '../services/users.service';

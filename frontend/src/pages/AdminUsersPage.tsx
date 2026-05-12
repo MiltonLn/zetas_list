@@ -1,4 +1,5 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect } from 'react';
+import type { FormEvent } from 'react';
 import { usersService } from '../services/users.service';
 import type { CreateUserPayload } from '../services/users.service';
 import type { User, UserStatus, Role, Position, Gender } from '../types';
@@ -21,11 +22,6 @@ const STATUS_COLORS: Record<UserStatus, string> = {
   banned: '#e03131',
 };
 
-const GENDER_LABELS: Record<Gender, string> = {
-  masculino: 'Masculino',
-  femenino: 'Femenino',
-  otro: 'Otro',
-};
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);

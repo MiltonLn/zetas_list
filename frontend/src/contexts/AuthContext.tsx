@@ -4,8 +4,8 @@ import {
   useState,
   useEffect,
   useCallback,
-  ReactNode,
 } from 'react';
+import type { ReactNode } from 'react';
 import type { AuthUser } from '../types';
 import { authService } from '../services/auth.service';
 
