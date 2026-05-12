@@ -1,4 +1,6 @@
-import axios, { AxiosError } from 'axios';
+import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
+
+type RetryConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
 const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -29,7 +31,7 @@ const processQueue = (error: unknown, token: string | null) => {
 api.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
-    const original = error.config as any;
+    const original = error.config as RetryConfig;
 
     if (error.response?.status === 401 && !original._retry) {
       const refreshToken = localStorage.getItem('refreshToken');

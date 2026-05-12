@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Avatar, resolvePhotoUrl } from './Avatar';
 import { POSITION_LABELS } from '../types';
 import type { Position, Gender } from '../types';
@@ -30,9 +30,13 @@ interface Props {
 export function PlayerProfileModal({ user: u, listInfo, onClose }: Props) {
   const [fullPhoto, setFullPhoto] = useState<string | null>(null);
 
-  const age = u.birthDate
-    ? Math.floor((Date.now() - new Date(u.birthDate).getTime()) / 31557600000)
-    : null;
+  const age = useMemo(
+    () =>
+      u.birthDate
+        ? Math.floor((Date.now() - new Date(u.birthDate).getTime()) / 31557600000)
+        : null,
+    [u.birthDate],
+  );
   const genderLabel =
     u.gender === 'masculino' ? 'Masculino'
     : u.gender === 'femenino' ? 'Femenino'

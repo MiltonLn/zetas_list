@@ -19,6 +19,7 @@ function hashColor(name: string): string {
   return COLORS[Math.abs(h) % COLORS.length];
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function resolvePhotoUrl(url: string): string {
   if (url.startsWith('http')) return url;
   const base = API_URL.replace(/\/api\/?$/, '');
