@@ -34,6 +34,10 @@ api.interceptors.response.use(
     const original = error.config as RetryConfig;
 
     if (error.response?.status === 401 && !original._retry) {
+      if (original.url?.startsWith('/auth/login') || original.url?.startsWith('/auth/change-password')) {
+        return Promise.reject(error);
+      }
+
       const refreshToken = localStorage.getItem('refreshToken');
       if (!refreshToken) {
         localStorage.clear();
