@@ -17,5 +17,8 @@ export const authService = {
   changePassword: (currentPassword: string, newPassword: string) =>
     api.post('/auth/change-password', { currentPassword, newPassword }),
 
+  recoverPassword: (username: string) =>
+    api.post<{ message: string }>('/auth/recover-password', { username }),
+
   me: () => api.get<AuthUser>('/auth/me'),
 };

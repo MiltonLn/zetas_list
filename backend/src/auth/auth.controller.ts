@@ -27,6 +27,11 @@ export class AuthController {
     return this.authService.refresh(refreshToken);
   }
 
+  @Post('recover-password')
+  recoverPassword(@Body('username') username: string) {
+    return this.authService.recoverPassword(username);
+  }
+
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('change-password')

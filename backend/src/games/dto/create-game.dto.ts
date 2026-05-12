@@ -41,6 +41,12 @@ export class CreateGameDto {
   @Min(0)
   pricePerPlayer?: number;
 
+  @ApiPropertyOptional({ example: 10000, default: 10000, description: 'Costo del vigilante' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  vigilante?: number;
+
   @ApiPropertyOptional({ description: 'Sobrescribir spots máximos (por defecto según modalidad)' })
   @IsOptional()
   @IsInt()

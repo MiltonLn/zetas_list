@@ -101,6 +101,7 @@ model Game {
   registrationOpenAt DateTime
   maxMainSpots       Int
   pricePerPlayer     Int        @default(2000)
+  vigilante          Int        @default(10000)
   status             GameStatus @default(scheduled)
   cancellationReason String?
   createdById        String

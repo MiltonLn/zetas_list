@@ -29,6 +29,7 @@ export default function CreateGamePage() {
   const [startTime, setStartTime] = useState('19:50');
   const [registrationOpenTime, setRegistrationOpenTime] = useState('10:00');
   const [pricePerPlayer, setPricePerPlayer] = useState('2000');
+  const [vigilante, setVigilante] = useState('10000');
   const [maxMainSpots, setMaxMainSpots] = useState('');
   const [customTitle, setCustomTitle] = useState('');
   const [useCustomTitle, setUseCustomTitle] = useState(false);
@@ -48,6 +49,7 @@ export default function CreateGamePage() {
         startTime,
         registrationOpenTime,
         pricePerPlayer: pricePerPlayer ? parseInt(pricePerPlayer) : undefined,
+        vigilante: vigilante ? parseInt(vigilante) : undefined,
         maxMainSpots: maxMainSpots ? parseInt(maxMainSpots) : undefined,
         customTitle: useCustomTitle && customTitle.trim() ? customTitle.trim() : undefined,
       };
@@ -144,7 +146,7 @@ export default function CreateGamePage() {
               </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
               <div>
                 <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
                   Precio por jugador ($)
@@ -157,6 +159,20 @@ export default function CreateGamePage() {
                   value={pricePerPlayer}
                   onChange={(e) => setPricePerPlayer(e.target.value)}
                   placeholder="2000"
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
+                  Vigilante ($)
+                </label>
+                <input
+                  className="zetas-input"
+                  type="number"
+                  min={0}
+                  step={1000}
+                  value={vigilante}
+                  onChange={(e) => setVigilante(e.target.value)}
+                  placeholder="10000"
                 />
               </div>
               <div>

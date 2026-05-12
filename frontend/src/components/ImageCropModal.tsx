@@ -11,6 +11,7 @@ interface ImageCropModalProps {
 function createCroppedImage(imageSrc: string, crop: Area): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.onload = () => {
       const canvas = document.createElement('canvas');
       const size = Math.min(crop.width, crop.height);
@@ -57,9 +58,10 @@ export function ImageCropModal({ imageSrc, onCrop, onCancel }: ImageCropModalPro
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
         display: 'flex', flexDirection: 'column', zIndex: 400,
+        height: '100%',
       }}
     >
-      <div style={{ flex: 1, position: 'relative' }}>
+      <div style={{ flex: 1, position: 'relative', minHeight: 0, overflow: 'hidden' }}>
         <Cropper
           image={imageSrc}
           crop={crop}

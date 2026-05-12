@@ -115,6 +115,7 @@ export class GamesService {
         registrationOpenAt,
         maxMainSpots,
         pricePerPlayer: dto.pricePerPlayer ?? 2000,
+        vigilante: dto.vigilante ?? 10000,
         status: initialStatus,
         createdById: actorId,
       },
@@ -536,6 +537,9 @@ export class GamesService {
       year: 'numeric',
     });
 
+    const vigilante = game.vigilante ?? 0;
+    const neto = recaudado - vigilante;
+
     const lines: string[] = [
       `✅ *${game.title}*`,
       dateStr.charAt(0).toUpperCase() + dateStr.slice(1),
@@ -543,6 +547,11 @@ export class GamesService {
       `✅ *Asistentes:* ${attended.length}/${mainList.length}`,
       `💰 *Recaudado:* $${recaudado.toLocaleString('es-CO')}`,
     ];
+
+    if (vigilante > 0) {
+      lines.push(`🛡️ *Vigilante:* -$${vigilante.toLocaleString('es-CO')}`);
+      lines.push(`💵 *Neto:* $${neto.toLocaleString('es-CO')}`);
+    }
 
     if (attendedNotPaid.length > 0) {
       lines.push('');

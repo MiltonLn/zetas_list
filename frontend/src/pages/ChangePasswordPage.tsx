@@ -79,7 +79,7 @@ export default function ChangePasswordPage() {
           <img
             src="/logo.png"
             alt="Zetas"
-            style={{ width: 64, height: 64, marginBottom: 12 }}
+            style={{ width: 80, height: 80, objectFit: 'contain', display: 'block', margin: '0 auto 12px' }}
           />
           <h1
             style={{

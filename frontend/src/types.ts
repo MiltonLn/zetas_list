@@ -78,6 +78,7 @@ export interface Game {
   registrationOpenAt: string;
   maxMainSpots: number;
   pricePerPlayer: number;
+  vigilante: number;
   status: GameStatus;
   cancellationReason?: string;
   createdById: string;

@@ -27,7 +27,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <line x1="3" y1="18" x2="21" y2="18" />
             </svg>
           </button>
-          <img src="/logo.png" alt="Zetas" style={{ width: 30, height: 30, borderRadius: 8 }} />
+          <img src="/logo.png" alt="Zetas" style={{ width: 30, height: 30, objectFit: 'contain' }} />
           <span className="topbar-title">Volley Zetas Ingenio</span>
         </div>
         <div className="app-content">

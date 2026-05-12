@@ -7,6 +7,7 @@ export interface CreateGamePayload {
   startTime?: string;
   registrationOpenTime?: string;
   pricePerPlayer?: number;
+  vigilante?: number;
   maxMainSpots?: number;
   customTitle?: string;
 }
