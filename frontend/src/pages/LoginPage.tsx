@@ -72,9 +72,12 @@ export default function LoginPage() {
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <img src="/logo.png" alt="Zetas" style={{ width: 80, height: 80, objectFit: 'contain', display: 'block', margin: '0 auto 12px' }} />
           <h1 style={{ color: '#e8eaf6', fontSize: 24, fontWeight: 800, margin: 0 }}>
-            Volley Zetas Ingenio
+            Zetas
           </h1>
-          <p style={{ color: '#7c8db5', fontSize: 14, marginTop: 6 }}>
+          <p style={{ color: '#6e8efb', fontSize: 14, fontWeight: 600, marginTop: 4, letterSpacing: 2, textTransform: 'uppercase' }}>
+            Volleyball Club
+          </p>
+          <p style={{ color: '#7c8db5', fontSize: 14, marginTop: 10 }}>
             {showRecover ? 'Recuperar contraseña' : 'Ingresa a tu cuenta'}
           </p>
         </div>

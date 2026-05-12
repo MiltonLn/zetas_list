@@ -47,10 +47,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <img src="/logo.png" alt="Zetas" className="sidebar-logo-img" />
               <div>
                 <div style={{ color: '#e8eaf6', fontWeight: 800, fontSize: 16, lineHeight: 1.2 }}>
-                  Volley Zetas
+                  Zetas
                 </div>
                 <div style={{ color: '#6e8efb', fontSize: 11, fontWeight: 600, letterSpacing: 1 }}>
-                  INGENIO
+                  VOLLEYBALL CLUB
                 </div>
               </div>
             </div>
