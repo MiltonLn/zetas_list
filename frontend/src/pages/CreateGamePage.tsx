@@ -4,7 +4,7 @@ import { gamesService } from '../services/games.service';
 import type { CreateGamePayload } from '../services/games.service';
 import type { Modalidad } from '../types';
 import { MODALIDAD_LABELS } from '../types';
-import { Header } from '../components/Header';
+import { PageHeader } from '../components/PageHeader';
 import { getApiError } from '../services/api';
 
 const MODALIDAD_SPOTS: Record<Modalidad, number> = {
@@ -60,14 +60,15 @@ export default function CreateGamePage() {
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f1020' }}>
-      <Header title="Crear Nuevo Partido" backTo="/" />
+    <>
+      <PageHeader title="Crear Nuevo Partido" backTo="/" />
 
-      <div style={{ maxWidth: 560, margin: '0 auto', padding: '20px 16px 80px' }}>
-        <div style={{ background: '#161829', border: '1px solid #2a2f5a', borderRadius: 14, padding: 24 }}>
+      <div className="page-wrapper" style={{ maxWidth: 560 }}>
+        <div className="card" style={{ padding: 24 }}>
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             <div>
               <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
@@ -222,6 +223,6 @@ export default function CreateGamePage() {
           </form>
         </div>
       </div>
-    </div>
+    </>
   );
 }

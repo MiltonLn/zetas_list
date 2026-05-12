@@ -24,6 +24,7 @@ const USER_PUBLIC_SELECT = {
   heightCm: true,
   birthDate: true,
   photoUrl: true,
+  bio: true,
   status: true,
   banReason: true,
   createdAt: true,
@@ -63,6 +64,7 @@ export class UsersService {
         heightCm: dto.heightCm,
         birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
         photoUrl: dto.photoUrl,
+        bio: dto.bio,
       },
       select: USER_PUBLIC_SELECT,
     });
@@ -128,6 +130,7 @@ export class UsersService {
         heightCm: dto.heightCm,
         birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
         photoUrl: dto.photoUrl,
+        bio: dto.bio,
       },
       select: USER_PUBLIC_SELECT,
     });

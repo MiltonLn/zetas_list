@@ -3,7 +3,7 @@ import { usersService } from '../services/users.service';
 import type { CreateUserPayload } from '../services/users.service';
 import type { User, UserStatus, Role, Position, Gender } from '../types';
 import { POSITION_LABELS } from '../types';
-import { Header } from '../components/Header';
+import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
 import { getApiError } from '../services/api';
 
@@ -122,22 +122,22 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f1020' }}>
-      <Header
+    <>
+      <PageHeader
         title="Gestión de Usuarios"
         backTo="/"
         action={
           <button
             onClick={() => setShowCreate(true)}
             className="btn btn-primary"
-            style={{ fontSize: 13, padding: '6px 14px' }}
+            style={{ fontSize: 13, padding: '8px 14px', minHeight: 38 }}
           >
             + Crear usuario
           </button>
         }
       />
 
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: '16px 16px 80px' }}>
+      <div className="page-wrapper" style={{ maxWidth: 800 }}>
         <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           <input
             className="zetas-input"
@@ -257,13 +257,13 @@ export default function AdminUsersPage() {
         <div
           style={{
             position: 'fixed', inset: 0, background: '#000a', display: 'flex',
-            alignItems: 'flex-end', justifyContent: 'center', zIndex: 100,
+            alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 16, overflowY: 'auto',
           }}
           onClick={() => setShowCreate(false)}
         >
           <div
             style={{
-              background: '#161829', borderRadius: '16px 16px 0 0', padding: 24,
+              background: '#161829', borderRadius: 16, padding: 24,
               width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto',
               border: '1px solid #2a2f5a',
             }}
@@ -330,11 +330,11 @@ export default function AdminUsersPage() {
 
       {selectedUser && (
         <div
-          style={{ position: 'fixed', inset: 0, background: '#000a', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 }}
+          style={{ position: 'fixed', inset: 0, background: '#000a', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 16 }}
           onClick={() => { setSelectedUser(null); setStatusAction(null); setBanReason(''); }}
         >
           <div
-            style={{ background: '#161829', borderRadius: '16px 16px 0 0', padding: 24, width: '100%', maxWidth: 480, border: '1px solid #2a2f5a' }}
+            style={{ background: '#161829', borderRadius: 16, padding: 24, width: '100%', maxWidth: 480, border: '1px solid #2a2f5a' }}
             onClick={(e) => e.stopPropagation()}
           >
             <h3 style={{ color: '#e8eaf6', fontWeight: 700, marginTop: 0, marginBottom: 4 }}>
@@ -379,6 +379,6 @@ export default function AdminUsersPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

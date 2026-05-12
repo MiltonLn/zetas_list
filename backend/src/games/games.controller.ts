@@ -50,12 +50,35 @@ export class GamesController {
   @Get()
   @ApiQuery({ name: 'status', required: false, enum: GameStatus })
   @ApiQuery({ name: 'modalidad', required: false, enum: Modalidad })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'dateFrom', required: false, type: String, description: 'YYYY-MM-DD' })
+  @ApiQuery({ name: 'dateTo', required: false, type: String, description: 'YYYY-MM-DD' })
+  @ApiQuery({ name: 'excludeStatus', required: false, type: String, description: 'Comma-separated statuses to exclude' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   findAll(
     @CurrentUser() user: any,
     @Query('status') status?: GameStatus,
+    @Query('excludeStatus') excludeStatus?: string,
     @Query('modalidad') modalidad?: Modalidad,
+    @Query('search') search?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.gamesService.findAll(user.role, { status, modalidad });
+    return this.gamesService.findAll(user.role, {
+      status,
+      excludeStatus: excludeStatus
+        ? (excludeStatus.split(',') as GameStatus[])
+        : undefined,
+      modalidad,
+      search,
+      dateFrom,
+      dateTo,
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
   }
 
   @Get(':id')

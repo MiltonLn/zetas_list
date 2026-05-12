@@ -1,11 +1,13 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useRef, FormEvent } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { usersService } from '../services/users.service';
 import type { UpdateUserPayload } from '../services/users.service';
 import { authService } from '../services/auth.service';
 import type { User, Position, Gender } from '../types';
 import { POSITION_LABELS } from '../types';
-import { Header } from '../components/Header';
+import { PageHeader } from '../components/PageHeader';
+import { Avatar } from '../components/Avatar';
+import { ImageCropModal } from '../components/ImageCropModal';
 import { Spinner } from '../components/Spinner';
 import { getApiError } from '../services/api';
 
@@ -24,6 +26,7 @@ export default function ProfilePage() {
   const [error, setError] = useState('');
 
   const [name, setName] = useState('');
+  const [bio, setBio] = useState('');
   const [position, setPosition] = useState<Position | ''>('');
   const [gender, setGender] = useState<Gender | ''>('');
   const [heightCm, setHeightCm] = useState('');
@@ -35,12 +38,17 @@ export default function ProfilePage() {
   const [pwSuccess, setPwSuccess] = useState('');
   const [pwSaving, setPwSaving] = useState(false);
 
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     usersService
       .me()
       .then(({ data }) => {
         setProfile(data);
         setName(data.name);
+        setBio(data.bio || '');
         setPosition((data.position as Position) || '');
         setGender((data.gender as Gender) || '');
         setHeightCm(data.heightCm?.toString() || '');
@@ -58,6 +66,7 @@ export default function ProfilePage() {
     try {
       const payload: UpdateUserPayload = {
         name,
+        bio: bio || undefined,
         position: position || undefined,
         gender: (gender as Gender) || undefined,
         heightCm: heightCm ? parseInt(heightCm) : undefined,
@@ -89,29 +98,110 @@ export default function ProfilePage() {
     }
   }
 
+  function handleFileSelect(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => setCropImageSrc(reader.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function handleCroppedPhoto(blob: Blob) {
+    setCropImageSrc(null);
+    if (!authUser) return;
+    setPhotoUploading(true);
+    setError('');
+    try {
+      const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
+      const { data } = await usersService.uploadPhoto(authUser.id, file);
+      setProfile(data);
+      setSuccess('Foto actualizada');
+    } catch (err) {
+      setError(getApiError(err));
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
+
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
         <Spinner size={48} />
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f1020' }}>
-      <Header title="Mi Perfil" backTo="/" />
+    <>
+      <PageHeader title="Mi Perfil" backTo="/" />
 
-      <div style={{ maxWidth: 600, margin: '0 auto', padding: '20px 16px 80px' }}>
-        <div style={{ background: '#161829', border: '1px solid #2a2f5a', borderRadius: 14, padding: 24, marginBottom: 20 }}>
+      <div className="page-wrapper" style={{ maxWidth: 600 }}>
+        <div className="card" style={{ padding: 24, marginBottom: 20 }}>
           <h2 style={{ color: '#e8eaf6', fontSize: 16, fontWeight: 700, marginBottom: 20, marginTop: 0 }}>
             Datos del Perfil
           </h2>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+            <div style={{ position: 'relative' }}>
+              <Avatar name={profile?.name || ''} photoUrl={profile?.photoUrl} size={72} />
+              {photoUploading && (
+                <div style={{
+                  position: 'absolute', inset: 0, borderRadius: '50%',
+                  background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Spinner size={24} />
+                </div>
+              )}
+            </div>
+            <div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ fontSize: 12, padding: '6px 14px', minHeight: 32 }}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={photoUploading}
+              >
+                Cambiar foto
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileSelect(file);
+                  e.target.value = '';
+                }}
+              />
+              <p style={{ color: '#7c8db5', fontSize: 11, margin: '6px 0 0' }}>
+                JPG, PNG — máx. 5 MB
+              </p>
+            </div>
+          </div>
+
           <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
               <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>
                 Nombre
               </label>
               <input className="zetas-input" value={name} onChange={(e) => setName(e.target.value)} required />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>
+                Bio
+              </label>
+              <textarea
+                className="zetas-input"
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                placeholder="Cuéntanos algo sobre ti..."
+                maxLength={200}
+                rows={2}
+                style={{ resize: 'vertical', minHeight: 48 }}
+              />
+              <p style={{ color: '#7c8db5', fontSize: 11, margin: '4px 0 0', textAlign: 'right' }}>
+                {bio.length}/200
+              </p>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -203,7 +293,7 @@ export default function ProfilePage() {
           </form>
         </div>
 
-        <div style={{ background: '#161829', border: '1px solid #2a2f5a', borderRadius: 14, padding: 24 }}>
+        <div className="card" style={{ padding: 24 }}>
           <h2 style={{ color: '#e8eaf6', fontSize: 16, fontWeight: 700, marginBottom: 20, marginTop: 0 }}>
             Cambiar Contraseña
           </h2>
@@ -241,6 +331,14 @@ export default function ProfilePage() {
           </form>
         </div>
       </div>
-    </div>
+
+      {cropImageSrc && (
+        <ImageCropModal
+          imageSrc={cropImageSrc}
+          onCrop={handleCroppedPhoto}
+          onCancel={() => setCropImageSrc(null)}
+        />
+      )}
+    </>
   );
 }

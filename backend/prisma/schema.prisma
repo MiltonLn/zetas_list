@@ -76,6 +76,7 @@ model User {
   heightCm     Int?
   birthDate    DateTime?
   photoUrl     String?
+  bio          String?
   status       UserStatus @default(active)
   banReason    String?
   createdAt    DateTime   @default(now())

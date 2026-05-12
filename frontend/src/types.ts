@@ -21,6 +21,7 @@ export interface User {
   heightCm?: number;
   birthDate?: string;
   photoUrl?: string;
+  bio?: string;
   status: UserStatus;
   banReason?: string;
   createdAt: string;
@@ -45,7 +46,10 @@ export interface RegistrationUser {
   phone: string;
   position?: Position;
   gender?: Gender;
+  heightCm?: number;
+  birthDate?: string;
   photoUrl?: string;
+  bio?: string;
 }
 
 export interface GameRegistration {
@@ -115,4 +119,22 @@ export const GAME_STATUS_LABELS: Record<GameStatus, string> = {
   in_progress: 'En Curso',
   completed: 'Completado',
   cancelled: 'Cancelado',
+};
+
+export const AUDIT_ACTION_LABELS: Record<string, string> = {
+  player_registered: 'Jugador anotado',
+  player_removed: 'Jugador eliminado',
+  player_promoted: 'Jugador promovido',
+  player_reordered: 'Lista reordenada',
+  attendance_toggled: 'Asistencia marcada',
+  payment_toggled: 'Pago marcado',
+  note_updated: 'Nota actualizada',
+  game_created: 'Partido creado',
+  game_updated: 'Partido actualizado',
+  game_cancelled: 'Partido cancelado',
+  game_completed: 'Partido completado',
+  game_status_changed: 'Estado del partido cambiado',
+  user_created: 'Usuario creado',
+  user_updated: 'Usuario actualizado',
+  user_status_changed: 'Estado de usuario cambiado',
 };

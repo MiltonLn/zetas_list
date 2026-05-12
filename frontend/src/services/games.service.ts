@@ -11,9 +11,27 @@ export interface CreateGamePayload {
   customTitle?: string;
 }
 
+export interface ListGamesParams {
+  status?: GameStatus;
+  excludeStatus?: string;
+  modalidad?: Modalidad;
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedGames {
+  data: Game[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export const gamesService = {
-  list: (params?: { status?: GameStatus; modalidad?: Modalidad }) =>
-    api.get<Game[]>('/games', { params }),
+  list: (params?: ListGamesParams) =>
+    api.get<PaginatedGames>('/games', { params }),
 
   get: (id: string) => api.get<Game>(`/games/${id}`),
 

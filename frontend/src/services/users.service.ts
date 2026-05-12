@@ -22,6 +22,7 @@ export interface UpdateUserPayload {
   heightCm?: number;
   birthDate?: string;
   photoUrl?: string;
+  bio?: string;
 }
 
 export const usersService = {
@@ -42,4 +43,12 @@ export const usersService = {
 
   resetPassword: (id: string, newPassword: string) =>
     api.patch(`/users/${id}/reset-password`, { newPassword }),
+
+  uploadPhoto: (id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post<User>(`/users/${id}/photo`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };

@@ -36,6 +36,7 @@ services:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
       - whatsapp_session:/app/whatsapp-session
+      - uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -59,3 +60,4 @@ services:
 volumes:
   pgdata:
   whatsapp_session:
+  uploads:

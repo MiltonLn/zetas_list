@@ -1,12 +1,29 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { PrivateRoute } from './components/PrivateRoute';
+import { AppLayout } from './components/AppLayout';
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import ProfilePage from './pages/ProfilePage';
 import GameDetailPage from './pages/GameDetailPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import CreateGamePage from './pages/CreateGamePage';
+
+function AuthenticatedApp({ children }: { children: React.ReactNode }) {
+  return (
+    <PrivateRoute>
+      <AppLayout>{children}</AppLayout>
+    </PrivateRoute>
+  );
+}
+
+function AdminApp({ children }: { children: React.ReactNode }) {
+  return (
+    <PrivateRoute adminOnly>
+      <AppLayout>{children}</AppLayout>
+    </PrivateRoute>
+  );
+}
 
 export default function App() {
   return (
@@ -17,41 +34,41 @@ export default function App() {
           <Route
             path="/"
             element={
-              <PrivateRoute>
+              <AuthenticatedApp>
                 <HomePage />
-              </PrivateRoute>
+              </AuthenticatedApp>
             }
           />
           <Route
             path="/profile"
             element={
-              <PrivateRoute>
+              <AuthenticatedApp>
                 <ProfilePage />
-              </PrivateRoute>
+              </AuthenticatedApp>
             }
           />
           <Route
             path="/game/:id"
             element={
-              <PrivateRoute>
+              <AuthenticatedApp>
                 <GameDetailPage />
-              </PrivateRoute>
+              </AuthenticatedApp>
             }
           />
           <Route
             path="/admin/users"
             element={
-              <PrivateRoute adminOnly>
+              <AdminApp>
                 <AdminUsersPage />
-              </PrivateRoute>
+              </AdminApp>
             }
           />
           <Route
             path="/admin/games/new"
             element={
-              <PrivateRoute adminOnly>
+              <AdminApp>
                 <CreateGamePage />
-              </PrivateRoute>
+              </AdminApp>
             }
           />
           <Route path="*" element={<Navigate to="/" replace />} />

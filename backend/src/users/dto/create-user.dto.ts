@@ -68,4 +68,9 @@ export class CreateUserDto {
   @IsOptional()
   @IsUrl()
   photoUrl?: string;
+
+  @ApiPropertyOptional({ example: 'Me encanta el voleibol' })
+  @IsOptional()
+  @IsString()
+  bio?: string;
 }

@@ -19,12 +19,13 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { gamesService } from '../services/games.service';
 import type { Game, GameRegistration, AuditLog } from '../types';
-import { MODALIDAD_LABELS } from '../types';
+import { MODALIDAD_LABELS, AUDIT_ACTION_LABELS, POSITION_LABELS } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useGameStream } from '../hooks/useGameStream';
-import { Header } from '../components/Header';
+import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { Spinner } from '../components/Spinner';
+import { Avatar, resolvePhotoUrl } from '../components/Avatar';
 import { getApiError } from '../services/api';
 
 function SortableRow({
@@ -38,6 +39,7 @@ function SortableRow({
   isSelf,
   allowSelfRemove,
   draggable,
+  onNameClick,
 }: {
   reg: GameRegistration;
   index: number;
@@ -49,7 +51,11 @@ function SortableRow({
   isSelf: boolean;
   allowSelfRemove: boolean;
   draggable: boolean;
+  onNameClick: () => void;
 }) {
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: reg.id, disabled: !draggable });
 
@@ -88,17 +94,23 @@ function SortableRow({
         {index + 1}.
       </span>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ color: '#e8eaf6', fontSize: 14, fontWeight: isSelf ? 700 : 500 }}>
-          {reg.user.name}
-          {isSelf && <span style={{ color: '#6e8efb', fontSize: 11, marginLeft: 6 }}>Tú</span>}
-        </span>
-        {reg.note && (
-          <span style={{ color: '#7c8db5', fontSize: 12, marginLeft: 6 }}>({reg.note})</span>
-        )}
-        {reg.fromWaitList && (
-          <span style={{ color: '#e3a008', fontSize: 11, marginLeft: 6 }}>↑ espera</span>
-        )}
+      <div
+        onClick={onNameClick}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, cursor: 'pointer' }}
+      >
+        <Avatar name={reg.user.name} photoUrl={reg.user.photoUrl} size={30} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ color: '#e8eaf6', fontSize: 14, fontWeight: isSelf ? 700 : 500 }}>
+            {reg.user.name}
+            {isSelf && <span style={{ color: '#6e8efb', fontSize: 11, marginLeft: 6 }}>Tú</span>}
+          </span>
+          {reg.note && (
+            <span style={{ color: '#7c8db5', fontSize: 12, marginLeft: 6 }}>({reg.note})</span>
+          )}
+          {reg.fromWaitList && (
+            <span style={{ color: '#e3a008', fontSize: 11, marginLeft: 6 }}>↑ espera</span>
+          )}
+        </div>
       </div>
 
       {isAdmin && (
@@ -109,11 +121,8 @@ function SortableRow({
             style={{
               background: reg.attended ? '#2da44e22' : 'none',
               border: reg.attended ? '1px solid #2da44e55' : '1px solid #2a2f5a',
-              borderRadius: 6,
-              padding: '4px 8px',
-              color: reg.attended ? '#2da44e' : '#7c8db5',
-              cursor: 'pointer',
-              fontSize: 13,
+              borderRadius: 6, padding: '4px 8px',
+              color: reg.attended ? '#2da44e' : '#7c8db5', cursor: 'pointer', fontSize: 13,
             }}
           >
             ✓
@@ -124,11 +133,8 @@ function SortableRow({
             style={{
               background: reg.paid ? '#e3a00822' : 'none',
               border: reg.paid ? '1px solid #e3a00855' : '1px solid #2a2f5a',
-              borderRadius: 6,
-              padding: '4px 8px',
-              color: reg.paid ? '#e3a008' : '#7c8db5',
-              cursor: 'pointer',
-              fontSize: 13,
+              borderRadius: 6, padding: '4px 8px',
+              color: reg.paid ? '#e3a008' : '#7c8db5', cursor: 'pointer', fontSize: 13,
             }}
           >
             $
@@ -138,13 +144,9 @@ function SortableRow({
               onClick={onPromote}
               title="Promover a lista principal"
               style={{
-                background: 'none',
-                border: '1px solid #3b5bdb55',
-                borderRadius: 6,
-                padding: '4px 8px',
-                color: '#6e8efb',
-                cursor: 'pointer',
-                fontSize: 13,
+                background: 'none', border: '1px solid #3b5bdb55',
+                borderRadius: 6, padding: '4px 8px',
+                color: '#6e8efb', cursor: 'pointer', fontSize: 13,
               }}
             >
               ↑
@@ -153,21 +155,53 @@ function SortableRow({
         </>
       )}
 
-      {(isAdmin || (allowSelfRemove && isSelf)) && (
+      {isAdmin && (
         <button
-          onClick={onRemove}
-          title="Eliminar"
+          onClick={() => {
+            if (confirmRemove) {
+              if (confirmTimer.current) clearTimeout(confirmTimer.current);
+              setConfirmRemove(false);
+              onRemove?.();
+            } else {
+              setConfirmRemove(true);
+              confirmTimer.current = setTimeout(() => setConfirmRemove(false), 3000);
+            }
+          }}
+          title={confirmRemove ? 'Confirmar eliminación' : 'Eliminar'}
           style={{
-            background: 'none',
-            border: '1px solid #2a2f5a',
-            borderRadius: 6,
-            padding: '4px 8px',
-            color: '#7c8db5',
-            cursor: 'pointer',
-            fontSize: 13,
+            background: confirmRemove ? '#e031311a' : 'none',
+            border: confirmRemove ? '1px solid #e0313155' : '1px solid #2a2f5a',
+            borderRadius: 6, padding: '4px 8px',
+            color: confirmRemove ? '#ff6b6b' : '#7c8db5', cursor: 'pointer',
+            fontSize: confirmRemove ? 11 : 13, fontWeight: confirmRemove ? 600 : 400,
+            transition: 'all 0.15s ease', whiteSpace: 'nowrap',
           }}
         >
-          ✕
+          {confirmRemove ? '¿Seguro?' : '✕'}
+        </button>
+      )}
+
+      {!isAdmin && allowSelfRemove && isSelf && (
+        <button
+          onClick={() => {
+            if (confirmRemove) {
+              if (confirmTimer.current) clearTimeout(confirmTimer.current);
+              setConfirmRemove(false);
+              onRemove?.();
+            } else {
+              setConfirmRemove(true);
+              confirmTimer.current = setTimeout(() => setConfirmRemove(false), 3000);
+            }
+          }}
+          style={{
+            background: confirmRemove ? '#e031311a' : 'none',
+            border: confirmRemove ? '1px solid #e0313155' : '1px solid #2a2f5a',
+            borderRadius: 8, padding: '4px 10px',
+            color: confirmRemove ? '#ff6b6b' : '#7c8db5', cursor: 'pointer',
+            fontSize: 12, fontWeight: 600, transition: 'all 0.15s ease', whiteSpace: 'nowrap',
+          }}
+        >
+          {confirmRemove ? '¿Seguro?' : 'Salirme'}
         </button>
       )}
     </div>
@@ -197,7 +231,12 @@ export default function GameDetailPage() {
   const [cancelReason, setCancelReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
 
+  const [selectedReg, setSelectedReg] = useState<GameRegistration | null>(null);
+  const [fullPhoto, setFullPhoto] = useState<string | null>(null);
+
   const [completing, setCompleting] = useState(false);
+  const [confirmComplete, setConfirmComplete] = useState(false);
+  const confirmCompleteTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const reorderTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -296,6 +335,18 @@ export default function GameDetailPage() {
     }
   }
 
+  function handleCompleteClick() {
+    if (!confirmComplete) {
+      setConfirmComplete(true);
+      if (confirmCompleteTimeout.current) clearTimeout(confirmCompleteTimeout.current);
+      confirmCompleteTimeout.current = setTimeout(() => setConfirmComplete(false), 4000);
+      return;
+    }
+    if (confirmCompleteTimeout.current) clearTimeout(confirmCompleteTimeout.current);
+    setConfirmComplete(false);
+    handleComplete();
+  }
+
   async function handleComplete() {
     if (!id) return;
     setCompleting(true);
@@ -339,7 +390,7 @@ export default function GameDetailPage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
         <Spinner size={48} />
       </div>
     );
@@ -347,7 +398,7 @@ export default function GameDetailPage() {
 
   if (!game) {
     return (
-      <div style={{ minHeight: '100vh', background: '#0f1020', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
         <div style={{ textAlign: 'center' }}>
           <p style={{ color: '#ff6b6b' }}>{error || 'Partido no encontrado'}</p>
           <Link to="/" className="btn" style={{ marginTop: 12 }}>Volver</Link>
@@ -367,8 +418,8 @@ export default function GameDetailPage() {
   const attended = mainList.filter((r) => r.attended).length;
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f1020' }}>
-      <Header
+    <>
+      <PageHeader
         title={game.title}
         backTo="/"
         action={
@@ -376,20 +427,17 @@ export default function GameDetailPage() {
             <div style={{ display: 'flex', gap: 6 }}>
               {(game.status === 'registration_open' || game.status === 'in_progress') && (
                 <button
-                  onClick={handleComplete}
+                  onClick={handleCompleteClick}
                   disabled={completing}
+                  className="btn btn-primary"
                   style={{
-                    background: '#3b5bdb',
-                    border: 'none',
-                    borderRadius: 8,
-                    padding: '6px 12px',
-                    color: '#fff',
-                    cursor: 'pointer',
                     fontSize: 12,
-                    fontWeight: 600,
+                    padding: '6px 12px',
+                    minHeight: 34,
+                    ...(confirmComplete ? { background: '#e03131', borderColor: '#e03131' } : {}),
                   }}
                 >
-                  {completing ? '...' : '✅ Terminar'}
+                  {completing ? '...' : confirmComplete ? '¿Seguro? Terminar' : '✅ Terminar'}
                 </button>
               )}
               {game.status !== 'completed' && game.status !== 'cancelled' && (
@@ -413,7 +461,7 @@ export default function GameDetailPage() {
         }
       />
 
-      <div style={{ maxWidth: 700, margin: '0 auto', padding: '16px 16px 80px' }}>
+      <div className="page-wrapper">
         {error && (
           <div style={{ background: '#e031311a', border: '1px solid #e0313155', borderRadius: 10, padding: '10px 14px', color: '#ff6b6b', fontSize: 14, marginBottom: 12 }}>
             {error}
@@ -533,6 +581,7 @@ export default function GameDetailPage() {
                   isSelf={reg.userId === user?.id}
                   allowSelfRemove={isOpen}
                   draggable={isAdmin}
+                  onNameClick={() => setSelectedReg(reg)}
                 />
               ))}
             </SortableContext>
@@ -548,6 +597,7 @@ export default function GameDetailPage() {
               isSelf={reg.userId === user?.id}
               allowSelfRemove={isOpen}
               draggable={false}
+              onNameClick={() => setSelectedReg(reg)}
             />
           ))
         )}
@@ -585,6 +635,7 @@ export default function GameDetailPage() {
                       isSelf={reg.userId === user?.id}
                       allowSelfRemove={isOpen}
                       draggable={isAdmin}
+                      onNameClick={() => setSelectedReg(reg)}
                     />
                   ))}
                 </SortableContext>
@@ -600,6 +651,7 @@ export default function GameDetailPage() {
                   isSelf={reg.userId === user?.id}
                   allowSelfRemove={isOpen}
                   draggable={false}
+                  onNameClick={() => setSelectedReg(reg)}
                 />
               ))
             )}
@@ -623,9 +675,120 @@ export default function GameDetailPage() {
         )}
       </div>
 
+      {/* Player profile modal */}
+      {selectedReg && (() => {
+        const u = selectedReg.user;
+        const age = u.birthDate
+          ? Math.floor((Date.now() - new Date(u.birthDate).getTime()) / 31557600000)
+          : null;
+        const genderLabel = u.gender === 'masculino' ? 'Masculino' : u.gender === 'femenino' ? 'Femenino' : u.gender === 'otro' ? 'Otro' : null;
+
+        const infoItems: { label: string; value: string }[] = [];
+        if (u.position) infoItems.push({ label: 'Posición', value: POSITION_LABELS[u.position] || u.position });
+        if (u.heightCm) infoItems.push({ label: 'Estatura', value: `${u.heightCm} cm` });
+        if (age !== null) infoItems.push({ label: 'Edad', value: `${age} años` });
+        if (genderLabel) infoItems.push({ label: 'Género', value: genderLabel });
+        infoItems.push({ label: 'Teléfono', value: u.phone });
+        infoItems.push({
+          label: 'En la lista',
+          value: `#${selectedReg.position} ${selectedReg.isWaitingList ? '(Espera)' : '(Principal)'}`,
+        });
+
+        return (
+          <div
+            onClick={() => setSelectedReg(null)}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 300, padding: 16,
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: '#1a1d38', borderRadius: 16, width: '100%', maxWidth: 340,
+                maxHeight: '85vh', overflow: 'auto', padding: 24,
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                <div
+                  onClick={() => u.photoUrl && setFullPhoto(resolvePhotoUrl(u.photoUrl))}
+                  style={{ cursor: u.photoUrl ? 'pointer' : 'default' }}
+                >
+                  <Avatar name={u.name} photoUrl={u.photoUrl} size={88} />
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ color: '#e8eaf6', fontSize: 18, fontWeight: 700, margin: 0 }}>{u.name}</p>
+                  <p style={{ color: '#7c8db5', fontSize: 13, margin: '4px 0 0' }}>@{u.username}</p>
+                </div>
+                {u.bio && (
+                  <p style={{
+                    color: '#a0aec0', fontSize: 13, margin: '4px 0 0',
+                    fontStyle: 'italic', textAlign: 'center', lineHeight: 1.5,
+                    maxWidth: 280,
+                  }}>
+                    "{u.bio}"
+                  </p>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
+                {infoItems.map((item) => (
+                  <div key={item.label} style={{ background: '#141627', borderRadius: 10, padding: '10px 14px' }}>
+                    <p style={{ color: '#7c8db5', fontSize: 11, margin: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      {item.label}
+                    </p>
+                    <p style={{ color: '#e8eaf6', fontSize: 14, fontWeight: 600, margin: '4px 0 0' }}>
+                      {item.value}
+                    </p>
+                  </div>
+                ))}
+                {selectedReg.fromWaitList && (
+                  <div style={{ background: '#141627', borderRadius: 10, padding: '10px 14px', gridColumn: '1 / -1' }}>
+                    <p style={{ color: '#e3a008', fontSize: 13, margin: 0 }}>↑ Promovido desde lista de espera</p>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => setSelectedReg(null)}
+                style={{
+                  width: '100%', padding: '10px 0', borderRadius: 10, fontSize: 13,
+                  background: '#141627', border: '1px solid #2a2f5a',
+                  color: '#7c8db5', cursor: 'pointer',
+                }}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Full photo viewer */}
+      {fullPhoto && (
+        <div
+          onClick={() => setFullPhoto(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 500, cursor: 'pointer', padding: 24,
+          }}
+        >
+          <img
+            src={fullPhoto}
+            alt="Foto"
+            style={{
+              maxWidth: '100%', maxHeight: '85vh', borderRadius: 12,
+              objectFit: 'contain', boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            }}
+          />
+        </div>
+      )}
+
       {showAudit && (
         <div
-          style={{ position: 'fixed', inset: 0, background: '#000b', zIndex: 100, overflowY: 'auto' }}
+          style={{ position: 'fixed', inset: 0, background: '#000b', zIndex: 300, overflowY: 'auto' }}
           onClick={() => setShowAudit(false)}
         >
           <div
@@ -642,7 +805,7 @@ export default function GameDetailPage() {
             {auditLogs.map((log) => (
               <div key={log.id} style={{ borderBottom: '1px solid #2a2f5a', paddingBottom: 12, marginBottom: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <span style={{ color: '#e8eaf6', fontSize: 13, fontWeight: 600 }}>{log.action.replace(/_/g, ' ')}</span>
+                  <span style={{ color: '#e8eaf6', fontSize: 13, fontWeight: 600 }}>{AUDIT_ACTION_LABELS[log.action] ?? log.action}</span>
                   <span style={{ color: '#7c8db5', fontSize: 11 }}>{new Date(log.createdAt).toLocaleString('es-CO')}</span>
                 </div>
                 <p style={{ color: '#7c8db5', fontSize: 12, margin: '4px 0 0' }}>
@@ -658,11 +821,11 @@ export default function GameDetailPage() {
 
       {showCancel && (
         <div
-          style={{ position: 'fixed', inset: 0, background: '#000a', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 100 }}
+          style={{ position: 'fixed', inset: 0, background: '#000a', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300, padding: 16 }}
           onClick={() => setShowCancel(false)}
         >
           <div
-            style={{ background: '#161829', borderRadius: '16px 16px 0 0', padding: 24, width: '100%', maxWidth: 480, border: '1px solid #2a2f5a' }}
+            style={{ background: '#161829', borderRadius: 16, padding: 24, width: '100%', maxWidth: 480, border: '1px solid #2a2f5a' }}
             onClick={(e) => e.stopPropagation()}
           >
             <h3 style={{ color: '#e8eaf6', marginTop: 0, marginBottom: 16 }}>Cancelar Partido</h3>
@@ -689,6 +852,6 @@ export default function GameDetailPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

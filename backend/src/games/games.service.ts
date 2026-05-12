@@ -4,11 +4,14 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { Prisma, Role, GameStatus, Modalidad } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { GameEventsService } from './game-events.service';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { CreateGameDto } from './dto/create-game.dto';
 import { CancelGameDto } from './dto/cancel-game.dto';
 import { UpdateRegistrationDto } from './dto/update-registration.dto';
@@ -35,7 +38,10 @@ const REGISTRATION_INCLUDE = {
       phone: true,
       position: true,
       gender: true,
+      heightCm: true,
+      birthDate: true,
       photoUrl: true,
+      bio: true,
     },
   },
   registeredBy: {
@@ -49,7 +55,22 @@ export class GamesService {
     private prisma: PrismaService,
     private audit: AuditService,
     private events: GameEventsService,
+    @Inject(forwardRef(() => WhatsappService))
+    private whatsapp: WhatsappService,
   ) {}
+
+  private buildCounts(game: { maxMainSpots: number; registrations: Array<{ isWaitingList: boolean }> }): string {
+    const mainCount = game.registrations.filter((r) => !r.isWaitingList).length;
+    const waitCount = game.registrations.filter((r) => r.isWaitingList).length;
+    const max = game.maxMainSpots;
+
+    if (mainCount >= max) {
+      let msg = `📊 Lista principal *llena* (${mainCount}/${max})`;
+      if (waitCount > 0) msg += ` · ${waitCount} en espera`;
+      return msg;
+    }
+    return `📊 *${mainCount}/${max}* cupos ocupados (${max - mainCount} disponibles)`;
+  }
 
   buildTitle(modalidad: Modalidad, gameDate: string, startTime: string): string {
     const date = new Date(gameDate + 'T00:00:00');
@@ -60,6 +81,20 @@ export class GamesService {
   }
 
   async create(dto: CreateGameDto, actorId: string) {
+    const gameDate = new Date(dto.gameDate + 'T00:00:00');
+
+    const existing = await this.prisma.game.findFirst({
+      where: {
+        gameDate,
+        status: { notIn: [GameStatus.cancelled, GameStatus.completed] },
+      },
+    });
+    if (existing) {
+      throw new ConflictException(
+        `Ya existe un partido programado para el ${dto.gameDate}. Solo se permite uno por día.`,
+      );
+    }
+
     const startTime = dto.startTime ?? '19:50';
     const title = dto.customTitle?.trim() || this.buildTitle(dto.modalidad, dto.gameDate, startTime);
     const maxMainSpots = dto.maxMainSpots ?? DEFAULT_SPOTS[dto.modalidad];
@@ -75,7 +110,7 @@ export class GamesService {
       data: {
         title,
         modalidad: dto.modalidad,
-        gameDate: new Date(dto.gameDate + 'T00:00:00'),
+        gameDate,
         startTime,
         registrationOpenAt,
         maxMainSpots,
@@ -93,10 +128,34 @@ export class GamesService {
       details: { title, modalidad: dto.modalidad, gameDate: dto.gameDate },
     });
 
+    if (initialStatus === GameStatus.registration_open) {
+      const appUrl = process.env.APP_URL || 'https://zetas.miltonln.site';
+      const gameUrl = `${appUrl}/game/${game.id}`;
+      const message =
+        `🏐 *${game.title}*\n\n` +
+        `¡La inscripción está abierta! 🎉\n\n` +
+        `Anótate aquí: ${gameUrl}\n\n` +
+        `O escríbeme aquí: *@Z anotame*`;
+
+      this.whatsapp.sendToGroup(message).catch(() => {});
+    }
+
     return game;
   }
 
-  async findAll(role: Role, filters?: { status?: GameStatus; modalidad?: Modalidad }) {
+  async findAll(
+    role: Role,
+    filters?: {
+      status?: GameStatus;
+      excludeStatus?: GameStatus[];
+      modalidad?: Modalidad;
+      search?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      page?: number;
+      limit?: number;
+    },
+  ) {
     if (role !== Role.admin) {
       const active = await this.prisma.game.findFirst({
         where: {
@@ -105,20 +164,42 @@ export class GamesService {
         include: { registrations: { include: REGISTRATION_INCLUDE, orderBy: { position: 'asc' } } },
         orderBy: { createdAt: 'desc' },
       });
-      return active ? [active] : [];
+      return { data: active ? [active] : [], total: active ? 1 : 0, page: 1, limit: 1 };
     }
 
-    return this.prisma.game.findMany({
-      where: {
-        status: filters?.status,
-        modalidad: filters?.modalidad,
-      },
-      include: {
-        createdBy: { select: { id: true, name: true } },
-        _count: { select: { registrations: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const page = filters?.page ?? 1;
+    const limit = filters?.limit ?? 20;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.GameWhereInput = {};
+    if (filters?.status) where.status = filters.status;
+    if (filters?.excludeStatus?.length) where.status = { notIn: filters.excludeStatus };
+    if (filters?.modalidad) where.modalidad = filters.modalidad;
+    if (filters?.search) {
+      where.title = { contains: filters.search, mode: 'insensitive' };
+    }
+    if (filters?.dateFrom || filters?.dateTo) {
+      where.gameDate = {
+        ...(filters.dateFrom ? { gte: new Date(filters.dateFrom + 'T00:00:00') } : {}),
+        ...(filters.dateTo ? { lte: new Date(filters.dateTo + 'T23:59:59') } : {}),
+      };
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.game.findMany({
+        where,
+        include: {
+          createdBy: { select: { id: true, name: true } },
+          _count: { select: { registrations: true } },
+        },
+        orderBy: { gameDate: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.game.count({ where }),
+    ]);
+
+    return { data, total, page, limit };
   }
 
   async findOne(id: string) {
@@ -136,8 +217,8 @@ export class GamesService {
     return game;
   }
 
-  async register(gameId: string, userId: string, registeredById: string) {
-    return this.prisma.$transaction(
+  async register(gameId: string, userId: string, registeredById: string, options?: { silent?: boolean }) {
+    const registration = await this.prisma.$transaction(
       async (tx) => {
         const game = await tx.$queryRaw<Array<{ id: string; status: string; maxMainSpots: number }>>`
           SELECT id, status, "maxMainSpots" FROM games WHERE id = ${gameId} FOR UPDATE
@@ -168,7 +249,7 @@ export class GamesService {
         });
         const nextPosition = (maxPositionResult._max.position ?? 0) + 1;
 
-        const registration = await tx.gameRegistration.create({
+        return tx.gameRegistration.create({
           data: {
             gameId,
             userId,
@@ -179,16 +260,38 @@ export class GamesService {
           },
           include: REGISTRATION_INCLUDE,
         });
-
-        return registration;
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+
+    await this.audit.log({
+      gameId,
+      actorId: registeredById,
+      targetUserId: userId,
+      action: 'player_registered',
+      details: { position: registration.position, isWaitingList: registration.isWaitingList },
+    });
+
+    const updated = await this.findOne(gameId);
+    this.events.emit({ gameId, type: 'update', data: updated });
+
+    const userName = registration.user?.name || 'Alguien';
+    const spot = registration.isWaitingList
+      ? `en la *lista de espera* (puesto ${registration.position})`
+      : `en la *lista principal* (puesto ${registration.position})`;
+    if (!options?.silent) {
+      this.whatsapp
+        .sendToGroup(`✅ *${userName}* se anotó ${spot}! 🏐\n${this.buildCounts(updated)}`)
+        .catch(() => {});
+    }
+
+    return registration;
   }
 
-  async removeRegistration(gameId: string, userId: string, actorId: string, actorRole: Role) {
+  async removeRegistration(gameId: string, userId: string, actorId: string, actorRole: Role, options?: { silent?: boolean }) {
     const reg = await this.prisma.gameRegistration.findUnique({
       where: { gameId_userId: { gameId, userId } },
+      include: { user: { select: { name: true } } },
     });
     if (!reg) throw new NotFoundException('Registro no encontrado');
 
@@ -210,6 +313,14 @@ export class GamesService {
 
     const updated = await this.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
+
+    const userName = (reg as any).user?.name || 'Alguien';
+    if (!options?.silent) {
+      this.whatsapp
+        .sendToGroup(`👋 *${userName}* salió de la lista.\n${this.buildCounts(updated)}`)
+        .catch(() => {});
+    }
+
     return updated;
   }
 
@@ -349,10 +460,16 @@ export class GamesService {
     });
 
     this.events.emit({ gameId, type: 'status_change', data: { status: GameStatus.cancelled } });
+
+    const reasonText = dto.reason ? `\nMotivo: ${dto.reason}` : '';
+    this.whatsapp
+      .sendToGroup(`❌ *${game.title}* ha sido cancelado.${reasonText}`)
+      .catch(() => {});
+
     return updated;
   }
 
-  async complete(gameId: string, actorId: string) {
+  async complete(gameId: string, actorId: string, options?: { silent?: boolean }) {
     const game = await this.findOne(gameId);
 
     if (game.status === GameStatus.completed) {
@@ -375,7 +492,15 @@ export class GamesService {
     });
 
     this.events.emit({ gameId, type: 'status_change', data: { status: GameStatus.completed } });
-    return { game: updated, report: this.generateReport(game) };
+
+    const report = this.generateReport(game);
+    if (!options?.silent) {
+      this.whatsapp
+        .sendToGroup(report)
+        .catch(() => {});
+    }
+
+    return { game: updated, report };
   }
 
   async openRegistration(gameId: string) {
@@ -394,39 +519,55 @@ export class GamesService {
   }
 
   generateReport(game: Awaited<ReturnType<typeof this.findOne>>) {
-    const mainList = game.registrations.filter((r) => !r.isWaitingList);
-    const waitList = game.registrations.filter((r) => r.isWaitingList);
+    const allRegs = game.registrations;
+    const mainList = allRegs.filter((r) => !r.isWaitingList);
 
-    const attended = mainList.filter((r) => r.attended);
-    const paidMain = mainList.filter((r) => r.paid);
-    const paidWait = waitList.filter((r) => r.paid);
-    const totalPaid = paidMain.length + paidWait.length;
+    const attended = allRegs.filter((r) => r.attended);
+    const totalPaid = allRegs.filter((r) => r.paid).length;
     const recaudado = totalPaid * game.pricePerPlayer;
 
-    const lines: string[] = [`📋 *${game.title}*`, ''];
+    const attendedNotPaid = allRegs.filter((r) => r.attended && !r.paid);
+    const noShowPaid = allRegs.filter((r) => !r.attended && r.paid);
 
-    if (mainList.length > 0) {
-      lines.push('*Lista Principal:*');
-      mainList.forEach((r, i) => {
-        const check = r.attended ? '✅' : '❌';
-        const paid = r.paid ? '💰' : '';
-        lines.push(`${i + 1}. ${r.user.name} ${check}${paid}`);
+    const dateStr = new Date(game.gameDate).toLocaleDateString('es-CO', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    const lines: string[] = [
+      `✅ *${game.title}*`,
+      dateStr.charAt(0).toUpperCase() + dateStr.slice(1),
+      '',
+      `✅ *Asistentes:* ${attended.length}/${mainList.length}`,
+      `💰 *Recaudado:* $${recaudado.toLocaleString('es-CO')}`,
+    ];
+
+    if (attendedNotPaid.length > 0) {
+      lines.push('');
+      lines.push(`⚠️ *Asistieron sin pagar:* ${attendedNotPaid.length}`);
+      attendedNotPaid.forEach((r) => {
+        lines.push(`  • ${r.user.name}`);
       });
     }
 
-    if (waitList.length > 0) {
-      lines.push('', '*Lista de Espera:*');
-      waitList.forEach((r, i) => {
-        const check = r.attended ? '✅' : '❌';
-        const paid = r.paid ? '💰' : '';
-        lines.push(`${i + 1}. ${r.user.name} ${check}${paid}`);
+    if (noShowPaid.length > 0) {
+      lines.push('');
+      lines.push(`📌 *Pagaron pero no asistieron:* ${noShowPaid.length}`);
+      noShowPaid.forEach((r) => {
+        lines.push(`  • ${r.user.name}`);
       });
     }
 
-    lines.push('');
-    lines.push(`*Asistencia:* ${attended.length}/${mainList.length}`);
-    lines.push(`*Pagaron:* ${totalPaid} jugadores`);
-    lines.push(`*Recaudado:* $${recaudado.toLocaleString('es-CO')}`);
+    const fined = allRegs.filter((r) => !r.attended && !r.isWaitingList);
+    if (fined.length > 0) {
+      lines.push('');
+      lines.push(`❌ *Multados:* ${fined.length}`);
+      fined.forEach((r) => {
+        lines.push(`  • ${r.user.name}`);
+      });
+    }
 
     return lines.join('\n');
   }

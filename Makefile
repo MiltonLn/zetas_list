@@ -78,7 +78,7 @@ migrate-deploy: ## Aplica migraciones pendientes en producción
 	docker compose exec backend npx prisma migrate deploy
 
 seed: ## Ejecuta el seed (crea los admins iniciales)
-	docker compose exec backend npx ts-node prisma/seed.ts
+	docker compose exec backend node -r ts-node/register prisma/seed.ts
 
 generate: ## Regenera el cliente de Prisma
 	docker compose exec backend npx prisma generate

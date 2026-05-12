@@ -47,7 +47,7 @@ export default function LoginPage() {
         }}
       >
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ fontSize: 48, marginBottom: 8 }}>🏐</div>
+          <img src="/logo.png" alt="Zetas" style={{ width: 64, height: 64, borderRadius: 16 }} />
           <h1 style={{ color: '#e8eaf6', fontSize: 24, fontWeight: 800, margin: 0 }}>
             Volley Zetas Ingenio
           </h1>
