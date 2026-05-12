@@ -22,7 +22,7 @@ export class MessageHandlerService {
     private prisma: PrismaService,
   ) {}
 
-  async handleMessage(phone: string, text: string, groupId: string): Promise<void> {
+  async handleMessage(phone: string, text: string, _groupId: string): Promise<void> {
     const normalized = text.trim();
 
     const isRegisterCmd = CMD_REGISTER.test(normalized);
@@ -149,7 +149,6 @@ export class MessageHandlerService {
 
         let counts = `📊 *${mainCount}/${maxSpots}* cupos ocupados`;
         if (mainCount >= maxSpots) {
-          const available = maxSpots - mainCount;
           counts = `📊 Lista principal *llena* (${mainCount}/${maxSpots})`;
           if (waitCount > 0) counts += ` · ${waitCount} en espera`;
         } else {
