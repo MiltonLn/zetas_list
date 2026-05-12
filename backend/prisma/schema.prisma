@@ -77,6 +77,7 @@ model User {
   birthDate    DateTime?
   photoUrl     String?
   bio          String?
+  mustChangePassword Boolean @default(true)
   status       UserStatus @default(active)
   banReason    String?
   createdAt    DateTime   @default(now())

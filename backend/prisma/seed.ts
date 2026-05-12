@@ -32,6 +32,7 @@ async function upsertAdmin(data: { username: string; name: string; phone: string
       phone: data.phone,
       role: Role.admin,
       status: UserStatus.active,
+      mustChangePassword: false,
     },
   });
 

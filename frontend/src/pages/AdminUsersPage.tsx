@@ -5,6 +5,8 @@ import type { User, UserStatus, Role, Position, Gender } from '../types';
 import { POSITION_LABELS } from '../types';
 import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
+import { Avatar } from '../components/Avatar';
+import { PlayerProfileModal } from '../components/PlayerProfileModal';
 import { getApiError } from '../services/api';
 
 const STATUS_LABELS: Record<UserStatus, string> = {
@@ -34,7 +36,6 @@ export default function AdminUsersPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<Role>('member');
@@ -46,6 +47,7 @@ export default function AdminUsersPage() {
   const [banReason, setBanReason] = useState('');
   const [statusAction, setStatusAction] = useState<UserStatus | null>(null);
   const [statusSaving, setStatusSaving] = useState(false);
+  const [profileUser, setProfileUser] = useState<User | null>(null);
 
   useEffect(() => {
     load();
@@ -76,7 +78,6 @@ export default function AdminUsersPage() {
     try {
       const payload: CreateUserPayload = {
         username,
-        password,
         name,
         phone,
         role,
@@ -87,7 +88,6 @@ export default function AdminUsersPage() {
       setUsers((prev) => [data, ...prev]);
       setShowCreate(false);
       setUsername('');
-      setPassword('');
       setName('');
       setPhone('');
       setRole('member');
@@ -128,7 +128,16 @@ export default function AdminUsersPage() {
         backTo="/"
         action={
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={() => {
+              setUsername('');
+              setName('');
+              setPhone('');
+              setRole('member');
+              setPosition('');
+              setGender('');
+              setCreateError('');
+              setShowCreate(true);
+            }}
             className="btn btn-primary"
             style={{ fontSize: 13, padding: '8px 14px', minHeight: 38 }}
           >
@@ -183,29 +192,15 @@ export default function AdminUsersPage() {
                 }}
               >
                 <div
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: '50%',
-                    background: '#2a2f5a',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 18,
-                    flexShrink: 0,
-                  }}
+                  onClick={() => setProfileUser(user)}
+                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}
                 >
-                  {user.photoUrl ? (
-                    <img src={user.photoUrl} alt={user.name} style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
-                  ) : (
-                    user.name[0].toUpperCase()
-                  )}
-                </div>
+                  <Avatar name={user.name} photoUrl={user.photoUrl} size={40} />
 
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ color: '#e8eaf6', fontWeight: 600, fontSize: 14 }}>{user.name}</span>
-                    <span style={{ color: '#7c8db5', fontSize: 12 }}>@{user.username}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ color: '#e8eaf6', fontWeight: 600, fontSize: 14 }}>{user.name}</span>
+                      <span style={{ color: '#7c8db5', fontSize: 12 }}>@{user.username}</span>
                     {user.role === 'admin' && (
                       <span style={{ background: '#3b5bdb22', color: '#6e8efb', fontSize: 11, padding: '1px 7px', borderRadius: 6, fontWeight: 600 }}>
                         Admin
@@ -225,6 +220,7 @@ export default function AdminUsersPage() {
                     {user.phone}
                     {user.position && ` · ${POSITION_LABELS[user.position]}`}
                   </div>
+                </div>
                 </div>
 
                 <button
@@ -277,10 +273,6 @@ export default function AdminUsersPage() {
                 <div>
                   <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Usuario *</label>
                   <input className="zetas-input" value={username} onChange={(e) => setUsername(e.target.value)} required />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Contraseña *</label>
-                  <input className="zetas-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
                 </div>
               </div>
               <div>
@@ -378,6 +370,13 @@ export default function AdminUsersPage() {
             )}
           </div>
         </div>
+      )}
+
+      {profileUser && (
+        <PlayerProfileModal
+          user={profileUser}
+          onClose={() => setProfileUser(null)}
+        />
       )}
     </>
   );

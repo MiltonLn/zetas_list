@@ -19,6 +19,7 @@ export function PrivateRoute({ children, adminOnly = false }: PrivateRouteProps)
   }
 
   if (!user) return <Navigate to="/login" replace />;
+  if (user.mustChangePassword) return <Navigate to="/change-password" replace />;
   if (adminOnly && user.role !== 'admin') return <Navigate to="/" replace />;
 
   return <>{children}</>;

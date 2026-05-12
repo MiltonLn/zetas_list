@@ -50,7 +50,10 @@ export class UsersService {
       );
     }
 
-    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const DEFAULT_PASSWORD = 'zetas123';
+    const rawPassword = dto.password || DEFAULT_PASSWORD;
+    const passwordHash = await bcrypt.hash(rawPassword, 12);
+    const mustChangePassword = !dto.password;
 
     const user = await this.prisma.user.create({
       data: {
@@ -65,6 +68,7 @@ export class UsersService {
         birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
         photoUrl: dto.photoUrl,
         bio: dto.bio,
+        mustChangePassword,
       },
       select: USER_PUBLIC_SELECT,
     });

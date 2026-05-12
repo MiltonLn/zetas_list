@@ -3,6 +3,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { PrivateRoute } from './components/PrivateRoute';
 import { AppLayout } from './components/AppLayout';
 import LoginPage from './pages/LoginPage';
+import ChangePasswordPage from './pages/ChangePasswordPage';
 import HomePage from './pages/HomePage';
 import ProfilePage from './pages/ProfilePage';
 import GameDetailPage from './pages/GameDetailPage';
@@ -31,6 +32,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/change-password" element={<ChangePasswordPage />} />
           <Route
             path="/"
             element={

@@ -3,7 +3,7 @@ import type { User, Role, Position, Gender, UserStatus } from '../types';
 
 export interface CreateUserPayload {
   username: string;
-  password: string;
+  password?: string;
   name: string;
   phone: string;
   role?: Role;

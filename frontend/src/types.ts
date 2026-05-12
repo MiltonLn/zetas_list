@@ -37,6 +37,7 @@ export interface AuthUser {
   position?: Position;
   gender?: Gender;
   photoUrl?: string;
+  mustChangePassword?: boolean;
 }
 
 export interface RegistrationUser {

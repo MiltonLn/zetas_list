@@ -54,6 +54,7 @@ export class AuthService {
         position: user.position,
         gender: user.gender,
         photoUrl: user.photoUrl,
+        mustChangePassword: user.mustChangePassword,
       },
     };
   }
@@ -97,7 +98,7 @@ export class AuthService {
     const hash = await bcrypt.hash(dto.newPassword, 12);
     await this.prisma.user.update({
       where: { id: userId },
-      data: { passwordHash: hash },
+      data: { passwordHash: hash, mustChangePassword: false },
     });
 
     return { message: 'Contraseña actualizada correctamente' };

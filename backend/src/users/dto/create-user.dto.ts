@@ -20,11 +20,11 @@ export class CreateUserDto {
   @IsNotEmpty()
   username: string;
 
-  @ApiProperty({ example: 'Contraseña1!' })
+  @ApiPropertyOptional({ example: 'Contraseña1!', description: 'Si no se envía, se usa zetas123' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MinLength(8)
-  password: string;
+  password?: string;
 
   @ApiProperty({ example: 'Juan Pérez' })
   @IsString()

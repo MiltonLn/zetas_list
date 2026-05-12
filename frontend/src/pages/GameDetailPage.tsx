@@ -19,13 +19,14 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { gamesService } from '../services/games.service';
 import type { Game, GameRegistration, AuditLog } from '../types';
-import { MODALIDAD_LABELS, AUDIT_ACTION_LABELS, POSITION_LABELS } from '../types';
+import { MODALIDAD_LABELS, AUDIT_ACTION_LABELS } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useGameStream } from '../hooks/useGameStream';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { Spinner } from '../components/Spinner';
-import { Avatar, resolvePhotoUrl } from '../components/Avatar';
+import { Avatar } from '../components/Avatar';
+import { PlayerProfileModal } from '../components/PlayerProfileModal';
 import { getApiError } from '../services/api';
 
 function SortableRow({
@@ -232,7 +233,6 @@ export default function GameDetailPage() {
   const [cancelling, setCancelling] = useState(false);
 
   const [selectedReg, setSelectedReg] = useState<GameRegistration | null>(null);
-  const [fullPhoto, setFullPhoto] = useState<string | null>(null);
 
   const [completing, setCompleting] = useState(false);
   const [confirmComplete, setConfirmComplete] = useState(false);
@@ -676,114 +676,16 @@ export default function GameDetailPage() {
       </div>
 
       {/* Player profile modal */}
-      {selectedReg && (() => {
-        const u = selectedReg.user;
-        const age = u.birthDate
-          ? Math.floor((Date.now() - new Date(u.birthDate).getTime()) / 31557600000)
-          : null;
-        const genderLabel = u.gender === 'masculino' ? 'Masculino' : u.gender === 'femenino' ? 'Femenino' : u.gender === 'otro' ? 'Otro' : null;
-
-        const infoItems: { label: string; value: string }[] = [];
-        if (u.position) infoItems.push({ label: 'Posición', value: POSITION_LABELS[u.position] || u.position });
-        if (u.heightCm) infoItems.push({ label: 'Estatura', value: `${u.heightCm} cm` });
-        if (age !== null) infoItems.push({ label: 'Edad', value: `${age} años` });
-        if (genderLabel) infoItems.push({ label: 'Género', value: genderLabel });
-        infoItems.push({ label: 'Teléfono', value: u.phone });
-        infoItems.push({
-          label: 'En la lista',
-          value: `#${selectedReg.position} ${selectedReg.isWaitingList ? '(Espera)' : '(Principal)'}`,
-        });
-
-        return (
-          <div
-            onClick={() => setSelectedReg(null)}
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              zIndex: 300, padding: 16,
-            }}
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                background: '#1a1d38', borderRadius: 16, width: '100%', maxWidth: 340,
-                maxHeight: '85vh', overflow: 'auto', padding: 24,
-              }}
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                <div
-                  onClick={() => u.photoUrl && setFullPhoto(resolvePhotoUrl(u.photoUrl))}
-                  style={{ cursor: u.photoUrl ? 'pointer' : 'default' }}
-                >
-                  <Avatar name={u.name} photoUrl={u.photoUrl} size={88} />
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <p style={{ color: '#e8eaf6', fontSize: 18, fontWeight: 700, margin: 0 }}>{u.name}</p>
-                  <p style={{ color: '#7c8db5', fontSize: 13, margin: '4px 0 0' }}>@{u.username}</p>
-                </div>
-                {u.bio && (
-                  <p style={{
-                    color: '#a0aec0', fontSize: 13, margin: '4px 0 0',
-                    fontStyle: 'italic', textAlign: 'center', lineHeight: 1.5,
-                    maxWidth: 280,
-                  }}>
-                    "{u.bio}"
-                  </p>
-                )}
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
-                {infoItems.map((item) => (
-                  <div key={item.label} style={{ background: '#141627', borderRadius: 10, padding: '10px 14px' }}>
-                    <p style={{ color: '#7c8db5', fontSize: 11, margin: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                      {item.label}
-                    </p>
-                    <p style={{ color: '#e8eaf6', fontSize: 14, fontWeight: 600, margin: '4px 0 0' }}>
-                      {item.value}
-                    </p>
-                  </div>
-                ))}
-                {selectedReg.fromWaitList && (
-                  <div style={{ background: '#141627', borderRadius: 10, padding: '10px 14px', gridColumn: '1 / -1' }}>
-                    <p style={{ color: '#e3a008', fontSize: 13, margin: 0 }}>↑ Promovido desde lista de espera</p>
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => setSelectedReg(null)}
-                style={{
-                  width: '100%', padding: '10px 0', borderRadius: 10, fontSize: 13,
-                  background: '#141627', border: '1px solid #2a2f5a',
-                  color: '#7c8db5', cursor: 'pointer',
-                }}
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Full photo viewer */}
-      {fullPhoto && (
-        <div
-          onClick={() => setFullPhoto(null)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 500, cursor: 'pointer', padding: 24,
+      {selectedReg && (
+        <PlayerProfileModal
+          user={selectedReg.user}
+          listInfo={{
+            position: selectedReg.position,
+            isWaitingList: selectedReg.isWaitingList,
+            fromWaitList: selectedReg.fromWaitList,
           }}
-        >
-          <img
-            src={fullPhoto}
-            alt="Foto"
-            style={{
-              maxWidth: '100%', maxHeight: '85vh', borderRadius: 12,
-              objectFit: 'contain', boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-            }}
-          />
-        </div>
+          onClose={() => setSelectedReg(null)}
+        />
       )}
 
       {showAudit && (
