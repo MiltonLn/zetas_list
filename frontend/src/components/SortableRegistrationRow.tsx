@@ -8,6 +8,7 @@ interface Props {
   reg: GameRegistration;
   index: number;
   isAdmin: boolean;
+  readonly?: boolean;
   onToggleAttended?: () => void;
   onTogglePaid?: () => void;
   onPromote?: () => void;
@@ -22,6 +23,7 @@ export function SortableRegistrationRow({
   reg,
   index,
   isAdmin,
+  readonly: isReadonly,
   onToggleAttended,
   onTogglePaid,
   onPromote,
@@ -91,7 +93,7 @@ export function SortableRegistrationRow({
         </div>
       </div>
 
-      {isAdmin && (
+      {isAdmin && !isReadonly && (
         <>
           <button
             onClick={onToggleAttended}
@@ -133,7 +135,7 @@ export function SortableRegistrationRow({
         </>
       )}
 
-      {isAdmin && (
+      {isAdmin && !isReadonly && (
         <button
           onClick={() => {
             if (confirmRemove) {

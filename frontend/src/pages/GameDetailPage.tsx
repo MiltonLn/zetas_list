@@ -27,6 +27,7 @@ import { PlayerProfileModal } from '../components/PlayerProfileModal';
 import { SortableRegistrationRow } from '../components/SortableRegistrationRow';
 import { GameAuditModal } from '../components/GameAuditModal';
 import { GameCancelModal } from '../components/GameCancelModal';
+import { GameCompleteModal } from '../components/GameCompleteModal';
 import { getApiError } from '../services/api';
 
 export default function GameDetailPage() {
@@ -51,9 +52,10 @@ export default function GameDetailPage() {
 
   const [selectedReg, setSelectedReg] = useState<GameRegistration | null>(null);
 
-  const [completing, setCompleting] = useState(false);
-  const [confirmComplete, setConfirmComplete] = useState(false);
-  const confirmCompleteTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showComplete, setShowComplete] = useState(false);
+
+  const [completionReport, setCompletionReport] = useState<string | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
 
   const reorderTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -152,31 +154,6 @@ export default function GameDetailPage() {
     }
   }
 
-  function handleCompleteClick() {
-    if (!confirmComplete) {
-      setConfirmComplete(true);
-      if (confirmCompleteTimeout.current) clearTimeout(confirmCompleteTimeout.current);
-      confirmCompleteTimeout.current = setTimeout(() => setConfirmComplete(false), 4000);
-      return;
-    }
-    if (confirmCompleteTimeout.current) clearTimeout(confirmCompleteTimeout.current);
-    setConfirmComplete(false);
-    handleComplete();
-  }
-
-  async function handleComplete() {
-    if (!id) return;
-    setCompleting(true);
-    try {
-      await gamesService.complete(id);
-      fetchGame();
-    } catch (e) {
-      setError(getApiError(e));
-    } finally {
-      setCompleting(false);
-    }
-  }
-
   async function handleCancel(reason: string) {
     if (!id) return;
     try {
@@ -202,6 +179,16 @@ export default function GameDetailPage() {
     }
   }
 
+  useEffect(() => {
+    if (game?.status === 'completed' && id) {
+      setReportLoading(true);
+      gamesService.getReport(id)
+        .then(({ data }) => setCompletionReport(data.report))
+        .catch(() => setCompletionReport(null))
+        .finally(() => setReportLoading(false));
+    }
+  }, [game?.status, id]);
+
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
@@ -222,6 +209,7 @@ export default function GameDetailPage() {
   }
 
   const isOpen = game.status === 'registration_open' || game.status === 'in_progress';
+  const isFinished = game.status === 'completed' || game.status === 'cancelled';
   const isAlreadyRegistered = mainList.some((r) => r.userId === user?.id) || waitList.some((r) => r.userId === user?.id);
   const spotsLeft = Math.max(0, game.maxMainSpots - mainList.length);
 
@@ -241,17 +229,11 @@ export default function GameDetailPage() {
             <div style={{ display: 'flex', gap: 6 }}>
               {(game.status === 'registration_open' || game.status === 'in_progress') && (
                 <button
-                  onClick={handleCompleteClick}
-                  disabled={completing}
+                  onClick={() => setShowComplete(true)}
                   className="btn btn-primary"
-                  style={{
-                    fontSize: 12,
-                    padding: '6px 12px',
-                    minHeight: 34,
-                    ...(confirmComplete ? { background: '#e03131', borderColor: '#e03131' } : {}),
-                  }}
+                  style={{ fontSize: 12, padding: '6px 12px', minHeight: 34 }}
                 >
-                  {completing ? '...' : confirmComplete ? '¿Seguro? Terminar' : '✅ Terminar'}
+                  ✅ Terminar
                 </button>
               )}
               {game.status !== 'completed' && game.status !== 'cancelled' && (
@@ -317,6 +299,36 @@ export default function GameDetailPage() {
                 <div style={{ color: '#7c8db5', fontSize: 11 }}>{label}</div>
               </div>
             ))}
+          </div>
+        )}
+
+        {game.status === 'completed' && (
+          <div style={{
+            background: '#0f1020', borderRadius: 12, padding: 16,
+            border: '1px solid #2a2f5a', marginBottom: 20,
+          }}>
+            <h3 style={{ color: '#e8eaf6', fontSize: 14, fontWeight: 700, margin: '0 0 12px' }}>
+              📋 Reporte del partido
+            </h3>
+            {reportLoading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}>
+                <Spinner size={24} />
+              </div>
+            ) : completionReport ? (
+              <div style={{ fontSize: 13, lineHeight: 1.7, color: '#e8eaf6' }}>
+                {completionReport.split('\n').map((line, i) => (
+                  <div
+                    key={i}
+                    style={{ minHeight: line.trim() === '' ? 8 : undefined }}
+                    dangerouslySetInnerHTML={{
+                      __html: line.replace(/\*([^*]+)\*/g, '<strong>$1</strong>') || '&nbsp;',
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p style={{ color: '#7c8db5', fontSize: 13 }}>No se pudo cargar el reporte</p>
+            )}
           </div>
         )}
 
@@ -389,12 +401,13 @@ export default function GameDetailPage() {
                   reg={reg}
                   index={i}
                   isAdmin={isAdmin}
+                  readonly={isFinished}
                   onToggleAttended={() => handleToggle(reg.id, 'attended', reg.attended)}
                   onTogglePaid={() => handleToggle(reg.id, 'paid', reg.paid)}
                   onRemove={() => handleRemove(reg.userId)}
                   isSelf={reg.userId === user?.id}
                   allowSelfRemove={isOpen}
-                  draggable={isAdmin}
+                  draggable={isAdmin && !isFinished}
                   onNameClick={() => setSelectedReg(reg)}
                 />
               ))}
@@ -442,13 +455,14 @@ export default function GameDetailPage() {
                       reg={reg}
                       index={i}
                       isAdmin={isAdmin}
+                      readonly={isFinished}
                       onToggleAttended={() => handleToggle(reg.id, 'attended', reg.attended)}
                       onTogglePaid={() => handleToggle(reg.id, 'paid', reg.paid)}
                       onPromote={() => handlePromote(reg.id)}
                       onRemove={() => handleRemove(reg.userId)}
                       isSelf={reg.userId === user?.id}
                       allowSelfRemove={isOpen}
-                      draggable={isAdmin}
+                      draggable={isAdmin && !isFinished}
                       onNameClick={() => setSelectedReg(reg)}
                     />
                   ))}
@@ -515,6 +529,15 @@ export default function GameDetailPage() {
         onConfirm={handleCancel}
         gameTitle={game?.title ?? 'Partido'}
       />
+
+      {id && (
+        <GameCompleteModal
+          open={showComplete}
+          onClose={() => setShowComplete(false)}
+          gameId={id}
+          onCompleted={fetchGame}
+        />
+      )}
     </>
   );
 }

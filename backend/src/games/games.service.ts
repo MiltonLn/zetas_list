@@ -487,9 +487,11 @@ export class GamesService {
       throw new BadRequestException('No se puede completar un partido cancelado');
     }
 
+    const report = this.generateReport(game);
+
     const updated = await this.prisma.game.update({
       where: { id: gameId },
-      data: { status: GameStatus.completed },
+      data: { status: GameStatus.completed, completionReport: report },
     });
 
     await this.audit.log({
@@ -501,7 +503,6 @@ export class GamesService {
 
     this.events.emit({ gameId, type: 'status_change', data: { status: GameStatus.completed } });
 
-    const report = this.generateReport(game);
     if (!options?.silent) {
       this.whatsapp
         .sendToGroup(report)
@@ -509,6 +510,59 @@ export class GamesService {
     }
 
     return { game: updated, report };
+  }
+
+  async previewReport(gameId: string) {
+    const game = await this.findOne(gameId);
+    const report = this.generateReport(game);
+    const fineable = game.registrations
+      .filter((r) => !r.attended && !r.isWaitingList)
+      .map((r) => ({
+        regId: r.id,
+        userId: r.userId,
+        name: r.user.name,
+        fineExempt: r.fineExempt,
+      }));
+    return { report, fineable };
+  }
+
+  async setFineExempt(gameId: string, regId: string, exempt: boolean, actorId: string) {
+    const reg = await this.prisma.gameRegistration.findFirst({
+      where: { id: regId, gameId },
+    });
+    if (!reg) throw new NotFoundException('Registro no encontrado');
+
+    await this.prisma.gameRegistration.update({
+      where: { id: regId },
+      data: { fineExempt: exempt },
+    });
+
+    await this.audit.log({
+      gameId,
+      actorId,
+      targetUserId: reg.userId,
+      action: 'fine_exemption_toggled',
+      details: { fineExempt: exempt },
+    });
+
+    const updated = await this.findOne(gameId);
+    this.events.emit({ gameId, type: 'update', data: updated });
+    return updated;
+  }
+
+  async getStoredReport(gameId: string) {
+    const game = await this.prisma.game.findUnique({
+      where: { id: gameId },
+      select: { completionReport: true, status: true },
+    });
+    if (!game) throw new NotFoundException('Partido no encontrado');
+
+    if (game.completionReport) {
+      return { report: game.completionReport };
+    }
+
+    const full = await this.findOne(gameId);
+    return { report: this.generateReport(full) };
   }
 
   async openRegistration(gameId: string) {
@@ -576,7 +630,7 @@ export class GamesService {
       });
     }
 
-    const fined = allRegs.filter((r) => !r.attended && !r.isWaitingList);
+    const fined = allRegs.filter((r) => !r.attended && !r.isWaitingList && !r.fineExempt);
     if (fined.length > 0) {
       lines.push('');
       lines.push(`❌ *Multados:* ${fined.length}`);

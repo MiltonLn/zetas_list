@@ -62,6 +62,7 @@ enum AuditAction {
   user_created
   user_updated
   user_status_changed
+  fine_exemption_toggled
 }
 
 model User {
@@ -104,6 +105,7 @@ model Game {
   vigilante          Int        @default(10000)
   status             GameStatus @default(scheduled)
   cancellationReason String?
+  completionReport   String?
   createdById        String
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
@@ -127,6 +129,7 @@ model GameRegistration {
   paid         Boolean  @default(false)
   note         String?
   fromWaitList Boolean  @default(false)
+  fineExempt   Boolean  @default(false)
   registeredAt DateTime @default(now())
   registeredById String
 

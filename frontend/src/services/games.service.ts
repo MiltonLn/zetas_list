@@ -63,6 +63,15 @@ export const gamesService = {
 
   complete: (gameId: string) => api.post(`/games/${gameId}/complete`),
 
+  previewReport: (gameId: string) =>
+    api.get<{
+      report: string;
+      fineable: Array<{ regId: string; userId: string; name: string; fineExempt: boolean }>;
+    }>(`/games/${gameId}/preview-report`),
+
+  setFineExempt: (gameId: string, regId: string, exempt: boolean) =>
+    api.patch(`/games/${gameId}/registrations/${regId}/fine-exempt`, { exempt }),
+
   getReport: (gameId: string) =>
     api.get<{ report: string }>(`/games/${gameId}/report`),
 

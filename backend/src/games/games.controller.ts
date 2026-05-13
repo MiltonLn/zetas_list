@@ -158,10 +158,26 @@ export class GamesController {
     return this.gamesService.complete(id, user.id);
   }
 
+  @Roles(Role.admin)
+  @Get(':id/preview-report')
+  previewReport(@Param('id') id: string) {
+    return this.gamesService.previewReport(id);
+  }
+
+  @Roles(Role.admin)
+  @Patch(':id/registrations/:regId/fine-exempt')
+  setFineExempt(
+    @Param('id') id: string,
+    @Param('regId') regId: string,
+    @Body() body: { exempt: boolean },
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.gamesService.setFineExempt(id, regId, body.exempt, user.id);
+  }
+
   @Get(':id/report')
-  async getReport(@Param('id') id: string) {
-    const game = await this.gamesService.findOne(id);
-    return { report: this.gamesService.generateReport(game) };
+  getReport(@Param('id') id: string) {
+    return this.gamesService.getStoredReport(id);
   }
 
   @Roles(Role.admin)
