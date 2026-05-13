@@ -38,3 +38,6 @@ alwaysApply: true
 - Backend: Jest con mocks de PrismaService, AuditService, WhatsappService vía `@nestjs/testing`.
 - Frontend: Vitest.
 - Todos los tests deben ser unitarios sin dependencias externas (sin Docker, sin Postgres).
+- **Toda funcionalidad nueva o modificada debe incluir tests**. No se debe mergear código sin cobertura.
+- Al modificar un service o handler existente, actualizar los tests correspondientes.
+- Al crear un endpoint nuevo, agregar tests para los happy paths y los casos de error principales.

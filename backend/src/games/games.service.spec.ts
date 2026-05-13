@@ -189,6 +189,26 @@ describe('GamesService', () => {
       expect(report).toContain('Asistentes:* 0/0');
       expect(report).toContain('Recaudado:* $0');
     });
+
+    it('excluye de "Multados" a jugadores con fineExempt: true', () => {
+      const game = makeGame({
+        vigilante: 0,
+        registrations: [
+          makeReg({
+            id: 'reg-exempt', userId: 'u-exempt', attended: false, isWaitingList: false, fineExempt: true,
+            user: { id: 'u-exempt', name: 'Exempt Player', username: 'exempt', phone: '333', position: null, gender: null, heightCm: null, birthDate: null, photoUrl: null, bio: null },
+          }),
+          makeReg({
+            id: 'reg-fined', userId: 'u-fined', attended: false, isWaitingList: false, fineExempt: false,
+            user: { id: 'u-fined', name: 'Fined Player', username: 'fined', phone: '444', position: null, gender: null, heightCm: null, birthDate: null, photoUrl: null, bio: null },
+          }),
+        ],
+      });
+      const report = service.generateReport(game as any);
+      expect(report).toContain('Multados');
+      expect(report).toContain('Fined Player');
+      expect(report).not.toContain('Exempt Player');
+    });
   });
 
   // ─── create ────────────────────────────────────────────────────────────────
@@ -309,6 +329,25 @@ describe('GamesService', () => {
       await service.complete('game-1', 'actor-1', { silent: true });
       expect(mockWhatsapp.sendToGroup).not.toHaveBeenCalled();
     });
+
+    it('persiste completionReport en prisma.game.update', async () => {
+      const game = makeGame({ status: GameStatus.registration_open, vigilante: 0 });
+      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+      mockPrisma.game.update.mockResolvedValue({ ...game, status: GameStatus.completed });
+
+      const result = await service.complete('game-1', 'actor-1', { silent: true });
+
+      expect(mockPrisma.game.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: GameStatus.completed,
+            completionReport: expect.any(String),
+          }),
+        }),
+      );
+      expect(typeof result.report).toBe('string');
+      expect(result.report.length).toBeGreaterThan(0);
+    });
   });
 
   // ─── removeRegistration ────────────────────────────────────────────────────
@@ -392,6 +431,131 @@ describe('GamesService', () => {
     it('con cero registros muestra 0 cupos ocupados', () => {
       const result = (service as any).buildCounts({ maxMainSpots: 18, registrations: [] });
       expect(result).toContain('0/18');
+    });
+  });
+
+  // ─── previewReport ──────────────────────────────────────────────────────────
+
+  describe('previewReport', () => {
+    it('devuelve report y fineable con jugadores no asistentes de la lista principal', async () => {
+      const game = makeGame({
+        vigilante: 0,
+        registrations: [
+          makeReg({ id: 'reg-ok', userId: 'u1', attended: true, isWaitingList: false, fineExempt: false }),
+          makeReg({
+            id: 'reg-noshow', userId: 'u2', attended: false, isWaitingList: false, fineExempt: false,
+            user: { id: 'u2', name: 'No Show', username: 'noshow', phone: '222', position: null, gender: null, heightCm: null, birthDate: null, photoUrl: null, bio: null },
+          }),
+          makeReg({
+            id: 'reg-wait', userId: 'u3', attended: false, isWaitingList: true, fineExempt: false,
+            user: { id: 'u3', name: 'Waiting', username: 'waiting', phone: '333', position: null, gender: null, heightCm: null, birthDate: null, photoUrl: null, bio: null },
+          }),
+        ],
+      });
+      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+
+      const result = await service.previewReport('game-1');
+
+      expect(typeof result.report).toBe('string');
+      expect(result.fineable).toHaveLength(1);
+      expect(result.fineable[0]).toEqual(expect.objectContaining({
+        regId: 'reg-noshow',
+        userId: 'u2',
+        name: 'No Show',
+        fineExempt: false,
+      }));
+    });
+
+    it('incluye fineExempt status en los jugadores multables', async () => {
+      const game = makeGame({
+        vigilante: 0,
+        registrations: [
+          makeReg({
+            id: 'reg-exempt', userId: 'u-ex', attended: false, isWaitingList: false, fineExempt: true,
+            user: { id: 'u-ex', name: 'Exempt', username: 'ex', phone: '555', position: null, gender: null, heightCm: null, birthDate: null, photoUrl: null, bio: null },
+          }),
+        ],
+      });
+      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+
+      const result = await service.previewReport('game-1');
+
+      expect(result.fineable).toHaveLength(1);
+      expect(result.fineable[0].fineExempt).toBe(true);
+    });
+  });
+
+  // ─── setFineExempt ──────────────────────────────────────────────────────────
+
+  describe('setFineExempt', () => {
+    it('actualiza el registro, audita y emite SSE', async () => {
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(makeReg());
+      mockPrisma.gameRegistration.update.mockResolvedValue({});
+      const game = makeGame();
+      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+
+      const result = await service.setFineExempt('game-1', 'reg-1', true, 'actor-1');
+
+      expect(mockPrisma.gameRegistration.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'reg-1' },
+          data: { fineExempt: true },
+        }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'fine_exemption_toggled',
+          details: { fineExempt: true },
+        }),
+      );
+      expect(mockEvents.emit).toHaveBeenCalledWith(
+        expect.objectContaining({ gameId: 'game-1', type: 'update' }),
+      );
+      expect(result).toEqual(game);
+    });
+
+    it('lanza NotFoundException si el registro no existe', async () => {
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.setFineExempt('game-1', 'reg-999', true, 'actor-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ─── getStoredReport ────────────────────────────────────────────────────────
+
+  describe('getStoredReport', () => {
+    it('devuelve el reporte almacenado si existe completionReport', async () => {
+      mockPrisma.game.findUnique.mockResolvedValue({
+        completionReport: 'Stored report text',
+        status: GameStatus.completed,
+      });
+
+      const result = await service.getStoredReport('game-1');
+
+      expect(result.report).toBe('Stored report text');
+    });
+
+    it('genera el reporte al vuelo cuando no hay completionReport', async () => {
+      mockPrisma.game.findUnique.mockResolvedValue({
+        completionReport: null,
+        status: GameStatus.registration_open,
+      });
+      const game = makeGame({ vigilante: 0, registrations: [] });
+      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+
+      const result = await service.getStoredReport('game-1');
+
+      expect(typeof result.report).toBe('string');
+      expect(result.report.length).toBeGreaterThan(0);
+      expect(service.findOne).toHaveBeenCalledWith('game-1');
+    });
+
+    it('lanza NotFoundException si el partido no existe', async () => {
+      mockPrisma.game.findUnique.mockResolvedValue(null);
+
+      await expect(service.getStoredReport('game-999')).rejects.toThrow(NotFoundException);
     });
   });
 });
