@@ -57,21 +57,34 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!isAdmin) {
-      gamesService
-        .list()
-        .then(({ data }) => {
-          const games = data.data;
-          if (games.length === 1) {
-            navigate(`/game/${games[0].id}`, { replace: true });
-          } else if (games.length === 0) {
-            setActiveGame(null);
-          } else {
-            setActiveGame(games[0]);
-          }
-        })
-        .catch((e) => setError(getApiError(e)))
-        .finally(() => setLoading(false));
-      return;
+      let mounted = true;
+
+      const check = () =>
+        gamesService
+          .list()
+          .then(({ data }) => {
+            if (!mounted) return;
+            const games = data.data;
+            if (games.length >= 1) {
+              navigate(`/game/${games[0].id}`, { replace: true });
+            } else {
+              setActiveGame(null);
+              setLoading(false);
+            }
+          })
+          .catch((e) => {
+            if (mounted) {
+              setError(getApiError(e));
+              setLoading(false);
+            }
+          });
+
+      check();
+      const interval = setInterval(check, 5_000);
+      return () => {
+        mounted = false;
+        clearInterval(interval);
+      };
     }
 
     setLoading(true);
