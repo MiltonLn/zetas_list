@@ -8,7 +8,7 @@ vi.mock('axios', async () => {
   const interceptors = {
     request: { use: vi.fn() },
     response: {
-      use: vi.fn((onSuccess: unknown, onError: unknown) => {
+      use: vi.fn((_onSuccess: unknown, onError: unknown) => {
         responseInterceptor = onError as typeof responseInterceptor;
       }),
     },
