@@ -154,6 +154,16 @@ export default function GameDetailPage() {
     }
   }
 
+  async function handleDemote(regId: string) {
+    if (!id) return;
+    try {
+      await gamesService.demote(id, regId);
+      fetchGame();
+    } catch (e) {
+      setError(getApiError(e));
+    }
+  }
+
   async function handleCancel(reason: string) {
     if (!id) return;
     try {
@@ -212,6 +222,7 @@ export default function GameDetailPage() {
   const isFinished = game.status === 'completed' || game.status === 'cancelled';
   const isAlreadyRegistered = mainList.some((r) => r.userId === user?.id) || waitList.some((r) => r.userId === user?.id);
   const spotsLeft = Math.max(0, game.maxMainSpots - mainList.length);
+  const mainListFull = mainList.length >= game.maxMainSpots;
 
   const paidMain = mainList.filter((r) => r.paid).length;
   const paidWait = waitList.filter((r) => r.paid).length;
@@ -402,8 +413,11 @@ export default function GameDetailPage() {
                   index={i}
                   isAdmin={isAdmin}
                   readonly={isFinished}
+                  mainListFull={mainListFull}
                   onToggleAttended={() => handleToggle(reg.id, 'attended', reg.attended)}
                   onTogglePaid={() => handleToggle(reg.id, 'paid', reg.paid)}
+                  onPromote={() => handlePromote(reg.id)}
+                  onDemote={() => handleDemote(reg.id)}
                   onRemove={() => handleRemove(reg.userId)}
                   isSelf={reg.userId === user?.id}
                   allowSelfRemove={isOpen}
@@ -456,9 +470,11 @@ export default function GameDetailPage() {
                       index={i}
                       isAdmin={isAdmin}
                       readonly={isFinished}
+                      mainListFull={mainListFull}
                       onToggleAttended={() => handleToggle(reg.id, 'attended', reg.attended)}
                       onTogglePaid={() => handleToggle(reg.id, 'paid', reg.paid)}
                       onPromote={() => handlePromote(reg.id)}
+                      onDemote={() => handleDemote(reg.id)}
                       onRemove={() => handleRemove(reg.userId)}
                       isSelf={reg.userId === user?.id}
                       allowSelfRemove={isOpen}
@@ -486,8 +502,7 @@ export default function GameDetailPage() {
           </>
         )}
 
-        {isAdmin && (
-          <div style={{ marginTop: 28, borderTop: '1px solid #2a2f5a', paddingTop: 20 }}>
+        <div style={{ marginTop: 28, borderTop: '1px solid #2a2f5a', paddingTop: 20 }}>
             <button
               onClick={loadAudit}
               disabled={auditLoading}
@@ -500,7 +515,6 @@ export default function GameDetailPage() {
               {auditLoading ? 'Cargando...' : '📋 Ver registro de actividad'}
             </button>
           </div>
-        )}
       </div>
 
       {/* Player profile modal */}

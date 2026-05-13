@@ -50,6 +50,7 @@ enum AuditAction {
   player_registered
   player_removed
   player_promoted
+  player_demoted
   player_reordered
   attendance_toggled
   payment_toggled
@@ -138,7 +139,6 @@ model GameRegistration {
   registeredBy User @relation("RegisteredBy", fields: [registeredById], references: [id])
 
   @@unique([gameId, userId])
-  @@unique([gameId, position, isWaitingList])
   @@map("game_registrations")
 }
 

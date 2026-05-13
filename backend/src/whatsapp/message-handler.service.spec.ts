@@ -12,6 +12,7 @@ const mockGames = {
   removeRegistration: jest.fn(),
   findOne: jest.fn(),
   complete: jest.fn(),
+  promoteNext: jest.fn(),
   formatListForWhatsapp: jest.fn(),
   buildCounts: jest.fn().mockReturnValue('📊 *1/18* cupos ocupados (17 disponibles)'),
 };
@@ -112,6 +113,24 @@ describe('MessageHandlerService — regex', () => {
 
     it('NO reconoce sin @Z', () => {
       expect(CMD_FINISH.test('terminar')).toBe(false);
+    });
+  });
+
+  describe('CMD_PROMOTE', () => {
+    const CMD_PROMOTE = /^@z\s+(promover|subir|jalar|meter)\b/i;
+
+    it.each([
+      ['@Z promover'],
+      ['@z promover'],
+      ['@Z subir'],
+      ['@Z jalar'],
+      ['@Z meter'],
+    ])('reconoce "%s"', (cmd) => {
+      expect(CMD_PROMOTE.test(cmd)).toBe(true);
+    });
+
+    it('NO reconoce sin @Z', () => {
+      expect(CMD_PROMOTE.test('promover')).toBe(false);
     });
   });
 });
@@ -289,6 +308,103 @@ describe('MessageHandlerService — handleMessage', () => {
 
       await service.handleMessage('111', '@Z sacame', 'group-1');
       expect(mockGames.removeRegistration).toHaveBeenCalled();
+    });
+  });
+
+  // ─── promover ─────────────────────────────────────────────────────────────
+
+  describe('comando promover', () => {
+    it('informa que no hay lista si no hay juego activo', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(null);
+
+      await service.handleMessage('111', '@Z promover', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('No hay'));
+    });
+
+    it('informa que el número no está registrado si no hay usuario', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(null);
+
+      await service.handleMessage('111', '@Z promover', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('No encontré'));
+    });
+
+    it('rechaza si el miembro no está en la lista principal', async () => {
+      const game = makeActiveGame([
+        { user: { id: 'other-1', name: 'Otro', phone: '222' }, isWaitingList: false },
+      ]);
+      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+
+      await service.handleMessage('111', '@Z promover', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('lista principal'));
+      expect(mockGames.promoteNext).not.toHaveBeenCalled();
+    });
+
+    it('permite a un admin promover sin estar en la lista', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.admin }));
+      const updated = makeActiveGame();
+      mockGames.promoteNext.mockResolvedValue({ updated, promotedName: 'Juan' });
+
+      await service.handleMessage('111', '@Z promover', 'group-1');
+      expect(mockGames.promoteNext).toHaveBeenCalled();
+    });
+
+    it('permite a un miembro en la lista principal promover', async () => {
+      const game = makeActiveGame([
+        { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
+      ]);
+      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      const updated = makeActiveGame();
+      mockGames.promoteNext.mockResolvedValue({ updated, promotedName: 'Juan' });
+
+      await service.handleMessage('111', '@Z promover', 'group-1');
+      expect(mockGames.promoteNext).toHaveBeenCalledWith('game-1', 'user-1');
+    });
+
+    it('promueve al primer jugador de espera y envía confirmación', async () => {
+      const game = makeActiveGame([
+        { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
+      ]);
+      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      const updated = makeActiveGame();
+      mockGames.promoteNext.mockResolvedValue({ updated, promotedName: 'Juan' });
+
+      await service.handleMessage('111', '@Z promover', 'group-1');
+      expect(mockGames.promoteNext).toHaveBeenCalledWith('game-1', 'user-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Juan'));
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('promovido'));
+    });
+
+    it('informa si la lista principal está llena', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.admin }));
+      mockGames.promoteNext.mockRejectedValue(new Error('La lista principal ya está llena'));
+
+      await service.handleMessage('111', '@Z promover', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('llena'));
+    });
+
+    it('informa si no hay nadie en lista de espera', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.admin }));
+      mockGames.promoteNext.mockRejectedValue(new Error('No hay nadie en la lista de espera'));
+
+      await service.handleMessage('111', '@Z promover', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('No hay nadie'));
+    });
+
+    it('funciona también con el sinónimo "jalar"', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.admin }));
+      const updated = makeActiveGame();
+      mockGames.promoteNext.mockResolvedValue({ updated, promotedName: 'Ana' });
+
+      await service.handleMessage('111', '@Z jalar', 'group-1');
+      expect(mockGames.promoteNext).toHaveBeenCalled();
     });
   });
 });

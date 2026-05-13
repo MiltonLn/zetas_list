@@ -133,6 +133,16 @@ export class GamesController {
   }
 
   @Roles(Role.admin)
+  @Post(':id/demote/:regId')
+  demote(
+    @Param('id') id: string,
+    @Param('regId') regId: string,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.gamesService.demote(id, regId, user.id);
+  }
+
+  @Roles(Role.admin)
   @Patch(':id/reorder')
   reorder(
     @Param('id') id: string,
@@ -180,7 +190,6 @@ export class GamesController {
     return this.gamesService.getStoredReport(id);
   }
 
-  @Roles(Role.admin)
   @Get(':id/audit')
   getAudit(@Param('id') id: string) {
     return this.audit.findByGame(id);

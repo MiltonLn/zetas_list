@@ -9,9 +9,11 @@ interface Props {
   index: number;
   isAdmin: boolean;
   readonly?: boolean;
+  mainListFull?: boolean;
   onToggleAttended?: () => void;
   onTogglePaid?: () => void;
   onPromote?: () => void;
+  onDemote?: () => void;
   onRemove?: () => void;
   isSelf: boolean;
   allowSelfRemove: boolean;
@@ -24,9 +26,11 @@ export function SortableRegistrationRow({
   index,
   isAdmin,
   readonly: isReadonly,
+  mainListFull,
   onToggleAttended,
   onTogglePaid,
   onPromote,
+  onDemote,
   onRemove,
   isSelf,
   allowSelfRemove,
@@ -119,7 +123,7 @@ export function SortableRegistrationRow({
           >
             $
           </button>
-          {reg.isWaitingList && (
+          {reg.isWaitingList && !mainListFull && (
             <button
               onClick={onPromote}
               title="Promover a lista principal"
@@ -130,6 +134,19 @@ export function SortableRegistrationRow({
               }}
             >
               ↑
+            </button>
+          )}
+          {!reg.isWaitingList && (
+            <button
+              onClick={onDemote}
+              title="Mover a lista de espera"
+              style={{
+                background: 'none', border: '1px solid #e3a00855',
+                borderRadius: 6, padding: '4px 8px',
+                color: '#e3a008', cursor: 'pointer', fontSize: 13,
+              }}
+            >
+              ↓
             </button>
           )}
         </>

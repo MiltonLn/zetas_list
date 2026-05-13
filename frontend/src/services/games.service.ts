@@ -55,6 +55,9 @@ export const gamesService = {
   promote: (gameId: string, regId: string) =>
     api.post(`/games/${gameId}/promote/${regId}`),
 
+  demote: (gameId: string, regId: string) =>
+    api.post(`/games/${gameId}/demote/${regId}`),
+
   reorder: (gameId: string, mainList: string[], waitList: string[]) =>
     api.patch(`/games/${gameId}/reorder`, { mainList, waitList }),
 

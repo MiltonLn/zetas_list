@@ -5,7 +5,7 @@
 .PHONY: help up up-build down restart logs logs-backend logs-frontend logs-db \
         restart-frontend restart-backend \
         shell-backend shell-db \
-        migrate migrate-deploy seed reset-db generate studio \
+        migrate migrate-deploy seed seed-players cleanup-players reset-db generate studio \
         build lint test hooks clean nuke
 
 # Colores
@@ -79,6 +79,12 @@ migrate-deploy: ## Aplica migraciones pendientes en producción
 
 seed: ## Ejecuta el seed (crea los admins iniciales)
 	docker compose exec backend node -r ts-node/register prisma/seed.ts
+
+seed-players: ## Crea jugadores de prueba (uso: make seed-players count=20 game=ID)
+	docker compose exec backend node -r ts-node/register prisma/seed-test-players.ts --count $(or $(count),20) $(if $(game),--gameId $(game))
+
+cleanup-players: ## Elimina todos los jugadores de prueba (testplayer*)
+	docker compose exec backend node -r ts-node/register prisma/seed-test-players.ts --cleanup
 
 generate: ## Regenera el cliente de Prisma
 	docker compose exec backend npx prisma generate

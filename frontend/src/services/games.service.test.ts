@@ -65,6 +65,16 @@ describe('gamesService', () => {
     });
   });
 
+  describe('demote', () => {
+    it('calls POST /games/:id/demote/:regId', async () => {
+      mockApi.post.mockResolvedValue({ data: {} });
+
+      await gamesService.demote('g1', 'r1');
+
+      expect(mockApi.post).toHaveBeenCalledWith('/games/g1/demote/r1');
+    });
+  });
+
   describe('getAudit', () => {
     it('calls GET /games/:id/audit', async () => {
       mockApi.get.mockResolvedValue({ data: [] });

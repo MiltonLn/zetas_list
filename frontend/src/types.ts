@@ -175,6 +175,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   player_registered: 'Jugador anotado',
   player_removed: 'Jugador eliminado',
   player_promoted: 'Jugador promovido',
+  player_demoted: 'Jugador movido a espera',
   player_reordered: 'Lista reordenada',
   attendance_toggled: 'Asistencia marcada',
   payment_toggled: 'Pago marcado',

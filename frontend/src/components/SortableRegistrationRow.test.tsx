@@ -114,5 +114,24 @@ describe('SortableRegistrationRow', () => {
     const waitReg = makeReg({ isWaitingList: true });
     render(<SortableRegistrationRow {...baseProps} reg={waitReg} />);
     expect(screen.getByTitle('Promover a lista principal')).toBeInTheDocument();
+    expect(screen.queryByTitle('Mover a lista de espera')).not.toBeInTheDocument();
+  });
+
+  it('oculta botón Promover cuando la lista principal está llena', () => {
+    const waitReg = makeReg({ isWaitingList: true });
+    render(<SortableRegistrationRow {...baseProps} reg={waitReg} mainListFull={true} />);
+    expect(screen.queryByTitle('Promover a lista principal')).not.toBeInTheDocument();
+  });
+
+  it('muestra botón Demote para jugadores en lista principal', () => {
+    render(<SortableRegistrationRow {...baseProps} />);
+    expect(screen.getByTitle('Mover a lista de espera')).toBeInTheDocument();
+    expect(screen.queryByTitle('Promover a lista principal')).not.toBeInTheDocument();
+  });
+
+  it('oculta botones Promover/Demote cuando es readonly', () => {
+    render(<SortableRegistrationRow {...baseProps} readonly={true} />);
+    expect(screen.queryByTitle('Mover a lista de espera')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Promover a lista principal')).not.toBeInTheDocument();
   });
 });

@@ -26,7 +26,7 @@ function buildAutoTitle(modalidad: Modalidad, gameDate: string, startTime: strin
 export default function CreateGamePage() {
   const navigate = useNavigate();
   const [modalidad, setModalidad] = useState<Modalidad>('seis_x_seis');
-  const [gameDate, setGameDate] = useState('');
+  const [gameDate, setGameDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [startTime, setStartTime] = useState('19:50');
   const [registrationOpenTime, setRegistrationOpenTime] = useState('10:00');
   const [pricePerPlayer, setPricePerPlayer] = useState('2000');

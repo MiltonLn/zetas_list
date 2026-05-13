@@ -11,6 +11,7 @@ const mockPrisma = {
   game: {
     findFirst: jest.fn(),
     findUnique: jest.fn(),
+    findUniqueOrThrow: jest.fn(),
     findMany: jest.fn(),
     count: jest.fn(),
     create: jest.fn(),
@@ -556,6 +557,149 @@ describe('GamesService', () => {
       mockPrisma.game.findUnique.mockResolvedValue(null);
 
       await expect(service.getStoredReport('game-999')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ─── promote ────────────────────────────────────────────────────────────────
+
+  describe('promote', () => {
+    const txMock = {
+      $queryRaw: jest.fn(),
+      gameRegistration: {
+        findFirst: jest.fn(),
+        count: jest.fn(),
+        aggregate: jest.fn(),
+        update: jest.fn(),
+      },
+      game: { findUniqueOrThrow: jest.fn() },
+    };
+
+    beforeEach(() => {
+      mockPrisma.$transaction.mockImplementation((cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock));
+    });
+
+    it('promueve jugador de espera a lista principal', async () => {
+      const waitReg = makeReg({ isWaitingList: true, position: 1 });
+      txMock.$queryRaw.mockResolvedValue(undefined);
+      txMock.gameRegistration.findFirst.mockResolvedValue(waitReg);
+      txMock.game.findUniqueOrThrow.mockResolvedValue(makeGame({ maxMainSpots: 18 }));
+      txMock.gameRegistration.count.mockResolvedValue(10);
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 10 } });
+      const promoted = makeReg({ isWaitingList: false, position: 11, fromWaitList: true });
+      txMock.gameRegistration.update.mockResolvedValue(promoted);
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.promote('game-1', 'reg-1', 'actor-1');
+
+      expect(txMock.gameRegistration.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ isWaitingList: false, fromWaitList: true }),
+        }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'player_promoted' }),
+      );
+      expect(mockEvents.emit).toHaveBeenCalled();
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('promovido'),
+      );
+    });
+
+    it('lanza NotFoundException si el registro no está en lista de espera', async () => {
+      txMock.$queryRaw.mockResolvedValue(undefined);
+      txMock.gameRegistration.findFirst.mockResolvedValue(null);
+
+      await expect(service.promote('game-1', 'reg-1', 'actor-1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('lanza BadRequestException si la lista principal está llena', async () => {
+      txMock.$queryRaw.mockResolvedValue(undefined);
+      txMock.gameRegistration.findFirst.mockResolvedValue(makeReg({ isWaitingList: true }));
+      txMock.game.findUniqueOrThrow.mockResolvedValue(makeGame({ maxMainSpots: 18 }));
+      txMock.gameRegistration.count.mockResolvedValue(18);
+
+      await expect(service.promote('game-1', 'reg-1', 'actor-1')).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ─── demote ─────────────────────────────────────────────────────────────────
+
+  describe('demote', () => {
+    const txMock = {
+      $queryRaw: jest.fn(),
+      gameRegistration: {
+        findFirst: jest.fn(),
+        aggregate: jest.fn(),
+        update: jest.fn(),
+      },
+    };
+
+    beforeEach(() => {
+      mockPrisma.$transaction.mockImplementation((cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock));
+    });
+
+    it('mueve jugador de lista principal a lista de espera', async () => {
+      const mainReg = makeReg({ isWaitingList: false, position: 5 });
+      txMock.$queryRaw.mockResolvedValue(undefined);
+      txMock.gameRegistration.findFirst.mockResolvedValue(mainReg);
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 3 } });
+      const demoted = makeReg({ isWaitingList: true, position: 4, fromWaitList: false });
+      txMock.gameRegistration.update.mockResolvedValue(demoted);
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.demote('game-1', 'reg-1', 'actor-1');
+
+      expect(txMock.gameRegistration.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ isWaitingList: true, fromWaitList: false }),
+        }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'player_demoted' }),
+      );
+      expect(mockEvents.emit).toHaveBeenCalled();
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('lista de espera'),
+      );
+    });
+
+    it('lanza NotFoundException si el registro no está en lista principal', async () => {
+      txMock.$queryRaw.mockResolvedValue(undefined);
+      txMock.gameRegistration.findFirst.mockResolvedValue(null);
+
+      await expect(service.demote('game-1', 'reg-1', 'actor-1')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ─── promoteNext ──────────────────────────────────────────────────────────
+
+  describe('promoteNext', () => {
+    it('promueve al primer jugador de la lista de espera', async () => {
+      mockPrisma.game.findUniqueOrThrow.mockResolvedValue(makeGame({ maxMainSpots: 18 }));
+      mockPrisma.gameRegistration.count.mockResolvedValue(16);
+      const firstWait = makeReg({ id: 'wait-1', isWaitingList: true, position: 1 });
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(firstWait);
+      jest.spyOn(service, 'promote').mockResolvedValue(makeGame() as any);
+
+      const result = await service.promoteNext('game-1', 'actor-1');
+
+      expect(service.promote).toHaveBeenCalledWith('game-1', 'wait-1', 'actor-1', { silent: true });
+      expect(result.promotedName).toBe('Test User');
+    });
+
+    it('lanza BadRequestException si la lista principal está llena', async () => {
+      mockPrisma.game.findUniqueOrThrow.mockResolvedValue(makeGame({ maxMainSpots: 18 }));
+      mockPrisma.gameRegistration.count.mockResolvedValue(18);
+
+      await expect(service.promoteNext('game-1', 'actor-1')).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza NotFoundException si no hay nadie en lista de espera', async () => {
+      mockPrisma.game.findUniqueOrThrow.mockResolvedValue(makeGame({ maxMainSpots: 18 }));
+      mockPrisma.gameRegistration.count.mockResolvedValue(16);
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(null);
+
+      await expect(service.promoteNext('game-1', 'actor-1')).rejects.toThrow(NotFoundException);
     });
   });
 });

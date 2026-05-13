@@ -375,8 +375,8 @@ export class GamesService {
     return updated;
   }
 
-  async promote(gameId: string, regId: string, actorId: string) {
-    return this.prisma.$transaction(async (tx) => {
+  async promote(gameId: string, regId: string, actorId: string, options?: { silent?: boolean }) {
+    const promoted = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
 
       const reg = await tx.gameRegistration.findFirst({
@@ -397,7 +397,7 @@ export class GamesService {
         _max: { position: true },
       });
 
-      const promoted = await tx.gameRegistration.update({
+      return tx.gameRegistration.update({
         where: { id: regId },
         data: {
           isWaitingList: false,
@@ -406,17 +406,93 @@ export class GamesService {
         },
         include: REGISTRATION_INCLUDE,
       });
+    });
 
-      await this.audit.log({
-        gameId,
-        actorId,
-        targetUserId: promoted.userId,
-        action: 'player_promoted',
-        details: { newPosition: promoted.position },
+    await this.audit.log({
+      gameId,
+      actorId,
+      targetUserId: promoted.userId,
+      action: 'player_promoted',
+      details: { newPosition: promoted.position },
+    });
+
+    const updated = await this.findOne(gameId);
+    this.events.emit({ gameId, type: 'update', data: updated });
+
+    const userName = promoted.user?.name || 'Alguien';
+    if (!options?.silent) {
+      this.whatsapp
+        .sendToGroup(`⬆️ *${userName}* fue promovido a la *lista principal* 🏐\n${this.buildCounts(updated)}`)
+        .catch((e) => this.logger.warn('WhatsApp send failed', e));
+    }
+
+    return updated;
+  }
+
+  async promoteNext(gameId: string, actorId: string) {
+    const game = await this.prisma.game.findUniqueOrThrow({ where: { id: gameId } });
+    const mainCount = await this.prisma.gameRegistration.count({
+      where: { gameId, isWaitingList: false },
+    });
+    if (mainCount >= game.maxMainSpots) {
+      throw new BadRequestException('La lista principal ya está llena');
+    }
+
+    const firstInWait = await this.prisma.gameRegistration.findFirst({
+      where: { gameId, isWaitingList: true },
+      orderBy: { position: 'asc' },
+      include: REGISTRATION_INCLUDE,
+    });
+    if (!firstInWait) {
+      throw new NotFoundException('No hay nadie en la lista de espera');
+    }
+
+    const updated = await this.promote(gameId, firstInWait.id, actorId, { silent: true });
+    return { updated: updated as any, promotedName: firstInWait.user?.name || 'Alguien' };
+  }
+
+  async demote(gameId: string, regId: string, actorId: string) {
+    const demoted = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
+
+      const reg = await tx.gameRegistration.findFirst({
+        where: { id: regId, gameId, isWaitingList: false },
+      });
+      if (!reg) throw new NotFoundException('Registro en lista principal no encontrado');
+
+      const maxPos = await tx.gameRegistration.aggregate({
+        where: { gameId, isWaitingList: true },
+        _max: { position: true },
       });
 
-      return promoted;
+      return tx.gameRegistration.update({
+        where: { id: regId },
+        data: {
+          isWaitingList: true,
+          position: (maxPos._max.position ?? 0) + 1,
+          fromWaitList: false,
+        },
+        include: REGISTRATION_INCLUDE,
+      });
     });
+
+    await this.audit.log({
+      gameId,
+      actorId,
+      targetUserId: demoted.userId,
+      action: 'player_demoted',
+      details: { newPosition: demoted.position },
+    });
+
+    const updated = await this.findOne(gameId);
+    this.events.emit({ gameId, type: 'update', data: updated });
+
+    const userName = demoted.user?.name || 'Alguien';
+    this.whatsapp
+      .sendToGroup(`⬇️ *${userName}* fue movido a la *lista de espera* (puesto ${demoted.position})\n${this.buildCounts(updated)}`)
+      .catch((e) => this.logger.warn('WhatsApp send failed', e));
+
+    return updated;
   }
 
   async reorder(gameId: string, dto: ReorderDto, actorId: string) {
