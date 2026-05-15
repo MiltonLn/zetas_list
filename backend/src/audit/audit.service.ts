@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 export interface AuditLogParams {
   gameId?: string;
-  actorId: string;
+  actorId?: string | null;
   targetUserId?: string;
   action: AuditAction;
   details?: Record<string, unknown>;

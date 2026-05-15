@@ -92,6 +92,34 @@ export class GamesController {
     return this.gamesService.register(id, user.id, user.id);
   }
 
+  @Post(':id/register-proxy/:targetUserId')
+  registerProxy(
+    @Param('id') id: string,
+    @Param('targetUserId') targetUserId: string,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.gamesService.register(id, targetUserId, user.id);
+  }
+
+  @Post(':id/register-guest')
+  registerGuest(
+    @Param('id') id: string,
+    @Body() body: { guestName: string },
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.gamesService.registerGuest(id, body.guestName, user.id);
+  }
+
+  @Post(':id/confirm')
+  confirm(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.gamesService.confirmRegistration(id, user.id);
+  }
+
+  @Get(':id/available-members')
+  getAvailableMembers(@Param('id') id: string) {
+    return this.gamesService.getAvailableMembers(id);
+  }
+
   @Roles(Role.admin)
   @Post(':id/register/:userId')
   registerUser(
@@ -107,8 +135,9 @@ export class GamesController {
     @Param('id') id: string,
     @Param('userId') userId: string,
     @CurrentUser() user: JwtUser,
+    @Query('regId') regId?: string,
   ) {
-    return this.gamesService.removeRegistration(id, userId, user.id, user.role);
+    return this.gamesService.removeRegistration(id, userId, user.id, user.role as Role, { regId });
   }
 
   @Roles(Role.admin)

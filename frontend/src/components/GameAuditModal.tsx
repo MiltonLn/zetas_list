@@ -28,7 +28,7 @@ export function GameAuditModal({ open, onClose, logs, loading }: Props) {
               </span>
             </div>
             <p style={{ color: '#7c8db5', fontSize: 12, margin: '4px 0 0' }}>
-              Por {log.actor.name}
+              Por {log.actor?.name || 'Sistema'}
               {log.targetUser && ` → ${log.targetUser.name}`}
             </p>
           </div>

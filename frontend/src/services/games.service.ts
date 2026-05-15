@@ -10,6 +10,8 @@ export interface CreateGamePayload {
   vigilante?: number;
   maxMainSpots?: number;
   customTitle?: string;
+  guestCutoffTime?: string;
+  maxProxyRegistrations?: number;
 }
 
 export interface ListGamesParams {
@@ -40,11 +42,23 @@ export const gamesService = {
 
   register: (gameId: string) => api.post(`/games/${gameId}/register`),
 
+  registerProxy: (gameId: string, targetUserId: string) =>
+    api.post(`/games/${gameId}/register-proxy/${targetUserId}`),
+
+  registerGuest: (gameId: string, guestName: string) =>
+    api.post(`/games/${gameId}/register-guest`, { guestName }),
+
+  confirmRegistration: (gameId: string) =>
+    api.post(`/games/${gameId}/confirm`),
+
+  getAvailableMembers: (gameId: string) =>
+    api.get<Array<{ id: string; name: string; phone: string; username: string }>>(`/games/${gameId}/available-members`),
+
   registerUser: (gameId: string, userId: string) =>
     api.post(`/games/${gameId}/register/${userId}`),
 
-  removeRegistration: (gameId: string, userId: string) =>
-    api.delete(`/games/${gameId}/register/${userId}`),
+  removeRegistration: (gameId: string, userId: string, regId?: string) =>
+    api.delete(`/games/${gameId}/register/${userId}`, { params: regId ? { regId } : undefined }),
 
   updateRegistration: (
     gameId: string,

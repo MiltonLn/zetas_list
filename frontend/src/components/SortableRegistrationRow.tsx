@@ -82,10 +82,14 @@ export function SortableRegistrationRow({
         onClick={onNameClick}
         style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, cursor: 'pointer' }}
       >
-        <Avatar name={reg.user.name} photoUrl={reg.user.photoUrl} size={30} />
+        <Avatar name={reg.isGuest ? reg.guestName || 'Invitado' : reg.user?.name || '?'} photoUrl={reg.isGuest ? undefined : reg.user?.photoUrl} size={30} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <span style={{ color: '#e8eaf6', fontSize: 14, fontWeight: isSelf ? 700 : 500 }}>
-            {reg.user.name}
+            {reg.isGuest ? (
+              <>{reg.guestName || 'Invitado'} <span style={{ color: '#7c8db5', fontSize: 11 }}>👤 inv. de {reg.registeredBy?.name || '?'}</span></>
+            ) : (
+              reg.user?.name || '?'
+            )}
             {isSelf && <span style={{ color: '#6e8efb', fontSize: 11, marginLeft: 6 }}>Tú</span>}
           </span>
           {reg.note && (
@@ -93,6 +97,12 @@ export function SortableRegistrationRow({
           )}
           {reg.fromWaitList && (
             <span style={{ color: '#e3a008', fontSize: 11, marginLeft: 6 }}>↑ espera</span>
+          )}
+          {reg.pendingConfirmation && (
+            <span style={{ color: '#f59f00', fontSize: 11, marginLeft: 6, background: '#f59f0022', padding: '1px 6px', borderRadius: 4 }}>⏳ pendiente</span>
+          )}
+          {reg.registeredById && reg.registeredById !== reg.userId && !reg.isGuest && reg.registeredBy && (
+            <span style={{ color: '#7c8db5', fontSize: 11, marginLeft: 6 }}>por {reg.registeredBy.name}</span>
           )}
         </div>
       </div>

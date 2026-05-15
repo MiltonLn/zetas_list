@@ -9,12 +9,16 @@ import { Role } from '@prisma/client';
 const mockWp = { sendToGroup: jest.fn(), sendMessage: jest.fn(), isConnected: jest.fn() };
 const mockGames = {
   register: jest.fn(),
+  registerGuest: jest.fn(),
+  confirmRegistration: jest.fn(),
   removeRegistration: jest.fn(),
   findOne: jest.fn(),
   complete: jest.fn(),
   promoteNext: jest.fn(),
+  retryFromWaitingList: jest.fn(),
   formatListForWhatsapp: jest.fn(),
   buildCounts: jest.fn().mockReturnValue('📊 *1/18* cupos ocupados (17 disponibles)'),
+  buildGameLink: jest.fn().mockReturnValue(''),
 };
 const mockUsers = { findByPhone: jest.fn() };
 const mockPrisma = { game: { findFirst: jest.fn() } };
@@ -141,6 +145,7 @@ describe('MessageHandlerService — handleMessage', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     mockWp.sendToGroup.mockResolvedValue(undefined);
+    mockGames.retryFromWaitingList.mockResolvedValue({ promoted: false, game: null });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -234,7 +239,7 @@ describe('MessageHandlerService — handleMessage', () => {
       mockUsers.findByPhone.mockResolvedValue(makeUser({ status: 'banned' }));
 
       await service.handleMessage('111', '@Z anotame', 'group-1');
-      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('banned'));
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('suspendida'));
       expect(mockGames.register).not.toHaveBeenCalled();
     });
 
@@ -308,6 +313,78 @@ describe('MessageHandlerService — handleMessage', () => {
 
       await service.handleMessage('111', '@Z sacame', 'group-1');
       expect(mockGames.removeRegistration).toHaveBeenCalled();
+    });
+  });
+
+  // ─── cuenta inactiva en otros comandos ────────────────────────────────────
+
+  describe('validación de cuenta activa centralizada', () => {
+    it('rechaza @Z invitar si la cuenta está inactiva', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser({ status: 'inactive' }));
+
+      await service.handleMessage('111', '@Z invitar Carlos', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('inactiva'));
+      expect(mockGames.registerGuest).not.toHaveBeenCalled();
+    });
+
+    it('rechaza @Z anotar @persona si la cuenta está suspendida', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser({ status: 'banned' }));
+
+      await service.handleMessage('111', '@Z anotar @222', 'group-1', ['222@s.whatsapp.net']);
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('suspendida'));
+      expect(mockGames.register).not.toHaveBeenCalled();
+    });
+
+    it('rechaza @Z confirmar si la cuenta está inactiva', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser({ status: 'inactive' }));
+
+      await service.handleMessage('111', '@Z confirmar', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('inactiva'));
+      expect(mockGames.confirmRegistration).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── invitar (requiere estar anotado) ──────────────────────────────────────
+
+  describe('comando invitar', () => {
+    it('rechaza si el usuario no está anotado en la lista', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+
+      await service.handleMessage('111', '@Z invitar Carlos', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('debes estar anotado'));
+      expect(mockGames.registerGuest).not.toHaveBeenCalled();
+    });
+
+    it('permite invitar si el usuario está anotado', async () => {
+      const game = makeActiveGame([
+        { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
+      ]);
+      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 2 });
+      mockGames.findOne.mockResolvedValue(game);
+
+      await service.handleMessage('111', '@Z invitar Carlos', 'group-1');
+      expect(mockGames.registerGuest).toHaveBeenCalledWith('game-1', 'Carlos', 'user-1', { silent: true });
+    });
+  });
+
+  // ─── anotar (register other) ──────────────────────────────────────────────
+
+  describe('comando anotar (EC7: self-mention)', () => {
+    it('rejects self-mention and suggests @Z anótame', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+
+      await service.handleMessage('111', '@Z anotar @111', 'group-1', ['111@s.whatsapp.net']);
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('anótame'),
+      );
+      expect(mockGames.register).not.toHaveBeenCalled();
     });
   });
 

@@ -38,4 +38,75 @@ export class GameSchedulerService {
       }
     }
   }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async checkConfirmationTimeouts() {
+    const now = new Date();
+
+    const expired = await this.prisma.gameRegistration.findMany({
+      where: {
+        pendingConfirmation: true,
+        confirmationDeadline: { lte: now },
+      },
+      include: {
+        game: { select: { status: true } },
+      },
+    });
+
+    for (const reg of expired) {
+      if (reg.game.status !== 'registration_open' && reg.game.status !== 'in_progress') continue;
+
+      try {
+        await this.games.handleConfirmationTimeout(reg.id);
+        this.logger.log(`Confirmación expirada para registro ${reg.id}`);
+      } catch (e) {
+        this.logger.error(`Error procesando timeout de confirmación ${reg.id}:`, e);
+      }
+    }
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async checkGuestCutoff() {
+    const activeGames = await this.prisma.game.findMany({
+      where: {
+        status: { in: [GameStatus.registration_open, GameStatus.in_progress] },
+        cutoffNotified: false,
+      },
+    });
+
+    for (const game of activeGames) {
+      const isBefore = this.games.isBeforeCutoff(game.guestCutoffTime, game.gameDate);
+      if (isBefore) continue;
+
+      try {
+        await this.prisma.game.update({
+          where: { id: game.id },
+          data: { cutoffNotified: true },
+        });
+
+        const unconfirmed = await this.prisma.gameRegistration.findMany({
+          where: {
+            gameId: game.id,
+            pendingConfirmation: true,
+            isWaitingList: false,
+            isGuest: false,
+          },
+          include: { user: { select: { name: true } } },
+        });
+
+        for (const reg of unconfirmed) {
+          await this.games.handleConfirmationTimeout(reg.id);
+          this.logger.log(`Proxy no confirmado movido a espera: ${reg.user?.name}`);
+        }
+
+        await this.whatsapp.sendToGroup(
+          `⏰ *Hora de corte alcanzada* para *${game.title}*\n` +
+          `A partir de ahora, invitados y miembros en lista de espera tienen la misma prioridad para cupos libres.`,
+        );
+        this.logger.log(`Cutoff notificado para: ${game.title}`);
+      } catch (e) {
+        this.logger.error(`Error procesando cutoff para ${game.id}:`, e);
+      }
+    }
+  }
 }

@@ -26,7 +26,10 @@ function buildAutoTitle(modalidad: Modalidad, gameDate: string, startTime: strin
 export default function CreateGamePage() {
   const navigate = useNavigate();
   const [modalidad, setModalidad] = useState<Modalidad>('seis_x_seis');
-  const [gameDate, setGameDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [gameDate, setGameDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
   const [startTime, setStartTime] = useState('19:50');
   const [registrationOpenTime, setRegistrationOpenTime] = useState('10:00');
   const [pricePerPlayer, setPricePerPlayer] = useState('2000');
@@ -34,6 +37,8 @@ export default function CreateGamePage() {
   const [maxMainSpots, setMaxMainSpots] = useState('');
   const [customTitle, setCustomTitle] = useState('');
   const [useCustomTitle, setUseCustomTitle] = useState(false);
+  const [guestCutoffTime, setGuestCutoffTime] = useState('13:30');
+  const [maxProxyRegistrations, setMaxProxyRegistrations] = useState('1');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -53,6 +58,8 @@ export default function CreateGamePage() {
         vigilante: vigilante ? parseInt(vigilante) : undefined,
         maxMainSpots: maxMainSpots ? parseInt(maxMainSpots) : undefined,
         customTitle: useCustomTitle && customTitle.trim() ? customTitle.trim() : undefined,
+        guestCutoffTime: guestCutoffTime || undefined,
+        maxProxyRegistrations: maxProxyRegistrations ? parseInt(maxProxyRegistrations) : undefined,
       };
       const { data } = await gamesService.create(payload);
       navigate(`/game/${data.id}`);
@@ -188,6 +195,40 @@ export default function CreateGamePage() {
                   onChange={(e) => setMaxMainSpots(e.target.value)}
                   placeholder={MODALIDAD_SPOTS[modalidad].toString()}
                 />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
+                  Hora de corte para invitados
+                </label>
+                <input
+                  className="zetas-input"
+                  type="time"
+                  value={guestCutoffTime}
+                  onChange={(e) => setGuestCutoffTime(e.target.value)}
+                />
+                <p style={{ color: '#7c8db5', fontSize: 12, marginTop: 4 }}>
+                  Antes de esta hora, invitados siempre van a lista de espera.
+                </p>
+              </div>
+              <div>
+                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
+                  Máx. anotaciones por miembro
+                </label>
+                <input
+                  className="zetas-input"
+                  type="number"
+                  min={0}
+                  max={10}
+                  value={maxProxyRegistrations}
+                  onChange={(e) => setMaxProxyRegistrations(e.target.value)}
+                  placeholder="1"
+                />
+                <p style={{ color: '#7c8db5', fontSize: 12, marginTop: 4 }}>
+                  Cuántas personas puede anotar un miembro (sin contarse a sí mismo).
+                </p>
               </div>
             </div>
 

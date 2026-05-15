@@ -37,7 +37,14 @@ export class CliSimulatorProvider implements WhatsappProvider, OnModuleInit {
 
       const [, phone, message] = match;
       this.logger.log(`[ENTRADA] ${phone}: ${message}`);
-      this.messageHandler.handleMessage(phone, message, 'cli-group').catch((e) =>
+
+      const mentionedJids: string[] = [];
+      const mentionMatches = message.matchAll(/@(\d{10,15})/g);
+      for (const m of mentionMatches) {
+        mentionedJids.push(`${m[1]}@s.whatsapp.net`);
+      }
+
+      this.messageHandler.handleMessage(phone, message, 'cli-group', mentionedJids).catch((e) =>
         this.logger.error('Error procesando mensaje:', e),
       );
     });

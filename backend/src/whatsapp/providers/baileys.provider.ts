@@ -88,9 +88,12 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
             msg.message.extendedTextMessage?.text ||
             '';
 
+          const mentionedJids: string[] =
+            msg.message.extendedTextMessage?.contextInfo?.mentionedJid || [];
+
           if (!text || !this.messageHandler) continue;
 
-          await this.messageHandler.handleMessage(phone, text, from).catch((e) =>
+          await this.messageHandler.handleMessage(phone, text, from, mentionedJids).catch((e) =>
             this.logger.error('Error procesando mensaje:', e),
           );
         }

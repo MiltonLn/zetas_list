@@ -56,7 +56,7 @@ export interface RegistrationUser {
 export interface GameRegistration {
   id: string;
   gameId: string;
-  userId: string;
+  userId: string | null;
   position: number;
   isWaitingList: boolean;
   attended: boolean;
@@ -65,6 +65,12 @@ export interface GameRegistration {
   fromWaitList: boolean;
   registeredAt: string;
   registeredById: string;
+  isGuest: boolean;
+  guestName?: string;
+  pendingConfirmation: boolean;
+  confirmationDeadline?: string;
+  confirmationDeclined: boolean;
+  originalWaitPosition?: number;
   user: RegistrationUser;
   registeredBy: { id: string; name: string; username: string };
 }
@@ -79,6 +85,9 @@ export interface Game {
   maxMainSpots: number;
   pricePerPlayer: number;
   vigilante: number;
+  guestCutoffTime: string;
+  maxProxyRegistrations: number;
+  mainListHasBeenFull: boolean;
   status: GameStatus;
   cancellationReason?: string;
   createdById: string;
@@ -173,6 +182,8 @@ export interface ParseResult {
 
 export const AUDIT_ACTION_LABELS: Record<string, string> = {
   player_registered: 'Jugador anotado',
+  proxy_registered: 'Jugador anotado (por otro)',
+  guest_registered: 'Invitado anotado',
   player_removed: 'Jugador eliminado',
   player_promoted: 'Jugador promovido',
   player_demoted: 'Jugador movido a espera',
@@ -180,6 +191,10 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   attendance_toggled: 'Asistencia marcada',
   payment_toggled: 'Pago marcado',
   note_updated: 'Nota actualizada',
+  fine_exemption_toggled: 'Exención de multa',
+  confirmation_requested: 'Confirmación solicitada',
+  confirmation_received: 'Confirmación recibida',
+  confirmation_expired: 'Confirmación expirada',
   game_created: 'Partido creado',
   game_updated: 'Partido actualizado',
   game_cancelled: 'Partido cancelado',

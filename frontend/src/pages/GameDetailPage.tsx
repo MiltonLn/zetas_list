@@ -28,6 +28,8 @@ import { SortableRegistrationRow } from '../components/SortableRegistrationRow';
 import { GameAuditModal } from '../components/GameAuditModal';
 import { GameCancelModal } from '../components/GameCancelModal';
 import { GameCompleteModal } from '../components/GameCompleteModal';
+import { RegisterOtherModal } from '../components/RegisterOtherModal';
+import { showToast } from '../components/Toast';
 import { getApiError } from '../services/api';
 
 export default function GameDetailPage() {
@@ -39,7 +41,6 @@ export default function GameDetailPage() {
   const [error, setError] = useState('');
   const [registering, setRegistering] = useState(false);
   const [regError, setRegError] = useState('');
-  const [regSuccess, setRegSuccess] = useState('');
 
   const [mainList, setMainList] = useState<GameRegistration[]>([]);
   const [waitList, setWaitList] = useState<GameRegistration[]>([]);
@@ -56,6 +57,9 @@ export default function GameDetailPage() {
 
   const [completionReport, setCompletionReport] = useState<string | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+
+  const [availableMembers, setAvailableMembers] = useState<Array<{ id: string; name: string; phone: string; username: string }>>([]);
+  const [showRegisterOther, setShowRegisterOther] = useState(false);
 
   const reorderTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -75,6 +79,12 @@ export default function GameDetailPage() {
     setLoading(true);
     fetchGame().finally(() => setLoading(false));
   }, [fetchGame]);
+
+  useEffect(() => {
+    if (game && (game.status === 'registration_open' || game.status === 'in_progress')) {
+      loadAvailableMembers();
+    }
+  }, [game?.status, game?.registrations?.length]);
 
   useGameStream(id, fetchGame);
 
@@ -111,11 +121,10 @@ export default function GameDetailPage() {
   async function handleRegister() {
     if (!id) return;
     setRegError('');
-    setRegSuccess('');
     setRegistering(true);
     try {
       await gamesService.register(id);
-      setRegSuccess('¡Te anotaste correctamente!');
+      showToast('¡Te anotaste correctamente!');
       fetchGame();
     } catch (e) {
       setRegError(getApiError(e));
@@ -134,10 +143,10 @@ export default function GameDetailPage() {
     }
   }
 
-  async function handleRemove(userId: string) {
+  async function handleRemove(userId: string | null, regId?: string) {
     if (!id) return;
     try {
-      await gamesService.removeRegistration(id, userId);
+      await gamesService.removeRegistration(id, userId || 'guest', regId);
       fetchGame();
     } catch (e) {
       setError(getApiError(e));
@@ -172,6 +181,27 @@ export default function GameDetailPage() {
       fetchGame();
     } catch (e) {
       setError(getApiError(e));
+    }
+  }
+
+  async function loadAvailableMembers() {
+    if (!id) return;
+    try {
+      const { data } = await gamesService.getAvailableMembers(id);
+      setAvailableMembers(data);
+    } catch (e) {
+      setError(getApiError(e));
+    }
+  }
+
+  async function handleConfirm() {
+    if (!id) return;
+    try {
+      await gamesService.confirmRegistration(id);
+      showToast('¡Confirmaste tu asistencia!');
+      fetchGame();
+    } catch (e) {
+      setRegError(getApiError(e));
     }
   }
 
@@ -223,6 +253,12 @@ export default function GameDetailPage() {
   const isAlreadyRegistered = mainList.some((r) => r.userId === user?.id) || waitList.some((r) => r.userId === user?.id);
   const spotsLeft = Math.max(0, game.maxMainSpots - mainList.length);
   const mainListFull = mainList.length >= game.maxMainSpots;
+  const allRegs = [...mainList, ...waitList];
+  const proxyCount = allRegs.filter((r) => r.registeredById === user?.id && r.userId !== user?.id && !r.isGuest).length;
+  const proxyLimitReached = !isAdmin && proxyCount >= game.maxProxyRegistrations;
+  const hasPendingConfirmation = allRegs.some(
+    (r) => r.userId === user?.id && r.pendingConfirmation,
+  );
 
   const paidMain = mainList.filter((r) => r.paid).length;
   const paidWait = waitList.filter((r) => r.paid).length;
@@ -345,6 +381,26 @@ export default function GameDetailPage() {
 
         {isOpen && (
           <div style={{ marginBottom: 20, textAlign: 'center' }}>
+            {hasPendingConfirmation && (
+              <div style={{
+                background: '#f59f0011', border: '1px solid #f59f0033',
+                borderRadius: 14, padding: '14px 20px', marginBottom: 12,
+              }}>
+                <p style={{ color: '#f59f00', fontWeight: 700, fontSize: 14, margin: '0 0 8px' }}>
+                  ⏳ Tienes una confirmación pendiente
+                </p>
+                <button
+                  onClick={handleConfirm}
+                  style={{
+                    background: '#2da44e', border: 'none', borderRadius: 10,
+                    padding: '10px 24px', color: '#fff', cursor: 'pointer',
+                    fontSize: 14, fontWeight: 700,
+                  }}
+                >
+                  Confirmar asistencia
+                </button>
+              </div>
+            )}
             {isAlreadyRegistered ? (
               <div style={{
                 background: '#2da44e11', border: '1px solid #2da44e33',
@@ -372,7 +428,6 @@ export default function GameDetailPage() {
                     : 'La lista principal está llena — quedarás en espera'}
                 </p>
                 {regError && <p style={{ color: '#ff6b6b', fontSize: 13, marginBottom: 8 }}>{regError}</p>}
-                {regSuccess && <p style={{ color: '#2da44e', fontSize: 13, marginBottom: 8 }}>{regSuccess}</p>}
                 <button
                   onClick={handleRegister}
                   disabled={registering}
@@ -388,6 +443,18 @@ export default function GameDetailPage() {
                 </button>
               </div>
             )}
+
+            <button
+              onClick={() => setShowRegisterOther(true)}
+              style={{
+                background: 'none', border: '1px solid #3b5bdb55',
+                borderRadius: 10, padding: '10px 20px', color: '#6e8efb',
+                cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                marginTop: 12, transition: 'all 0.15s',
+              }}
+            >
+              + Anotar a alguien más
+            </button>
           </div>
         )}
 
@@ -418,7 +485,7 @@ export default function GameDetailPage() {
                   onTogglePaid={() => handleToggle(reg.id, 'paid', reg.paid)}
                   onPromote={() => handlePromote(reg.id)}
                   onDemote={() => handleDemote(reg.id)}
-                  onRemove={() => handleRemove(reg.userId)}
+                  onRemove={() => handleRemove(reg.userId, reg.isGuest ? reg.id : undefined)}
                   isSelf={reg.userId === user?.id}
                   allowSelfRemove={isOpen}
                   draggable={isAdmin && !isFinished}
@@ -475,7 +542,7 @@ export default function GameDetailPage() {
                       onTogglePaid={() => handleToggle(reg.id, 'paid', reg.paid)}
                       onPromote={() => handlePromote(reg.id)}
                       onDemote={() => handleDemote(reg.id)}
-                      onRemove={() => handleRemove(reg.userId)}
+                      onRemove={() => handleRemove(reg.userId, reg.isGuest ? reg.id : undefined)}
                       isSelf={reg.userId === user?.id}
                       allowSelfRemove={isOpen}
                       draggable={isAdmin && !isFinished}
@@ -518,7 +585,7 @@ export default function GameDetailPage() {
       </div>
 
       {/* Player profile modal */}
-      {selectedReg && (
+      {selectedReg && selectedReg.user && (
         <PlayerProfileModal
           user={selectedReg.user}
           listInfo={{
@@ -550,6 +617,20 @@ export default function GameDetailPage() {
           onClose={() => setShowComplete(false)}
           gameId={id}
           onCompleted={fetchGame}
+        />
+      )}
+
+      {id && (
+        <RegisterOtherModal
+          open={showRegisterOther}
+          onClose={() => setShowRegisterOther(false)}
+          gameId={id}
+          availableMembers={availableMembers}
+          isUserRegistered={isAlreadyRegistered}
+          isAdmin={isAdmin}
+          proxyLimitReached={proxyLimitReached}
+          maxProxyRegistrations={game.maxProxyRegistrations}
+          onSuccess={() => { fetchGame(); loadAvailableMembers(); }}
         />
       )}
     </>

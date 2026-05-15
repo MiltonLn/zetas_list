@@ -64,6 +64,11 @@ enum AuditAction {
   user_updated
   user_status_changed
   fine_exemption_toggled
+  guest_registered
+  proxy_registered
+  confirmation_requested
+  confirmation_received
+  confirmation_expired
 }
 
 model User {
@@ -95,21 +100,25 @@ model User {
 }
 
 model Game {
-  id                 String     @id @default(uuid())
-  title              String
-  modalidad          Modalidad
-  gameDate           DateTime   @db.Date
-  startTime          String     @default("19:50")
-  registrationOpenAt DateTime
-  maxMainSpots       Int
-  pricePerPlayer     Int        @default(2000)
-  vigilante          Int        @default(10000)
-  status             GameStatus @default(scheduled)
-  cancellationReason String?
-  completionReport   String?
-  createdById        String
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
+  id                    String     @id @default(uuid())
+  title                 String
+  modalidad             Modalidad
+  gameDate              DateTime   @db.Date
+  startTime             String     @default("19:50")
+  registrationOpenAt    DateTime
+  maxMainSpots          Int
+  pricePerPlayer        Int        @default(2000)
+  vigilante             Int        @default(10000)
+  status                GameStatus @default(scheduled)
+  cancellationReason    String?
+  completionReport      String?
+  guestCutoffTime       String     @default("13:30")
+  maxProxyRegistrations Int        @default(1)
+  mainListHasBeenFull   Boolean    @default(false)
+  cutoffNotified        Boolean    @default(false)
+  createdById           String
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
 
   createdBy     User               @relation("CreatedBy", fields: [createdById], references: [id])
   registrations GameRegistration[]
@@ -121,38 +130,46 @@ model Game {
 }
 
 model GameRegistration {
-  id           String   @id @default(uuid())
-  gameId       String
-  userId       String
-  position     Int
-  isWaitingList Boolean  @default(false)
-  attended     Boolean  @default(false)
-  paid         Boolean  @default(false)
-  note         String?
-  fromWaitList Boolean  @default(false)
-  fineExempt   Boolean  @default(false)
-  registeredAt DateTime @default(now())
-  registeredById String
+  id                   String    @id @default(uuid())
+  gameId               String
+  userId               String?
+  position             Int
+  isWaitingList        Boolean   @default(false)
+  attended             Boolean   @default(false)
+  paid                 Boolean   @default(false)
+  note                 String?
+  fromWaitList         Boolean   @default(false)
+  fineExempt           Boolean   @default(false)
+  isGuest              Boolean   @default(false)
+  guestName            String?
+  pendingConfirmation  Boolean   @default(false)
+  confirmationDeadline DateTime?
+  confirmationDeclined Boolean   @default(false)
+  originalWaitPosition Int?
+  registeredAt         DateTime  @default(now())
+  registeredById       String
 
-  game         Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  user         User @relation("RegisteredUser", fields: [userId], references: [id])
-  registeredBy User @relation("RegisteredBy", fields: [registeredById], references: [id])
+  game         Game  @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user         User? @relation("RegisteredUser", fields: [userId], references: [id])
+  registeredBy User  @relation("RegisteredBy", fields: [registeredById], references: [id])
 
   @@unique([gameId, userId])
   @@map("game_registrations")
+  @@index([gameId, isWaitingList, position])
+  @@index([pendingConfirmation, confirmationDeadline])
 }
 
 model AuditLog {
   id           String      @id @default(uuid())
   gameId       String?
-  actorId      String
+  actorId      String?
   targetUserId String?
   action       AuditAction
   details      Json        @default("{}")
   createdAt    DateTime    @default(now())
 
   game       Game? @relation(fields: [gameId], references: [id], onDelete: SetNull)
-  actor      User  @relation("AuditActor", fields: [actorId], references: [id])
+  actor      User? @relation("AuditActor", fields: [actorId], references: [id])
   targetUser User? @relation("AuditTarget", fields: [targetUserId], references: [id])
 
   @@map("audit_logs")

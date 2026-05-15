@@ -57,4 +57,16 @@ export class CreateGameDto {
   @IsOptional()
   @IsString()
   customTitle?: string;
+
+  @ApiPropertyOptional({ example: '13:30', default: '13:30', description: 'Hora de corte para invitados (HH:mm)' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{2}:\d{2}$/, { message: 'Formato de hora inválido (HH:mm)' })
+  guestCutoffTime?: string;
+
+  @ApiPropertyOptional({ example: 1, default: 1, description: 'Máx. personas que un miembro puede anotar' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxProxyRegistrations?: number;
 }
