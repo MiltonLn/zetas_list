@@ -21,7 +21,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     SentryModule.forRoot(),
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 10 }]),
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 300 }]),
     ...(isProduction
       ? [
           ServeStaticModule.forRoot({
