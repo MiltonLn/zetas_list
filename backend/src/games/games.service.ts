@@ -567,7 +567,8 @@ export class GamesService {
         });
     if (!reg) throw new NotFoundException('Registro no encontrado');
 
-    if (actorRole !== Role.admin && actorId !== userId) {
+    const regOwnerId = reg.userId ?? reg.registeredById;
+    if (actorRole !== Role.admin && actorId !== regOwnerId) {
       throw new ForbiddenException('No puedes eliminar a otro jugador');
     }
 
