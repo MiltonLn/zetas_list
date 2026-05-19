@@ -38,7 +38,7 @@ COPY --from=backend-builder /app/prisma ./prisma
 COPY --from=frontend-builder /app/frontend/dist ./public
 COPY backend/package*.json ./
 
-RUN npx prisma generate
+RUN mkdir -p uploads && npx prisma generate
 
 EXPOSE 3000
 
