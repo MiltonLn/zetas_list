@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/auth.service';
 import { getApiError } from '../services/api';
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -18,6 +19,10 @@ export default function LoginPage() {
   const [recoverLoading, setRecoverLoading] = useState(false);
   const [recoverMsg, setRecoverMsg] = useState('');
   const [recoverError, setRecoverError] = useState('');
+
+  if (!authLoading && user && !user.mustChangePassword) {
+    return <Navigate to="/" replace />;
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

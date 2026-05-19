@@ -1,4 +1,5 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import * as Sentry from '@sentry/react';
 
 type RetryConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
@@ -72,6 +73,11 @@ api.interceptors.response.use(
       } finally {
         isRefreshing = false;
       }
+    }
+
+    // Capture unexpected non-401 errors in Sentry
+    if (error.response && error.response.status >= 500) {
+      Sentry.captureException(error);
     }
 
     return Promise.reject(error);

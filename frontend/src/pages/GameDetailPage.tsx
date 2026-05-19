@@ -31,6 +31,7 @@ import { GameCompleteModal } from '../components/GameCompleteModal';
 import { RegisterOtherModal } from '../components/RegisterOtherModal';
 import { showToast } from '../utils/toast';
 import { getApiError } from '../services/api';
+import { formatReportLine } from '../utils/format-report';
 
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -62,6 +63,11 @@ export default function GameDetailPage() {
   const [showRegisterOther, setShowRegisterOther] = useState(false);
 
   const reorderTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mainListRef = useRef(mainList);
+  const waitListRef = useRef(waitList);
+
+  useEffect(() => { mainListRef.current = mainList; }, [mainList]);
+  useEffect(() => { waitListRef.current = waitList; }, [waitList]);
 
   const fetchGame = useCallback(async () => {
     if (!id) return;
@@ -107,8 +113,8 @@ export default function GameDetailPage() {
 
     if (reorderTimeout.current) clearTimeout(reorderTimeout.current);
     reorderTimeout.current = setTimeout(() => {
-      const updatedMain = listType === 'main' ? newList : mainList;
-      const updatedWait = listType === 'wait' ? newList : waitList;
+      const updatedMain = listType === 'main' ? newList : mainListRef.current;
+      const updatedWait = listType === 'wait' ? newList : waitListRef.current;
       gamesService
         .reorder(id!, updatedMain.map((r) => r.id), updatedWait.map((r) => r.id))
         .catch((e) => {
@@ -368,7 +374,7 @@ export default function GameDetailPage() {
                     key={i}
                     style={{ minHeight: line.trim() === '' ? 8 : undefined }}
                     dangerouslySetInnerHTML={{
-                      __html: line.replace(/\*([^*]+)\*/g, '<strong>$1</strong>') || '&nbsp;',
+                      __html: formatReportLine(line) || '&nbsp;',
                     }}
                   />
                 ))}

@@ -24,6 +24,8 @@ import { CreateGameDto } from './dto/create-game.dto';
 import { CancelGameDto } from './dto/cancel-game.dto';
 import { UpdateRegistrationDto } from './dto/update-registration.dto';
 import { ReorderDto } from './dto/reorder.dto';
+import { RegisterGuestDto } from './dto/register-guest.dto';
+import { FineExemptDto } from './dto/fine-exempt.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -104,10 +106,10 @@ export class GamesController {
   @Post(':id/register-guest')
   registerGuest(
     @Param('id') id: string,
-    @Body() body: { guestName: string },
+    @Body() dto: RegisterGuestDto,
     @CurrentUser() user: JwtUser,
   ) {
-    return this.gamesService.registerGuest(id, body.guestName, user.id);
+    return this.gamesService.registerGuest(id, dto.guestName, user.id);
   }
 
   @Post(':id/confirm')
@@ -208,10 +210,10 @@ export class GamesController {
   setFineExempt(
     @Param('id') id: string,
     @Param('regId') regId: string,
-    @Body() body: { exempt: boolean },
+    @Body() dto: FineExemptDto,
     @CurrentUser() user: JwtUser,
   ) {
-    return this.gamesService.setFineExempt(id, regId, body.exempt, user.id);
+    return this.gamesService.setFineExempt(id, regId, dto.exempt, user.id);
   }
 
   @Get(':id/report')

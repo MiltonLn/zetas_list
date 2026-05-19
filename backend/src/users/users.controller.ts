@@ -22,6 +22,7 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -84,10 +85,10 @@ export class UsersController {
   @Patch(':id/reset-password')
   resetPassword(
     @Param('id') id: string,
-    @Body('newPassword') newPassword: string,
+    @Body() dto: ResetPasswordDto,
     @CurrentUser() user: JwtUser,
   ) {
-    return this.usersService.resetPassword(id, newPassword, user.id);
+    return this.usersService.resetPassword(id, dto.newPassword, user.id);
   }
 
   @Post(':id/photo')

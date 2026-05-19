@@ -9,6 +9,10 @@ import { join } from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET env variable is required in production');
+    process.exit(1);
+  }
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.use(cookieParser());

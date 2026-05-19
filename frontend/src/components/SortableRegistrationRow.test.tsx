@@ -137,4 +137,48 @@ describe('SortableRegistrationRow', () => {
     expect(screen.queryByTitle('Mover a lista de espera')).not.toBeInTheDocument();
     expect(screen.queryByTitle('Promover a lista principal')).not.toBeInTheDocument();
   });
+
+  // ─── click interactions ────────────────────────────────────────────────────
+
+  it('llama onNameClick al hacer click en el nombre del jugador', async () => {
+    const { user } = await import('@testing-library/user-event').then((m) => ({
+      user: m.default.setup(),
+    }));
+    const onNameClick = vi.fn();
+    render(<SortableRegistrationRow {...baseProps} onNameClick={onNameClick} />);
+    await user.click(screen.getAllByText('Carlos')[0]);
+    expect(onNameClick).toHaveBeenCalled();
+  });
+
+  it('llama onToggleAttended al hacer click en el checkbox de asistencia', async () => {
+    const { user } = await import('@testing-library/user-event').then((m) => ({
+      user: m.default.setup(),
+    }));
+    const onToggleAttended = vi.fn();
+    render(<SortableRegistrationRow {...baseProps} onToggleAttended={onToggleAttended} />);
+    await user.click(screen.getByTitle('Asistió'));
+    expect(onToggleAttended).toHaveBeenCalled();
+  });
+
+  it('llama onTogglePaid al hacer click en el checkbox de pago', async () => {
+    const { user } = await import('@testing-library/user-event').then((m) => ({
+      user: m.default.setup(),
+    }));
+    const onTogglePaid = vi.fn();
+    render(<SortableRegistrationRow {...baseProps} onTogglePaid={onTogglePaid} />);
+    await user.click(screen.getByTitle('Pagó'));
+    expect(onTogglePaid).toHaveBeenCalled();
+  });
+
+  it('llama onRemove al hacer click en el botón eliminar (admin)', async () => {
+    const { user } = await import('@testing-library/user-event').then((m) => ({
+      user: m.default.setup(),
+    }));
+    const onRemove = vi.fn();
+    render(<SortableRegistrationRow {...baseProps} onRemove={onRemove} />);
+    // First click sets confirm state, second click confirms
+    await user.click(screen.getByTitle('Eliminar'));
+    await user.click(screen.getByTitle('Confirmar eliminación'));
+    expect(onRemove).toHaveBeenCalled();
+  });
 });

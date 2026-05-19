@@ -35,6 +35,7 @@ const mockPrisma = {
     findMany: jest.fn(),
   },
   $transaction: jest.fn(),
+  $queryRaw: jest.fn().mockResolvedValue([]),
 };
 
 const mockAudit = { log: jest.fn() };
@@ -90,6 +91,8 @@ describe('GamesService', () => {
     mockWhatsapp.sendMessage.mockResolvedValue(undefined);
     mockAudit.log.mockResolvedValue(undefined);
     mockEvents.emit.mockReturnValue(undefined);
+    // Default: execute $transaction callback with mockPrisma as the tx context
+    mockPrisma.$transaction.mockImplementation(async (cb: any) => cb(mockPrisma));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -1302,6 +1305,157 @@ describe('GamesService', () => {
       });
       const report = service.generateReport(game as any);
       expect(report).toContain('Carlos (inv. de Milton)');
+    });
+  });
+
+  // ─── reorder ───────────────────────────────────────────────────────────────
+
+  describe('reorder', () => {
+    it('ejecuta la reordenação dentro de uma transação', async () => {
+      mockPrisma.gameRegistration.updateMany.mockResolvedValue({});
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.reorder('game-1', { mainList: ['r1', 'r2'], waitList: [] }, 'admin-1');
+
+      expect(mockPrisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('asigna posiciones consecutivas a cada lista', async () => {
+      mockPrisma.gameRegistration.updateMany.mockResolvedValue({});
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.reorder('game-1', { mainList: ['r1', 'r2', 'r3'], waitList: ['w1'] }, 'admin-1');
+
+      expect(mockPrisma.gameRegistration.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ position: 1, isWaitingList: false }) }),
+      );
+      expect(mockPrisma.gameRegistration.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ position: 3, isWaitingList: false }) }),
+      );
+      expect(mockPrisma.gameRegistration.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ position: 1, isWaitingList: true }) }),
+      );
+    });
+
+    it('llama a audit.log con "player_reordered"', async () => {
+      mockPrisma.gameRegistration.updateMany.mockResolvedValue({});
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.reorder('game-1', { mainList: [], waitList: [] }, 'admin-1');
+
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'player_reordered', actorId: 'admin-1' }),
+      );
+    });
+  });
+
+  // ─── cancel ────────────────────────────────────────────────────────────────
+
+  describe('cancel', () => {
+    it('lanza BadRequestException si el partido ya está completado', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame({ status: GameStatus.completed }) as any);
+      await expect(service.cancel('game-1', { reason: '' }, 'admin-1')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('lanza BadRequestException si el partido ya está cancelado', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame({ status: GameStatus.cancelled }) as any);
+      await expect(service.cancel('game-1', { reason: '' }, 'admin-1')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('cambia el estado a cancelled', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame({ status: GameStatus.registration_open }) as any);
+      const cancelled = makeGame({ status: GameStatus.cancelled });
+      mockPrisma.game.update.mockResolvedValue(cancelled);
+
+      const result = await service.cancel('game-1', { reason: 'Lluvia' }, 'admin-1');
+
+      expect(mockPrisma.game.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: GameStatus.cancelled, cancellationReason: 'Lluvia' }),
+        }),
+      );
+      expect(result.status).toBe(GameStatus.cancelled);
+    });
+
+    it('llama a audit.log con "game_cancelled"', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      mockPrisma.game.update.mockResolvedValue(makeGame({ status: GameStatus.cancelled }));
+
+      await service.cancel('game-1', { reason: 'Test' }, 'admin-1');
+
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'game_cancelled' }),
+      );
+    });
+
+    it('envía mensaje de WhatsApp al cancelar', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame({ title: 'Voley VIE' }) as any);
+      mockPrisma.game.update.mockResolvedValue(makeGame({ status: GameStatus.cancelled }));
+      mockWhatsapp.sendToGroup.mockResolvedValue(undefined);
+
+      await service.cancel('game-1', { reason: '' }, 'admin-1');
+
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('Voley VIE'),
+      );
+    });
+  });
+
+  // ─── updateRegistration ────────────────────────────────────────────────────
+
+  describe('updateRegistration', () => {
+    it('lanza NotFoundException si el registro no pertenece al partido', async () => {
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(null);
+      await expect(
+        service.updateRegistration('reg-99', { attended: true }, 'admin-1', 'game-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('verifica gameId en la búsqueda (prevención IDOR)', async () => {
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(null);
+      await expect(
+        service.updateRegistration('reg-1', { attended: true }, 'admin-1', 'otro-game'),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(mockPrisma.gameRegistration.findFirst).toHaveBeenCalledWith({
+        where: { id: 'reg-1', gameId: 'otro-game' },
+      });
+    });
+
+    it('actualiza el campo attended y llama a audit.log', async () => {
+      const reg = makeReg();
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(reg);
+      mockPrisma.gameRegistration.update.mockResolvedValue({ ...reg, attended: true });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.updateRegistration('reg-1', { attended: true }, 'admin-1', 'game-1');
+
+      expect(mockPrisma.gameRegistration.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'reg-1', gameId: 'game-1' },
+          data: { attended: true },
+        }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'attendance_toggled' }),
+      );
+    });
+
+    it('actualiza el campo paid y llama a audit.log', async () => {
+      const reg = makeReg();
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(reg);
+      mockPrisma.gameRegistration.update.mockResolvedValue({ ...reg, paid: true });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.updateRegistration('reg-1', { paid: true }, 'admin-1', 'game-1');
+
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'payment_toggled' }),
+      );
     });
   });
 });

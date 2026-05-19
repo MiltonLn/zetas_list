@@ -131,7 +131,38 @@ describe('AuthService', () => {
     });
   });
 
-  // ─── changePassword ────────────────────────────────────────────────────────
+  // ─── refresh ───────────────────────────────────────────────────────────────
+
+  describe('refresh', () => {
+    it('lanza UnauthorizedException si el token no es verificable', async () => {
+      mockJwt.verify.mockImplementation(() => { throw new Error('invalid'); });
+      await expect(service.refresh('bad-token')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('lanza UnauthorizedException si el usuario no existe', async () => {
+      mockJwt.verify.mockReturnValue({ sub: 'user-1' });
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('lanza UnauthorizedException si el usuario no está activo', async () => {
+      mockJwt.verify.mockReturnValue({ sub: 'user-1' });
+      mockPrisma.user.findUnique.mockResolvedValue(makeDbUser({ status: 'banned' }));
+      await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('devuelve nuevos accessToken y refreshToken cuando el token es válido', async () => {
+      mockJwt.verify.mockReturnValue({ sub: 'user-1' });
+      mockPrisma.user.findUnique.mockResolvedValue(makeDbUser({ status: 'active' }));
+
+      const result = await service.refresh('valid-token');
+
+      expect(result.accessToken).toBe('mocked-token');
+      expect(result.refreshToken).toBe('mocked-token');
+    });
+  });
+
+
 
   describe('changePassword', () => {
     it('lanza UnauthorizedException si la contraseña actual es incorrecta', async () => {

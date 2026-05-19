@@ -35,7 +35,11 @@ export default function App() {
         <ToastContainer />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/change-password" element={<ChangePasswordPage />} />
+          <Route path="/change-password" element={
+            <PrivateRoute>
+              <ChangePasswordPage />
+            </PrivateRoute>
+          } />
           <Route
             path="/"
             element={

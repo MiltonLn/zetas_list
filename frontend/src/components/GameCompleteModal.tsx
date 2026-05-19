@@ -3,6 +3,7 @@ import { Modal } from './Modal';
 import { Spinner } from './Spinner';
 import { gamesService } from '../services/games.service';
 import { getApiError } from '../services/api';
+import { formatReportLine } from '../utils/format-report';
 
 interface FineablePlayer {
   regId: string;
@@ -16,10 +17,6 @@ interface Props {
   onClose: () => void;
   gameId: string;
   onCompleted: () => void;
-}
-
-function formatReportLine(line: string) {
-  return line.replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
 }
 
 export function GameCompleteModal({ open, onClose, gameId, onCompleted }: Props) {

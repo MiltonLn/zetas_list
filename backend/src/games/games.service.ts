@@ -24,6 +24,15 @@ const DEFAULT_SPOTS: Record<Modalidad, number> = {
   torneo: 18,
 };
 
+const COLOMBIA_OFFSET_MIN = -5 * 60;
+const CONFIRMATION_TIMEOUT_MS = 15 * 60 * 1000;
+const NEXT_CONFIRM_TIMEOUT_MS = 5 * 60 * 1000;
+const DEFAULT_PRICE_PER_PLAYER = 2000;
+const DEFAULT_VIGILANTE = 10000;
+const DEFAULT_GUEST_CUTOFF = '13:30';
+const DEFAULT_MAX_PROXY = 1;
+const DEFAULT_REGISTRATION_OPEN_TIME = '10:00';
+
 export const MODALIDAD_LABEL: Record<Modalidad, string> = {
   seis_x_seis: '6x6',
   cuatro_x_cuatro: '4x4',
@@ -126,7 +135,7 @@ export class GamesService {
     const title = dto.customTitle?.trim() || this.buildTitle(dto.modalidad, dto.gameDate, startTime);
     const maxMainSpots = dto.maxMainSpots ?? DEFAULT_SPOTS[dto.modalidad];
 
-    const registrationOpenTime = dto.registrationOpenTime ?? '10:00';
+    const registrationOpenTime = dto.registrationOpenTime ?? DEFAULT_REGISTRATION_OPEN_TIME;
     const registrationOpenAt = new Date(`${dto.gameDate}T${registrationOpenTime}:00-05:00`);
 
     const now = new Date();
@@ -141,10 +150,10 @@ export class GamesService {
         startTime,
         registrationOpenAt,
         maxMainSpots,
-        pricePerPlayer: dto.pricePerPlayer ?? 2000,
-        vigilante: dto.vigilante ?? 10000,
-        guestCutoffTime: dto.guestCutoffTime ?? '13:30',
-        maxProxyRegistrations: dto.maxProxyRegistrations ?? 1,
+        pricePerPlayer: dto.pricePerPlayer ?? DEFAULT_PRICE_PER_PLAYER,
+        vigilante: dto.vigilante ?? DEFAULT_VIGILANTE,
+        guestCutoffTime: dto.guestCutoffTime ?? DEFAULT_GUEST_CUTOFF,
+        maxProxyRegistrations: dto.maxProxyRegistrations ?? DEFAULT_MAX_PROXY,
         status: initialStatus,
         createdById: actorId,
       },
@@ -507,9 +516,8 @@ export class GamesService {
 
   isBeforeCutoff(cutoffTime: string, gameDate?: Date | string): boolean {
     const now = new Date();
-    const colombiaOffset = -5 * 60;
     const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
-    const colombiaMs = utcMs + colombiaOffset * 60000;
+    const colombiaMs = utcMs + COLOMBIA_OFFSET_MIN * 60000;
     const colombiaNow = new Date(colombiaMs);
 
     if (gameDate) {
@@ -533,9 +541,8 @@ export class GamesService {
       return new Date(`${dateStr}T${cutoffTime}:00-05:00`);
     }
     const now = new Date();
-    const colombiaOffset = -5 * 60;
     const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
-    const colombiaMs = utcMs + colombiaOffset * 60000;
+    const colombiaMs = utcMs + COLOMBIA_OFFSET_MIN * 60000;
     const colombiaDate = new Date(colombiaMs);
     const dateStr = `${colombiaDate.getFullYear()}-${String(colombiaDate.getMonth() + 1).padStart(2, '0')}-${String(colombiaDate.getDate()).padStart(2, '0')}`;
     return new Date(`${dateStr}T${cutoffTime}:00-05:00`);
@@ -573,27 +580,27 @@ export class GamesService {
         })
       : [];
 
-    await this.prisma.gameRegistration.delete({
-      where: { id: reg.id },
-    });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.gameRegistration.delete({ where: { id: reg.id } });
 
-    await this.prisma.gameRegistration.updateMany({
-      where: { gameId, isWaitingList: reg.isWaitingList, position: { gt: reg.position } },
-      data: { position: { decrement: 1 } },
-    });
-
-    if (orphanedGuests.length > 0) {
-      await this.prisma.gameRegistration.deleteMany({
-        where: { id: { in: orphanedGuests.map((g) => g.id) } },
+      await tx.gameRegistration.updateMany({
+        where: { gameId, isWaitingList: reg.isWaitingList, position: { gt: reg.position } },
+        data: { position: { decrement: 1 } },
       });
-      const sorted = [...orphanedGuests].sort((a, b) => b.position - a.position);
-      for (const guest of sorted) {
-        await this.prisma.gameRegistration.updateMany({
-          where: { gameId, isWaitingList: guest.isWaitingList, position: { gt: guest.position } },
-          data: { position: { decrement: 1 } },
+
+      if (orphanedGuests.length > 0) {
+        await tx.gameRegistration.deleteMany({
+          where: { id: { in: orphanedGuests.map((g) => g.id) } },
         });
+        const sorted = [...orphanedGuests].sort((a, b) => b.position - a.position);
+        for (const guest of sorted) {
+          await tx.gameRegistration.updateMany({
+            where: { gameId, isWaitingList: guest.isWaitingList, position: { gt: guest.position } },
+            data: { position: { decrement: 1 } },
+          });
+        }
       }
-    }
+    });
 
     await this.audit.log({
       gameId,
@@ -636,11 +643,11 @@ export class GamesService {
   }
 
   async updateRegistration(regId: string, dto: UpdateRegistrationDto, actorId: string, gameId: string) {
-    const reg = await this.prisma.gameRegistration.findUnique({ where: { id: regId } });
+    const reg = await this.prisma.gameRegistration.findFirst({ where: { id: regId, gameId } });
     if (!reg) throw new NotFoundException('Registro no encontrado');
 
     const updated = await this.prisma.gameRegistration.update({
-      where: { id: regId },
+      where: { id: regId, gameId },
       data: dto,
       include: REGISTRATION_INCLUDE,
     });
@@ -835,7 +842,7 @@ export class GamesService {
 
     await this.promote(gameId, promoted.id, null, { silent: true });
 
-    const confirmDeadline = new Date(Date.now() + 15 * 60 * 1000);
+    const confirmDeadline = new Date(Date.now() + CONFIRMATION_TIMEOUT_MS);
     await this.prisma.gameRegistration.update({
       where: { id: promoted.id },
       data: {
@@ -941,7 +948,7 @@ export class GamesService {
     }
 
     const nextOriginalPos = nextInWait.position;
-    const nextDeadline = new Date(Date.now() + 5 * 60 * 1000);
+    const nextDeadline = new Date(Date.now() + NEXT_CONFIRM_TIMEOUT_MS);
 
     await this.promote(reg.gameId, nextInWait.id, null, { silent: true });
 

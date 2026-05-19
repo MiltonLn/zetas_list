@@ -4,6 +4,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
 } from 'react';
 import type { ReactNode } from 'react';
 import type { AuthUser } from '../types';
@@ -44,17 +45,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, [logout]);
 
-  const login = async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string) => {
     const { data } = await authService.login(username, password);
     localStorage.setItem('accessToken', data.accessToken);
     localStorage.setItem('refreshToken', data.refreshToken);
     setUser(data.user);
-  };
+  }, []);
+
+  const value = useMemo(
+    () => ({ user, loading, login, logout, setUser, isAdmin: user?.role === 'admin' }),
+    [user, loading, login, logout],
+  );
 
   return (
-    <AuthContext.Provider
-      value={{ user, loading, login, logout, setUser, isAdmin: user?.role === 'admin' }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
