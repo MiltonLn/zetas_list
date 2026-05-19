@@ -29,8 +29,8 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await login(username, password);
-      navigate('/');
+      const loggedUser = await login(username, password);
+      navigate(loggedUser.mustChangePassword ? '/change-password' : '/');
     } catch (err) {
       setError(getApiError(err));
     } finally {

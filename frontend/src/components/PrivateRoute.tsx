@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Spinner } from './Spinner';
 
@@ -9,6 +9,7 @@ interface PrivateRouteProps {
 
 export function PrivateRoute({ children, adminOnly = false }: PrivateRouteProps) {
   const { user, loading } = useAuth();
+  const { pathname } = useLocation();
 
   if (loading) {
     return (
@@ -19,7 +20,9 @@ export function PrivateRoute({ children, adminOnly = false }: PrivateRouteProps)
   }
 
   if (!user) return <Navigate to="/login" replace />;
-  if (user.mustChangePassword) return <Navigate to="/change-password" replace />;
+  if (user.mustChangePassword && pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />;
+  }
   if (adminOnly && user.role !== 'admin') return <Navigate to="/" replace />;
 
   return <>{children}</>;
