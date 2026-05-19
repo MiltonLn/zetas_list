@@ -73,6 +73,8 @@ function makeGame(overrides: Partial<any> = {}) {
     vigilante: 10000,
     status: GameStatus.registration_open,
     cancellationReason: null,
+    guestCutoffTime: '13:30',
+    maxProxyRegistrations: 5,
     createdById: 'actor-1',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -338,6 +340,60 @@ describe('GamesService', () => {
       await expect(
         service.register('game-1', 'target-user', 'admin-user'),
       ).resolves.toBeDefined();
+    });
+
+    it('proxy registrado con tiempo suficiente antes del cutoff requiere confirmación', async () => {
+      // cutoff is far in the future (> CONFIRMATION_TIMEOUT_MS away)
+      const farCutoff = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+      const hh = String(farCutoff.getHours()).padStart(2, '0');
+      const mm = String(farCutoff.getMinutes()).padStart(2, '0');
+      txMock.$queryRaw.mockResolvedValue([{
+        id: 'game-1', status: 'registration_open', maxMainSpots: 18,
+        mainListHasBeenFull: false, guestCutoffTime: `${hh}:${mm}`, maxProxyRegistrations: 5,
+        gameDate: farCutoff,
+      }]);
+      txMock.gameRegistration.findFirst.mockResolvedValue(null);
+      txMock.user.findUnique
+        .mockResolvedValueOnce({ role: 'admin' })
+        .mockResolvedValueOnce({ status: 'active' });
+      txMock.gameRegistration.count.mockResolvedValue(0);
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
+      const created = makeReg({ pendingConfirmation: true });
+      txMock.gameRegistration.create.mockResolvedValue(created);
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.register('game-1', 'target-user', 'admin-user');
+
+      expect(txMock.gameRegistration.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ pendingConfirmation: true }) }),
+      );
+    });
+
+    it('proxy registrado muy cerca del cutoff se auto-confirma (Opción A)', async () => {
+      // cutoff is only 5 minutes away, less than CONFIRMATION_TIMEOUT_MS (15 min)
+      const soonCutoff = new Date(Date.now() + 5 * 60 * 1000);
+      const hh = String(soonCutoff.getHours()).padStart(2, '0');
+      const mm = String(soonCutoff.getMinutes()).padStart(2, '0');
+      txMock.$queryRaw.mockResolvedValue([{
+        id: 'game-1', status: 'registration_open', maxMainSpots: 18,
+        mainListHasBeenFull: false, guestCutoffTime: `${hh}:${mm}`, maxProxyRegistrations: 5,
+        gameDate: soonCutoff,
+      }]);
+      txMock.gameRegistration.findFirst.mockResolvedValue(null);
+      txMock.user.findUnique
+        .mockResolvedValueOnce({ role: 'admin' })
+        .mockResolvedValueOnce({ status: 'active' });
+      txMock.gameRegistration.count.mockResolvedValue(0);
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
+      const created = makeReg({ pendingConfirmation: false });
+      txMock.gameRegistration.create.mockResolvedValue(created);
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.register('game-1', 'target-user', 'admin-user');
+
+      expect(txMock.gameRegistration.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ pendingConfirmation: false }) }),
+      );
     });
   });
 

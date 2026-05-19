@@ -320,7 +320,8 @@ export class GamesService {
         });
         const nextPosition = (maxPositionResult._max.position ?? 0) + 1;
 
-        const needsConfirmation = !isSelfRegister && this.isBeforeCutoff(g.guestCutoffTime, g.gameDate);
+        const msUntilCutoff = this.buildCutoffDateTime(gameId, g.guestCutoffTime, g.gameDate).getTime() - Date.now();
+        const needsConfirmation = !isSelfRegister && this.isBeforeCutoff(g.guestCutoffTime, g.gameDate) && msUntilCutoff > CONFIRMATION_TIMEOUT_MS;
         const confirmationDeadline = needsConfirmation ? this.buildCutoffDateTime(gameId, g.guestCutoffTime, g.gameDate) : null;
 
         return tx.gameRegistration.create({
