@@ -29,7 +29,7 @@ import { GameAuditModal } from '../components/GameAuditModal';
 import { GameCancelModal } from '../components/GameCancelModal';
 import { GameCompleteModal } from '../components/GameCompleteModal';
 import { RegisterOtherModal } from '../components/RegisterOtherModal';
-import { showToast } from '../components/Toast';
+import { showToast } from '../utils/toast';
 import { getApiError } from '../services/api';
 
 export default function GameDetailPage() {
@@ -84,7 +84,7 @@ export default function GameDetailPage() {
     if (game && (game.status === 'registration_open' || game.status === 'in_progress')) {
       loadAvailableMembers();
     }
-  }, [game?.status, game?.registrations?.length]);
+  }, [game?.status, game?.registrations?.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useGameStream(id, fetchGame);
 

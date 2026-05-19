@@ -1,18 +1,6 @@
 import { useEffect, useState } from 'react';
-
-interface Toast {
-  id: number;
-  message: string;
-  type: 'success' | 'error';
-}
-
-let nextId = 0;
-const listeners: Set<(t: Toast) => void> = new Set();
-
-export function showToast(message: string, type: 'success' | 'error' = 'success') {
-  const toast: Toast = { id: nextId++, message, type };
-  listeners.forEach((fn) => fn(toast));
-}
+import { toastListeners } from '../utils/toast';
+import type { Toast } from '../utils/toast';
 
 export function ToastContainer() {
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -24,8 +12,8 @@ export function ToastContainer() {
         setToasts((prev) => prev.filter((x) => x.id !== t.id));
       }, 3500);
     };
-    listeners.add(handler);
-    return () => { listeners.delete(handler); };
+    toastListeners.add(handler);
+    return () => { toastListeners.delete(handler); };
   }, []);
 
   if (toasts.length === 0) return null;

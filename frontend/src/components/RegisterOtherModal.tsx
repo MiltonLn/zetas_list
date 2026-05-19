@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Modal } from './Modal';
 import { gamesService } from '../services/games.service';
-import { showToast } from './Toast';
+import { showToast } from '../utils/toast';
 import { getApiError } from '../services/api';
 
 interface AvailableMember {
