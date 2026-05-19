@@ -10,6 +10,7 @@ import ProfilePage from './pages/ProfilePage';
 import GameDetailPage from './pages/GameDetailPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import CreateGamePage from './pages/CreateGamePage';
+import LegacyParserPage from './pages/LegacyParserPage';
 
 function AuthenticatedApp({ children }: { children: React.ReactNode }) {
   return (
@@ -72,6 +73,14 @@ export default function App() {
             element={
               <AdminApp>
                 <CreateGamePage />
+              </AdminApp>
+            }
+          />
+          <Route
+            path="/admin/legacy-parser"
+            element={
+              <AdminApp>
+                <LegacyParserPage />
               </AdminApp>
             }
           />

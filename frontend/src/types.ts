@@ -180,6 +180,15 @@ export interface ParseResult {
   warnings: ParseWarning[];
 }
 
+export interface GameList {
+  id: string;
+  title: string;
+  rawMessage: string;
+  createdAt: string;
+  mainList: Player[];
+  waitList: Player[];
+}
+
 export const AUDIT_ACTION_LABELS: Record<string, string> = {
   player_registered: 'Jugador anotado',
   proxy_registered: 'Jugador anotado (por otro)',
