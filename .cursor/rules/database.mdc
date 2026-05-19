@@ -1,0 +1,41 @@
+---
+description: Prisma and PostgreSQL conventions for Zetas List
+globs: backend/prisma/**/*
+alwaysApply: false
+---
+
+# Base de Datos — Convenciones Prisma
+
+## Migraciones
+- Siempre crear migraciones con `npx prisma migrate dev --name <descripcion>`.
+- Nunca editar migraciones ya aplicadas.
+- No usar `prisma db push` en producción. Solo `prisma migrate deploy`.
+
+## Constraints críticos en GameRegistration
+- `UNIQUE(gameId, userId)`: un usuario solo puede estar una vez por partido.
+- `UNIQUE(gameId, position, isWaitingList)`: posición única por sección.
+- `registeredAt`: siempre seteado por el servidor con `new Date()`, nunca por el cliente.
+
+## Locking y concurrencia
+Para cualquier operación que modifique posiciones o cuente spots disponibles:
+
+```sql
+-- Lock obligatorio antes de contar/insertar registrations
+SELECT id FROM games WHERE id = $gameId FOR UPDATE
+```
+
+Usar `Prisma.TransactionIsolationLevel.Serializable` en transacciones de registro.
+
+## Seed
+- El archivo `prisma/seed.ts` es el único lugar para crear datos iniciales.
+- Ejecutar con `npm run prisma:seed`.
+- El seed crea solo el admin inicial si no existe ningún admin.
+
+## Nomenclatura
+- Tablas: snake_case plural (`game_registrations`, `audit_logs`).
+- Campos: camelCase en el schema Prisma, se mapea automáticamente.
+
+## Índices
+- Agregar `@@index` para queries frecuentes (cron scheduler, filtros admin, modales de auditoría).
+- Índices actuales: `games(status, registrationOpenAt)`, `games(gameDate, status)`, `audit_logs(gameId, createdAt)`.
+- Al agregar columnas usadas en WHERE/ORDER BY frecuentes, considerar si necesitan índice.

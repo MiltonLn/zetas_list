@@ -1,0 +1,49 @@
+---
+description: React frontend conventions for Zetas List
+globs: frontend/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend — Convenciones React
+
+## Componentes
+- Solo componentes funcionales con hooks. Nunca class components.
+- Lógica reutilizable en hooks personalizados en `src/hooks/`.
+- Componentes compartidos en `src/components/`.
+- Modales: usar el componente compartido `<Modal>` de `components/Modal.tsx`. No crear overlays inline.
+- Componentes grandes (>300 líneas): extraer sub-componentes a archivos separados en `components/`.
+
+## API calls
+- Todas las llamadas a la API pasan por los servicios en `src/services/`.
+- Nunca hacer `fetch()` o `axios` directo dentro de componentes o hooks.
+- Usar `getApiError()` de `services/api.ts` para extraer mensajes de error del backend.
+- `BASE_URL` está exportado desde `services/api.ts`. No redefinir en otros archivos.
+
+```typescript
+// ✅ CORRECTO
+import { BASE_URL } from '../services/api';
+
+// ❌ INCORRECTO
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+```
+
+## Auth
+- Usar `useAuth()` para acceder al usuario actual, role y funciones de login/logout.
+- Nunca leer `localStorage` directamente para obtener el usuario.
+- Rutas admin: `<PrivateRoute adminOnly>`.
+
+## Estado
+- No usar localStorage para estado de la app (fue removido). Todo va por API.
+- SSE para actualizaciones en tiempo real: usar el hook `useGameStream`.
+
+## Estilos
+- Estilos base: clases CSS de `index.css` (`.btn`, `.btn-primary`, `.zetas-input`, etc.).
+- No usar colores hardcodeados en `style={{}}`. Usar los colores del sistema:
+  - Background: `#0f1020`, Cards: `#161829`, Borders: `#2a2f5a`, Primary: `#3b5bdb`, Text: `#e8eaf6`, Muted: `#7c8db5`.
+- Tailwind solo para layout (flex, grid, spacing).
+
+## UX / Strings
+- Todos los textos visibles al usuario en **español**.
+- Botón de registro principal: siempre "¡Anotame!" (con `!` al inicio).
+- Empty state cuando no hay partido activo: "No hay ninguna lista abierta en el momento, vuelve después."
+- Labels compartidos (`GENDER_LABELS`, `USER_STATUS_LABELS`, `USER_STATUS_COLORS`, `POSITION_LABELS`, `MODALIDAD_LABELS`) viven en `types.ts`. No duplicar.

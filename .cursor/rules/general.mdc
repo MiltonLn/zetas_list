@@ -1,0 +1,43 @@
+---
+description: Project-wide standards for Zetas List monorepo
+alwaysApply: true
+---
+
+# Zetas List — Principios Generales
+
+## Idioma
+- Toda la UI, mensajes de error, notificaciones y comentarios dirigidos al usuario deben estar en **español**.
+- Código, variables, nombres de funciones, comentarios técnicos: **inglés**.
+
+## TypeScript
+- Modo estricto siempre. No usar `any`.
+- Preferir tipos explícitos sobre inferencia en firmas de funciones públicas.
+
+## Entorno
+- Variables de entorno nunca hardcodeadas. Siempre desde `process.env` (backend) o `import.meta.env` (frontend).
+- Guardar secretos solo en `.env` (no commitear `.env`, está en `.gitignore`).
+
+## Errores y monitoreo
+- Sentry está integrado en frontend y backend. No swallowear errores silenciosamente.
+- Errores 5xx del backend: siempre loggear + capturar en Sentry.
+
+## Docker
+- Desarrollo local vía `docker-compose.yml` en la raíz. No instalar PostgreSQL localmente.
+
+## Git
+- Todo el trabajo de Phase 1 va en `feat/phase-1-full-stack`.
+- No pushear directamente a `main` sin PR.
+- Pre-commit hooks activos (`.husky/pre-commit`): lint en archivos staged. Activar con `make hooks`.
+
+## CI
+- GitHub Actions corre en push/PR a `main` y `feat/phase-1-full-stack`.
+- Ambos sub-proyectos: typecheck → lint (0 warnings) → tests.
+- Backend usa `npm ci` con `package-lock.json`. No commitear sin lockfile.
+
+## Testing
+- Backend: Jest con mocks de PrismaService, AuditService, WhatsappService vía `@nestjs/testing`.
+- Frontend: Vitest.
+- Todos los tests deben ser unitarios sin dependencias externas (sin Docker, sin Postgres).
+- **Toda funcionalidad nueva o modificada debe incluir tests**. No se debe mergear código sin cobertura.
+- Al modificar un service o handler existente, actualizar los tests correspondientes.
+- Al crear un endpoint nuevo, agregar tests para los happy paths y los casos de error principales.
