@@ -343,14 +343,15 @@ describe('GamesService', () => {
     });
 
     it('proxy registrado con tiempo suficiente antes del cutoff requiere confirmación', async () => {
-      // cutoff is far in the future (> CONFIRMATION_TIMEOUT_MS away)
-      const farCutoff = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
-      const hh = String(farCutoff.getHours()).padStart(2, '0');
-      const mm = String(farCutoff.getMinutes()).padStart(2, '0');
+      // Mock buildCutoffDateTime to return a time > CONFIRMATION_TIMEOUT_MS (15 min) away
+      // so needsConfirmation = true. Avoids timezone issues in CI.
+      jest.spyOn(service as any, 'buildCutoffDateTime').mockReturnValue(
+        new Date(Date.now() + 60 * 60 * 1000), // 1 hour from now
+      );
       txMock.$queryRaw.mockResolvedValue([{
         id: 'game-1', status: 'registration_open', maxMainSpots: 18,
-        mainListHasBeenFull: false, guestCutoffTime: `${hh}:${mm}`, maxProxyRegistrations: 5,
-        gameDate: farCutoff,
+        mainListHasBeenFull: false, guestCutoffTime: '23:59', maxProxyRegistrations: 5,
+        gameDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
       }]);
       txMock.gameRegistration.findFirst.mockResolvedValue(null);
       txMock.user.findUnique
@@ -370,14 +371,15 @@ describe('GamesService', () => {
     });
 
     it('proxy registrado muy cerca del cutoff se auto-confirma (Opción A)', async () => {
-      // cutoff is only 5 minutes away, less than CONFIRMATION_TIMEOUT_MS (15 min)
-      const soonCutoff = new Date(Date.now() + 5 * 60 * 1000);
-      const hh = String(soonCutoff.getHours()).padStart(2, '0');
-      const mm = String(soonCutoff.getMinutes()).padStart(2, '0');
+      // Mock buildCutoffDateTime to return < CONFIRMATION_TIMEOUT_MS (15 min) away
+      // so needsConfirmation = false. Avoids timezone issues in CI.
+      jest.spyOn(service as any, 'buildCutoffDateTime').mockReturnValue(
+        new Date(Date.now() + 5 * 60 * 1000), // 5 minutes from now
+      );
       txMock.$queryRaw.mockResolvedValue([{
         id: 'game-1', status: 'registration_open', maxMainSpots: 18,
-        mainListHasBeenFull: false, guestCutoffTime: `${hh}:${mm}`, maxProxyRegistrations: 5,
-        gameDate: soonCutoff,
+        mainListHasBeenFull: false, guestCutoffTime: '13:30', maxProxyRegistrations: 5,
+        gameDate: new Date(),
       }]);
       txMock.gameRegistration.findFirst.mockResolvedValue(null);
       txMock.user.findUnique
