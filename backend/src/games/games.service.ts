@@ -320,7 +320,8 @@ export class GamesService {
         });
         const nextPosition = (maxPositionResult._max.position ?? 0) + 1;
 
-        const needsConfirmation = !isSelfRegister && this.isBeforeCutoff(g.guestCutoffTime, g.gameDate);
+        const msUntilCutoff = this.buildCutoffDateTime(gameId, g.guestCutoffTime, g.gameDate).getTime() - Date.now();
+        const needsConfirmation = !isSelfRegister && this.isBeforeCutoff(g.guestCutoffTime, g.gameDate) && msUntilCutoff > CONFIRMATION_TIMEOUT_MS;
         const confirmationDeadline = needsConfirmation ? this.buildCutoffDateTime(gameId, g.guestCutoffTime, g.gameDate) : null;
 
         return tx.gameRegistration.create({
@@ -811,6 +812,12 @@ export class GamesService {
     const game = await this.prisma.game.findUnique({ where: { id: gameId } });
     if (!game || (game.status !== 'registration_open' && game.status !== 'in_progress')) return;
 
+    // Never promote if the main list has never been full:
+    // spots should remain open for direct registration, not auto-filled from waitlist.
+    if (!game.mainListHasBeenFull) return;
+
+    const beforeCutoff = this.isBeforeCutoff(game.guestCutoffTime, game.gameDate);
+
     const promoted = await this.prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
@@ -826,7 +833,13 @@ export class GamesService {
         });
 
         const firstInWait = await tx.gameRegistration.findFirst({
-          where: { gameId, isWaitingList: true, confirmationDeclined: false },
+          where: {
+            gameId,
+            isWaitingList: true,
+            confirmationDeclined: false,
+            // Before cutoff: guests stay in waitlist, only members can be promoted
+            ...(beforeCutoff ? { isGuest: false } : {}),
+          },
           orderBy: { position: 'asc' },
           include: REGISTRATION_INCLUDE,
         });
@@ -895,10 +908,21 @@ export class GamesService {
       _max: { position: true },
     });
     const maxPos = currentMaxResult._max.position ?? 0;
-    const returnPos = Math.min(reg.originalWaitPosition ?? 1, maxPos + 1);
+    const returnPos = reg.originalWaitPosition != null
+      ? Math.min(reg.originalWaitPosition, maxPos + 1)
+      : maxPos + 1;
 
-    await this.prisma.$transaction(async (tx) => {
+    const processed = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM games WHERE id = ${reg.gameId} FOR UPDATE`;
+
+      // Re-check inside the transaction: another concurrent call (e.g. checkGuestCutoff
+      // and checkConfirmationTimeouts firing in the same minute) may have already
+      // processed this registration. If so, bail out to prevent duplicate messages.
+      const freshReg = await tx.gameRegistration.findUnique({
+        where: { id: regId },
+        select: { pendingConfirmation: true },
+      });
+      if (!freshReg?.pendingConfirmation) return false;
 
       await tx.gameRegistration.updateMany({
         where: { gameId: reg.gameId, isWaitingList: true, position: { gte: returnPos } },
@@ -917,7 +941,11 @@ export class GamesService {
           confirmationDeclined: true,
         },
       });
+
+      return true;
     });
+
+    if (!processed) return;
 
     await this.audit.log({
       gameId: reg.gameId,

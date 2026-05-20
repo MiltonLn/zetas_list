@@ -104,6 +104,9 @@ export class GameSchedulerService {
           `A partir de ahora, invitados y miembros en lista de espera tienen la misma prioridad para cupos libres.`,
         );
         this.logger.log(`Cutoff notificado para: ${game.title}`);
+
+        // After cutoff, fill any open spots from the waitlist (guests now have equal priority)
+        await this.games.autoPromoteIfNeeded(game.id);
       } catch (e) {
         this.logger.error(`Error procesando cutoff para ${game.id}:`, e);
       }
