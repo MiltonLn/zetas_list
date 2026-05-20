@@ -1096,8 +1096,16 @@ describe('GamesService', () => {
       expect(mockPrisma.$transaction).not.toHaveBeenCalled();
     });
 
+    it('does nothing if mainListHasBeenFull is false (list never filled up)', async () => {
+      mockPrisma.game.findUnique.mockResolvedValue(makeGame({ mainListHasBeenFull: false }));
+
+      await service.autoPromoteIfNeeded('game-1');
+
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
     it('does nothing if main list is full', async () => {
-      mockPrisma.game.findUnique.mockResolvedValue(makeGame({ maxMainSpots: 18 }));
+      mockPrisma.game.findUnique.mockResolvedValue(makeGame({ maxMainSpots: 18, mainListHasBeenFull: true }));
       mockPrisma.$transaction.mockImplementation(
         (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
       );
@@ -1109,7 +1117,8 @@ describe('GamesService', () => {
     });
 
     it('resets confirmationDeclined and promotes first non-declined waiter', async () => {
-      mockPrisma.game.findUnique.mockResolvedValue(makeGame({ maxMainSpots: 18 }));
+      // mainListHasBeenFull: true and gameDate in the past → afterCutoff → guests eligible
+      mockPrisma.game.findUnique.mockResolvedValue(makeGame({ maxMainSpots: 18, mainListHasBeenFull: true }));
       const waiter = makeReg({ id: 'wait-1', isWaitingList: true, position: 1, confirmationDeclined: false });
       mockPrisma.$transaction.mockImplementation(
         (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
@@ -1132,8 +1141,51 @@ describe('GamesService', () => {
       expect(service.promote).toHaveBeenCalledWith('game-1', 'wait-1', null, { silent: true });
     });
 
+    it('before cutoff: only promotes non-guests (isGuest: false filter applied)', async () => {
+      // Use a future gameDate so isBeforeCutoff returns true
+      const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      mockPrisma.game.findUnique.mockResolvedValue(
+        makeGame({ maxMainSpots: 18, mainListHasBeenFull: true, guestCutoffTime: '23:59', gameDate: futureDate }),
+      );
+      mockPrisma.$transaction.mockImplementation(
+        (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
+      );
+      txMock.gameRegistration.count.mockResolvedValue(16);
+      txMock.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
+      txMock.gameRegistration.findFirst.mockResolvedValue(null);
+
+      await service.autoPromoteIfNeeded('game-1');
+
+      expect(txMock.gameRegistration.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isGuest: false }),
+        }),
+      );
+    });
+
+    it('after cutoff: promotes guests too (no isGuest filter)', async () => {
+      // gameDate in the past → isBeforeCutoff returns false
+      mockPrisma.game.findUnique.mockResolvedValue(
+        makeGame({ maxMainSpots: 18, mainListHasBeenFull: true, gameDate: new Date('2020-01-01') }),
+      );
+      mockPrisma.$transaction.mockImplementation(
+        (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
+      );
+      txMock.gameRegistration.count.mockResolvedValue(16);
+      txMock.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
+      txMock.gameRegistration.findFirst.mockResolvedValue(null);
+
+      await service.autoPromoteIfNeeded('game-1');
+
+      expect(txMock.gameRegistration.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.not.objectContaining({ isGuest: false }),
+        }),
+      );
+    });
+
     it('does nothing when no one in waiting list (after reset)', async () => {
-      mockPrisma.game.findUnique.mockResolvedValue(makeGame({ maxMainSpots: 18 }));
+      mockPrisma.game.findUnique.mockResolvedValue(makeGame({ maxMainSpots: 18, mainListHasBeenFull: true }));
       mockPrisma.$transaction.mockImplementation(
         (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
       );

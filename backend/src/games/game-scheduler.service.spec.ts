@@ -20,6 +20,7 @@ const mockGames = {
   buildRegistrationOpenMessage: jest.fn().mockReturnValue('¡Inscripción abierta!'),
   handleConfirmationTimeout: jest.fn(),
   isBeforeCutoff: jest.fn(),
+  autoPromoteIfNeeded: jest.fn(),
 };
 
 const mockWhatsapp = {
@@ -209,6 +210,18 @@ describe('GameSchedulerService', () => {
       mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
 
       await expect(scheduler.checkGuestCutoff()).resolves.not.toThrow();
+    });
+
+    it('llama autoPromoteIfNeeded al llegar el cutoff para llenar cupos con la waitlist', async () => {
+      mockPrisma.game.findMany.mockResolvedValue([makeGame()]);
+      mockGames.isBeforeCutoff.mockReturnValue(false);
+      mockPrisma.game.update.mockResolvedValue({});
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
+      mockGames.autoPromoteIfNeeded.mockResolvedValue(undefined);
+
+      await scheduler.checkGuestCutoff();
+
+      expect(mockGames.autoPromoteIfNeeded).toHaveBeenCalledWith('game-1');
     });
 
     // ── Bug 1&2: el mismo registro no debe procesarse dos veces si ambos crons coinciden ──

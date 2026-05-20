@@ -812,6 +812,12 @@ export class GamesService {
     const game = await this.prisma.game.findUnique({ where: { id: gameId } });
     if (!game || (game.status !== 'registration_open' && game.status !== 'in_progress')) return;
 
+    // Never promote if the main list has never been full:
+    // spots should remain open for direct registration, not auto-filled from waitlist.
+    if (!game.mainListHasBeenFull) return;
+
+    const beforeCutoff = this.isBeforeCutoff(game.guestCutoffTime, game.gameDate);
+
     const promoted = await this.prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
@@ -827,7 +833,13 @@ export class GamesService {
         });
 
         const firstInWait = await tx.gameRegistration.findFirst({
-          where: { gameId, isWaitingList: true, confirmationDeclined: false },
+          where: {
+            gameId,
+            isWaitingList: true,
+            confirmationDeclined: false,
+            // Before cutoff: guests stay in waitlist, only members can be promoted
+            ...(beforeCutoff ? { isGuest: false } : {}),
+          },
           orderBy: { position: 'asc' },
           include: REGISTRATION_INCLUDE,
         });
