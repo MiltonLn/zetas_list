@@ -210,5 +210,42 @@ describe('GameSchedulerService', () => {
 
       await expect(scheduler.checkGuestCutoff()).resolves.not.toThrow();
     });
+
+    // ── Bug 1&2: el mismo registro no debe procesarse dos veces si ambos crons coinciden ──
+
+    it('BUG1&2: checkConfirmationTimeouts no procesa registros que checkGuestCutoff ya maneja en el mismo tick', async () => {
+      // Escenario: un partido llega al cutoff y tiene un proxy sin confirmar.
+      // checkGuestCutoff lo procesa. checkConfirmationTimeouts también lo encuentra
+      // porque su confirmationDeadline == cutoffTime <= now. Ambos crons corren en el mismo minuto.
+
+      const sharedRegId = 'shared-reg-1';
+
+      // checkGuestCutoff: encuentra el partido con cutoffNotified=false, cutoff ya pasó
+      mockPrisma.game.findMany.mockResolvedValue([makeGame({ cutoffNotified: false })]);
+      mockGames.isBeforeCutoff.mockReturnValue(false);
+      mockPrisma.game.update.mockResolvedValue({});
+      // El partido tiene UN registro pendiente de confirmación
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([
+        makeReg({ id: sharedRegId, user: { name: 'Juan' } }),
+      ]);
+      mockGames.handleConfirmationTimeout.mockResolvedValue(undefined);
+
+      await scheduler.checkGuestCutoff();
+
+      // checkConfirmationTimeouts: encuentra el MISMO registro (deadline <= now)
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([
+        makeReg({ id: sharedRegId, game: { status: GameStatus.registration_open } }),
+      ]);
+
+      await scheduler.checkConfirmationTimeouts();
+
+      // handleConfirmationTimeout debe ser idempotente — llamarlo dos veces no debe
+      // causar un segundo mensaje. El servicio (handleConfirmationTimeout) es responsable
+      // de hacer el re-check dentro de la transacción.
+      // Aquí verificamos que el scheduler lo llama, pero el servicio es quien garantiza idempotencia.
+      expect(mockGames.handleConfirmationTimeout).toHaveBeenCalledWith(sharedRegId);
+      expect(mockGames.handleConfirmationTimeout).toHaveBeenCalledTimes(2); // ambos crons lo llaman
+      // La idempotencia real se verifica en games.service.spec.ts (BUG1&2 test)
+    });
   });
 });

@@ -1151,6 +1151,7 @@ describe('GamesService', () => {
     const txMock = {
       $queryRaw: jest.fn(),
       gameRegistration: {
+        findUnique: jest.fn(),
         updateMany: jest.fn(),
         update: jest.fn(),
       },
@@ -1159,6 +1160,8 @@ describe('GamesService', () => {
     beforeEach(() => {
       mockPrisma.$transaction.mockImplementation((cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock));
       txMock.$queryRaw.mockResolvedValue(undefined);
+      // Default: registro sigue pendiente dentro de la transacción (comportamiento normal)
+      txMock.gameRegistration.findUnique.mockResolvedValue({ pendingConfirmation: true });
       txMock.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
       txMock.gameRegistration.update.mockResolvedValue({});
     });
@@ -1270,6 +1273,47 @@ describe('GamesService', () => {
           }),
         }),
       );
+    });
+
+    // ── Bug 3: proxy sin originalWaitPosition va al final, no a posición 1 ──
+
+    it('BUG3: proxy sin originalWaitPosition vuelve al final del waitlist, no a posición 1', async () => {
+      // Proxy registrado directamente en main (nunca estuvo en waitlist)
+      // → originalWaitPosition es null → debería ir al final (maxPos + 1 = 4)
+      const reg = makeReg({ pendingConfirmation: true, originalWaitPosition: null });
+      mockPrisma.gameRegistration.findUnique.mockResolvedValue(reg);
+      mockPrisma.game.findUnique.mockResolvedValue(makeGame({ status: GameStatus.registration_open }));
+      mockPrisma.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 3 } });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(null);
+
+      await service.handleConfirmationTimeout('reg-1');
+
+      expect(txMock.gameRegistration.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ position: 4 }),
+        }),
+      );
+    });
+
+    // ── Bug 1&2: idempotencia — segunda llamada concurrente no produce duplicados ──
+
+    it('BUG1&2: segunda llamada concurrente es no-op si el registro ya fue procesado (re-check en transacción)', async () => {
+      const reg = makeReg({ pendingConfirmation: true, originalWaitPosition: 1 });
+      mockPrisma.gameRegistration.findUnique.mockResolvedValue(reg);
+      mockPrisma.game.findUnique.mockResolvedValue(makeGame({ status: GameStatus.registration_open }));
+      mockPrisma.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(null);
+
+      // Simula que dentro de la transacción el registro YA fue procesado por otra llamada concurrente
+      txMock.gameRegistration.findUnique.mockResolvedValue({ pendingConfirmation: false });
+
+      await service.handleConfirmationTimeout('reg-1');
+
+      // No debe ejecutar el update de posición ni enviar WhatsApp
+      expect(txMock.gameRegistration.update).not.toHaveBeenCalled();
+      expect(mockWhatsapp.sendToGroup).not.toHaveBeenCalled();
     });
   });
 
