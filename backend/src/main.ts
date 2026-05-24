@@ -9,11 +9,20 @@ import { join } from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  console.log('[STARTUP] Iniciando bootstrap...');
+  console.log(`[STARTUP] NODE_ENV=${process.env.NODE_ENV}`);
+  console.log(`[STARTUP] PORT=${process.env.PORT}`);
+  console.log(`[STARTUP] DATABASE_URL set=${!!process.env.DATABASE_URL}`);
+  console.log(`[STARTUP] JWT_SECRET set=${!!process.env.JWT_SECRET}`);
+
   if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
-    console.error('FATAL: JWT_SECRET env variable is required in production');
+    console.error('[STARTUP] FATAL: JWT_SECRET env variable is required in production');
     process.exit(1);
   }
+
+  console.log('[STARTUP] Creando app NestJS...');
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  console.log('[STARTUP] App creada, configurando middlewares...');
 
   app.use(cookieParser());
 
@@ -52,8 +61,9 @@ async function bootstrap() {
   }
 
   const port = process.env.PORT || 3000;
+  console.log(`[STARTUP] Escuchando en 0.0.0.0:${port}...`);
   await app.listen(port, '0.0.0.0');
-  console.log(`Servidor corriendo en http://0.0.0.0:${port}`);
+  console.log(`[STARTUP] Servidor listo en http://0.0.0.0:${port}`);
 }
 
 bootstrap();
