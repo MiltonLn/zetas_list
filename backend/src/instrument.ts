@@ -9,7 +9,6 @@ Sentry.init({
   integrations: process.env.SENTRY_DSN
     ? (() => {
         try {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
           const { nodeProfilingIntegration } = require('@sentry/profiling-node');
           return [nodeProfilingIntegration()];
         } catch {
