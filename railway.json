@@ -8,7 +8,8 @@
     }
   },
   "deploy": {
-    "startCommand": "npx prisma migrate deploy && node dist/src/main",
+    "preDeployCommand": "npx prisma migrate deploy",
+    "startCommand": "node dist/src/main",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
