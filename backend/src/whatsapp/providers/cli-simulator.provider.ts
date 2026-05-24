@@ -13,6 +13,11 @@ export class CliSimulatorProvider implements WhatsappProvider, OnModuleInit {
   }
 
   onModuleInit() {
+    if (process.env.NODE_ENV === 'production') {
+      this.logger.log('CLI Simulator deshabilitado en producción. Setea WHATSAPP_MODE=baileys para WhatsApp real.');
+      return;
+    }
+
     this.logger.log('=== MODO SIMULADOR DE WHATSAPP ACTIVO ===');
     this.logger.log('Escribe mensajes simulando ser un número de teléfono');
     this.logger.log('Formato: <phone>: <mensaje>');
