@@ -40,6 +40,10 @@ RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 
 COPY --from=backend-builder /app/node_modules ./node_modules
+# Ensure @sentry/profiling-node is never present — its native glibc addon
+# auto-loads via @sentry/node and segfaults silently on any Linux variant
+# before any JavaScript can run.
+RUN rm -rf node_modules/@sentry/profiling-node
 COPY --from=backend-builder /app/dist ./dist
 COPY --from=backend-builder /app/prisma ./prisma
 COPY --from=frontend-builder /app/frontend/dist ./public
