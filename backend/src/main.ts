@@ -1,3 +1,6 @@
+// This runs before any imports — if you see this line, Node.js started successfully
+process.stdout.write('[NODE] Proceso iniciado\n');
+
 import './instrument';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';

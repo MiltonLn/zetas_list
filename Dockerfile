@@ -15,8 +15,13 @@ ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN
 RUN npm run build
 
 # ============ Stage 2: Build backend ============
-FROM node:20-alpine AS backend-builder
+# Use slim (Debian/glibc) so native modules like @sentry/profiling-node
+# compile and run correctly. Alpine (musl) causes silent segfaults with
+# glibc-compiled native bindings.
+FROM node:20-slim AS backend-builder
 WORKDIR /app
+
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 COPY backend/package*.json ./
 RUN npm install
@@ -27,11 +32,10 @@ RUN npx prisma generate
 RUN npm run build
 
 # ============ Stage 3: Production ============
-FROM node:20-alpine AS production
+FROM node:20-slim AS production
 WORKDIR /app
 
-# Prisma needs OpenSSL on Alpine (musl libc, linux-musl-openssl-3.0.x target)
-RUN apk add --no-cache openssl
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 
