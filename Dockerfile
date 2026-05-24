@@ -1,5 +1,5 @@
 # ============ Stage 1: Build frontend ============
-FROM node:20-alpine AS frontend-builder
+FROM node:20-slim AS frontend-builder
 WORKDIR /app/frontend
 
 COPY frontend/package*.json ./
@@ -15,7 +15,7 @@ ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN
 RUN npm run build
 
 # ============ Stage 2: Build backend ============
-FROM node:20-alpine AS backend-builder
+FROM node:20-slim AS backend-builder
 WORKDIR /app
 
 COPY backend/package*.json ./
@@ -27,11 +27,11 @@ RUN npx prisma generate
 RUN npm run build
 
 # ============ Stage 3: Production ============
-FROM node:20-alpine AS production
+FROM node:20-slim AS production
 WORKDIR /app
 
-# Prisma needs OpenSSL on Alpine (musl libc, linux-musl-openssl-3.0.x target)
-RUN apk add --no-cache openssl
+# Prisma needs OpenSSL at runtime
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 
