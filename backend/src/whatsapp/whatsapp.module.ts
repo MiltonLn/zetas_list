@@ -1,17 +1,20 @@
 import { Module, forwardRef, Inject } from '@nestjs/common';
 import { WhatsappService } from './whatsapp.service';
+import { WhatsappController } from './whatsapp.controller';
 import { MessageHandlerService } from './message-handler.service';
 import { CliSimulatorProvider } from './providers/cli-simulator.provider';
 import { BaileysProvider } from './providers/baileys.provider';
 import { WHATSAPP_PROVIDER } from './whatsapp.interface';
 import { GamesModule } from '../games/games.module';
 import { UsersModule } from '../users/users.module';
+import { PrismaModule } from '../prisma/prisma.module';
 
-const isCli = process.env.WHATSAPP_MODE !== 'baileys';
-const providerClass = isCli ? CliSimulatorProvider : BaileysProvider;
+const isBaileys = process.env.WHATSAPP_MODE === 'baileys';
+const providerClass = isBaileys ? BaileysProvider : CliSimulatorProvider;
 
 @Module({
-  imports: [forwardRef(() => GamesModule), UsersModule],
+  imports: [forwardRef(() => GamesModule), UsersModule, PrismaModule],
+  controllers: isBaileys ? [WhatsappController] : [],
   providers: [
     {
       provide: WHATSAPP_PROVIDER,

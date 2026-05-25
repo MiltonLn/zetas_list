@@ -7,12 +7,12 @@ const ADMINS = [
   {
     username: 'yamijuan',
     name: 'Juan Diego García',
-    phone: process.env.SEED_PHONE_YAMIJUAN || '0000000001',
+    phone: '573192352624',
   },
   {
     username: 'MiltonLn',
     name: 'Milton Lenis',
-    phone: process.env.SEED_PHONE_MILTONLN || '0000000002',
+    phone: '573166160159',
   },
 ];
 

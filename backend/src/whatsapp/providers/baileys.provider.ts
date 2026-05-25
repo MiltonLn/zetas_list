@@ -6,15 +6,9 @@ import {
 } from '@nestjs/common';
 import { WhatsappProvider } from '../whatsapp.interface';
 import { MessageHandlerService } from '../message-handler.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { usePrismaAuthState } from './prisma-auth-state';
 
-/**
- * Baileys WhatsApp provider.
- * Uses dynamic import because @whiskeysockets/baileys is ESM-only.
- *
- * Install: npm install @whiskeysockets/baileys qrcode-terminal
- * (these are optional peer deps, not listed in package.json to avoid
- * install errors in environments where the CLI simulator is used)
- */
 @Injectable()
 export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('WhatsApp Baileys');
@@ -22,13 +16,23 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
   private connected = false;
   private groupId: string;
   private messageHandler?: MessageHandlerService;
+  private currentQR: string | null = null;
+  private connectionStatus: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
 
-  constructor() {
+  constructor(private readonly prisma: PrismaService) {
     this.groupId = process.env.WHATSAPP_GROUP_ID || '';
   }
 
   setMessageHandler(handler: MessageHandlerService) {
     this.messageHandler = handler;
+  }
+
+  getQR(): string | null {
+    return this.currentQR;
+  }
+
+  getStatus(): string {
+    return this.connectionStatus;
   }
 
   async onModuleInit() {
@@ -40,34 +44,49 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
 
   async onModuleDestroy() {
     if (this.sock) {
-      await this.sock.logout();
+      this.sock.end();
     }
   }
 
   private async connect() {
+    this.connectionStatus = 'connecting';
     try {
-      const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } =
-        await import('@whiskeysockets/baileys' as any);
+      const baileys = await import('@whiskeysockets/baileys' as any);
+      const makeWASocket = baileys.default || baileys.makeWASocket;
+      const { DisconnectReason } = baileys;
 
-      const { state, saveCreds } = await useMultiFileAuthState('whatsapp-session');
+      const { state, saveCreds } = await usePrismaAuthState(this.prisma);
 
-      this.sock = makeWASocket({ auth: state, printQRInTerminal: true });
+      this.sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: true,
+      });
 
       this.sock.ev.on('creds.update', saveCreds);
 
       this.sock.ev.on('connection.update', async (update: any) => {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+          this.currentQR = qr;
+          this.logger.log('Nuevo QR generado — escanéalo en /api/whatsapp/qr');
+        }
 
         if (connection === 'open') {
           this.connected = true;
+          this.connectionStatus = 'connected';
+          this.currentQR = null;
           this.logger.log('WhatsApp conectado exitosamente');
         } else if (connection === 'close') {
           this.connected = false;
+          this.connectionStatus = 'disconnected';
           const code = lastDisconnect?.error?.output?.statusCode;
           const shouldReconnect = code !== DisconnectReason.loggedOut;
           this.logger.warn(`Conexión cerrada (código ${code}). Reconectando: ${shouldReconnect}`);
           if (shouldReconnect) {
             setTimeout(() => this.connect(), 5000);
+          } else {
+            this.logger.warn('Sesión cerrada por logout. Borra la sesión de DB y re-escanea el QR.');
           }
         }
       });
@@ -99,6 +118,7 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
         }
       });
     } catch (e) {
+      this.connectionStatus = 'disconnected';
       this.logger.error('Error inicializando Baileys:', e);
       this.logger.warn('Asegúrate de tener instalado @whiskeysockets/baileys');
     }
@@ -123,5 +143,17 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  async logout(): Promise<void> {
+    await this.prisma.whatsappSession.deleteMany();
+    if (this.sock) {
+      this.sock.end();
+      this.sock = null;
+    }
+    this.connected = false;
+    this.connectionStatus = 'disconnected';
+    this.currentQR = null;
+    this.logger.log('Sesión eliminada. Reinicia para generar nuevo QR.');
   }
 }

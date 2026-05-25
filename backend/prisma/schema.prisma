@@ -176,3 +176,10 @@ model AuditLog {
   @@map("audit_logs")
   @@index([gameId, createdAt])
 }
+
+model WhatsappSession {
+  key   String @id
+  value String @db.Text
+
+  @@map("whatsapp_sessions")
+}
