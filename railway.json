@@ -9,7 +9,7 @@
   },
   "deploy": {
     "preDeployCommand": "npx prisma migrate deploy",
-    "startCommand": "node dist/src/main",
+    "startCommand": "node dist/prisma/seed.js && node dist/src/main",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
