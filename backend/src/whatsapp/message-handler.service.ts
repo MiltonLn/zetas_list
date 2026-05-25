@@ -251,7 +251,7 @@ export class MessageHandlerService {
         return;
       }
 
-      const mentionedPhone = otherMentions[0].replace('@s.whatsapp.net', '').replace('@lid', '').replace(/[^0-9]/g, '');
+      const mentionedPhone = otherMentions[0].split(':')[0].split('@')[0].replace(/[^0-9]/g, '');
       const targetUser = await this.users.findByPhone(mentionedPhone);
 
       if (!targetUser) {
