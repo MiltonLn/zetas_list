@@ -103,8 +103,11 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
 
           const participant = msg.key.participant || '';
           const phone = await this.resolvePhone(participant);
-          // Pass either the resolved phone or the raw LID number for DB lookup
-          const phoneOrLid = phone || participant.split(':')[0].split('@')[0];
+
+          if (!phone) {
+            this.logger.warn(`[MSG] No se pudo resolver teléfono para participant=${participant}`);
+            continue;
+          }
 
           const text =
             msg.message.conversation ||
@@ -156,9 +159,7 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
             }
           }
 
-          // Pass rawLid for auto-saving LID mapping when user is found
-          const rawLid = participant.includes('@lid') ? participant.split(':')[0].split('@')[0] : undefined;
-          await this.messageHandler.handleMessage(phoneOrLid, normalizedText, from, resolvedMentions, rawLid).catch((e) =>
+          await this.messageHandler.handleMessage(phone, normalizedText, from, resolvedMentions).catch((e) =>
             this.logger.error('Error procesando mensaje:', e),
           );
         }
@@ -177,55 +178,20 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
       const participants = metadata?.participants || [];
       this.logger.log(`[LID MAP] Grupo tiene ${participants.length} participantes`);
 
-      // Log raw participant data for diagnostics
       for (const p of participants) {
-        this.logger.log(`[LID MAP] Participante: ${JSON.stringify(p)}`);
-      }
+        const lid: string = p.id || '';
+        const phoneJid: string = p.phoneNumber || p.phone || '';
 
-      for (const p of participants) {
-        const id: string = p.id || '';
-        const lid: string = p.lid || '';
-
-        if (id.includes('@s.whatsapp.net') && lid) {
-          const phoneNum = id.split(':')[0].split('@')[0];
+        if (lid.includes('@lid') && phoneJid) {
           const lidNum = lid.split(':')[0].split('@')[0];
+          const phoneNum = phoneJid.split(':')[0].split('@')[0].replace(/[^0-9]/g, '');
           this.lidToPhone.set(lidNum, phoneNum);
           this.lidToPhone.set(lid, phoneNum);
-        }
-
-        // If participant id is LID-based, try to cross-reference with our DB
-        if (id.includes('@lid')) {
-          const lidNum = id.split(':')[0].split('@')[0];
-          // Will try to match later via onWhatsApp
-          this.lidToPhone.set(id, lidNum);
+          this.logger.log(`[LID MAP] ${lidNum} -> ${phoneNum}`);
         }
       }
 
-      // Use onWhatsApp() to resolve known phone numbers to their LIDs
-      const users = await this.prisma.user.findMany({ select: { phone: true } });
-      for (const u of users) {
-        if (!u.phone) continue;
-        try {
-          const [result] = await this.sock.onWhatsApp(u.phone);
-          if (result?.exists && result.jid) {
-            const jidNum = result.jid.split(':')[0].split('@')[0];
-            this.lidToPhone.set(jidNum, u.phone);
-            this.lidToPhone.set(result.jid, u.phone);
-            this.logger.log(`[LID MAP] onWhatsApp(${u.phone}) -> jid=${result.jid}`);
-
-            // If result also has lid field
-            if (result.lid) {
-              const lidNum = result.lid.split(':')[0].split('@')[0];
-              this.lidToPhone.set(lidNum, u.phone);
-              this.lidToPhone.set(result.lid, u.phone);
-            }
-          }
-        } catch (e) {
-          this.logger.warn(`[LID MAP] No se pudo resolver ${u.phone}: ${e}`);
-        }
-      }
-
-      this.logger.log(`[LID MAP] Mapa final con ${this.lidToPhone.size} entradas`);
+      this.logger.log(`[LID MAP] Mapa construido con ${this.lidToPhone.size} entradas`);
     } catch (e) {
       this.logger.error('Error construyendo mapa LID->Phone:', e);
     }
