@@ -112,29 +112,34 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
 
           if (!text || !this.messageHandler) continue;
 
-          // Log raw message for debugging mentions
-          const botJid = this.sock.user?.id;
-          this.logger.debug(`[MSG] raw text="${text}" botJid="${botJid}" mentionedJids=${JSON.stringify(mentionedJids)}`);
-
-          // Normalize: if the bot itself is mentioned, replace the mention with @z
+          // Normalize: replace any mention of the bot (by phone or LID) with @z
           let normalizedText = text;
-          if (botJid) {
-            const botNumber = botJid.split(':')[0].split('@')[0];
-            // Try multiple patterns: @number, @number:device, or @lid format
-            normalizedText = normalizedText
-              .replace(new RegExp(`@${botNumber}\\b`, 'g'), '@z')
-              .replace(new RegExp(`@${botJid.split('@')[0]}`, 'g'), '@z');
-            // Also check if any mentionedJid belongs to the bot and replace its text representation
+          const botJid = this.sock.user?.id;
+          const botLid = this.sock.user?.lid;
+          if (botJid || botLid) {
+            const botNumber = botJid?.split(':')[0].split('@')[0] || '';
+            const botLidNumber = botLid?.split(':')[0].split('@')[0] || '';
+            // Replace @botNumber or @botLid with @z
+            if (botNumber) {
+              normalizedText = normalizedText.replace(new RegExp(`@${botNumber}`, 'g'), '@z');
+            }
+            if (botLidNumber) {
+              normalizedText = normalizedText.replace(new RegExp(`@${botLidNumber}`, 'g'), '@z');
+            }
+            // Also check mentionedJids for the bot's JID/LID
             for (const jid of mentionedJids) {
-              if (jid === botJid || jid.startsWith(botNumber)) {
-                const jidNumber = jid.split('@')[0].split(':')[0];
+              const jidNumber = jid.split(':')[0].split('@')[0];
+              if (jid === botJid || jid === botLid ||
+                  jidNumber === botNumber || jidNumber === botLidNumber) {
                 normalizedText = normalizedText.replace(new RegExp(`@${jidNumber}`, 'g'), '@z');
               }
             }
           }
-
-          this.logger.debug(`[MSG] normalized="${normalizedText}"`);
-
+          // Fallback: any @<digits> at the start that didn't match, check if it's in mentionedJids
+          if (/^@\d+/.test(normalizedText) && mentionedJids.length > 0) {
+            const mentionNumber = mentionedJids[0].split(':')[0].split('@')[0];
+            normalizedText = normalizedText.replace(new RegExp(`^@${mentionNumber}`), '@z');
+          }
 
           await this.messageHandler.handleMessage(phone, normalizedText, from, mentionedJids).catch((e) =>
             this.logger.error('Error procesando mensaje:', e),
