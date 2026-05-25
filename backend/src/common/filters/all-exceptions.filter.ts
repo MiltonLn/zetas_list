@@ -22,10 +22,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    const message =
-      exception instanceof HttpException
-        ? exception.getResponse()
-        : 'Error interno del servidor';
+    let message: string | string[];
+    if (exception instanceof HttpException) {
+      const res = exception.getResponse();
+      if (typeof res === 'string') {
+        message = res;
+      } else if (typeof res === 'object' && res !== null && 'message' in res) {
+        message = (res as { message: string | string[] }).message;
+      } else {
+        message = exception.message;
+      }
+    } else {
+      message = 'Error interno del servidor';
+    }
 
     if (status >= 500) {
       this.logger.error(exception);
