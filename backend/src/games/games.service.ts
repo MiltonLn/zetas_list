@@ -439,16 +439,22 @@ export class GamesService {
   }
 
   async confirmRegistration(gameId: string, userId: string) {
-    const reg = await this.prisma.gameRegistration.findFirst({
-      where: { gameId, userId, pendingConfirmation: true },
-      include: REGISTRATION_INCLUDE,
-    });
-    if (!reg) throw new NoPendingConfirmationException();
+    await this.prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
 
-    await this.prisma.gameRegistration.update({
-      where: { id: reg.id },
-      data: { pendingConfirmation: false, confirmationDeadline: null },
-    });
+        const reg = await tx.gameRegistration.findFirst({
+          where: { gameId, userId, pendingConfirmation: true },
+        });
+        if (!reg) throw new NoPendingConfirmationException();
+
+        await tx.gameRegistration.update({
+          where: { id: reg.id },
+          data: { pendingConfirmation: false, confirmationDeadline: null },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     await this.audit.log({
       gameId,
@@ -462,7 +468,7 @@ export class GamesService {
     return updated;
   }
 
-  async retryFromWaitingList(gameId: string, userId: string): Promise<{ promoted: boolean; game: any }> {
+  async retryFromWaitingList(gameId: string, userId: string) {
     const result = await this.prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
@@ -525,47 +531,45 @@ export class GamesService {
   }
 
   async removeRegistration(gameId: string, userId: string, actorId: string, actorRole: Role, options?: { silent?: boolean; regId?: string }) {
-    const reg = options?.regId
-      ? await this.prisma.gameRegistration.findFirst({
-          where: { id: options.regId, gameId },
-          include: { user: { select: { name: true } } },
-        })
-      : await this.prisma.gameRegistration.findFirst({
-          where: { gameId, userId },
-          include: { user: { select: { name: true } } },
-        });
-    if (!reg) throw new NotRegisteredException();
-
-    const regOwnerId = reg.userId ?? reg.registeredById;
-    if (actorRole !== Role.admin && actorId !== regOwnerId) {
-      throw new CannotRemoveOtherException();
-    }
-
-    const wasMainList = !reg.isWaitingList;
-
-    const orphanedGuests = reg.userId
-      ? await this.prisma.gameRegistration.findMany({
-          where: { gameId, isGuest: true, registeredById: reg.userId },
-          select: { id: true, guestName: true, position: true, isWaitingList: true },
-        })
-      : [];
-
-    await this.prisma.$transaction(
+    const { reg, orphanedGuests, wasMainList, userName } = await this.prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
 
-        await tx.gameRegistration.delete({ where: { id: reg.id } });
+        const foundReg = options?.regId
+          ? await tx.gameRegistration.findFirst({
+              where: { id: options.regId, gameId },
+              include: { user: { select: { name: true } }, registeredBy: { select: { name: true } } },
+            })
+          : await tx.gameRegistration.findFirst({
+              where: { gameId, userId },
+              include: { user: { select: { name: true } }, registeredBy: { select: { name: true } } },
+            });
+        if (!foundReg) throw new NotRegisteredException();
+
+        const regOwnerId = foundReg.userId ?? foundReg.registeredById;
+        if (actorRole !== Role.admin && actorId !== regOwnerId) {
+          throw new CannotRemoveOtherException();
+        }
+
+        const orphans = foundReg.userId
+          ? await tx.gameRegistration.findMany({
+              where: { gameId, isGuest: true, registeredById: foundReg.userId },
+              select: { id: true, guestName: true, position: true, isWaitingList: true },
+            })
+          : [];
+
+        await tx.gameRegistration.delete({ where: { id: foundReg.id } });
 
         await tx.gameRegistration.updateMany({
-          where: { gameId, isWaitingList: reg.isWaitingList, position: { gt: reg.position } },
+          where: { gameId, isWaitingList: foundReg.isWaitingList, position: { gt: foundReg.position } },
           data: { position: { decrement: 1 } },
         });
 
-        if (orphanedGuests.length > 0) {
+        if (orphans.length > 0) {
           await tx.gameRegistration.deleteMany({
-            where: { id: { in: orphanedGuests.map((g) => g.id) } },
+            where: { id: { in: orphans.map((g) => g.id) } },
           });
-          const sorted = [...orphanedGuests].sort((a, b) => b.position - a.position);
+          const sorted = [...orphans].sort((a, b) => b.position - a.position);
           for (const guest of sorted) {
             await tx.gameRegistration.updateMany({
               where: { gameId, isWaitingList: guest.isWaitingList, position: { gt: guest.position } },
@@ -573,6 +577,13 @@ export class GamesService {
             });
           }
         }
+
+        return {
+          reg: foundReg,
+          orphanedGuests: orphans,
+          wasMainList: !foundReg.isWaitingList,
+          userName: displayName(foundReg),
+        };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
@@ -593,7 +604,6 @@ export class GamesService {
     const updated = await this.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
 
-    const userName = displayName(reg);
     if (!options?.silent) {
       const removedBySelf = actorId === (reg.userId ?? reg.registeredById);
       let msg = removedBySelf
@@ -701,26 +711,31 @@ export class GamesService {
   }
 
   async promoteNext(gameId: string, actorId: string) {
-    const game = await this.prisma.game.findUniqueOrThrow({ where: { id: gameId } });
-    const mainCount = await this.prisma.gameRegistration.count({
-      where: { gameId, isWaitingList: false },
-    });
-    if (mainCount >= game.maxMainSpots) {
-      throw new GameFullException();
-    }
+    const firstInWait = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
 
-    const firstInWait = await this.prisma.gameRegistration.findFirst({
-      where: { gameId, isWaitingList: true },
-      orderBy: { position: 'asc' },
-      include: REGISTRATION_INCLUDE,
-    });
-    if (!firstInWait) {
-      throw new NoOneInWaitListException();
-    }
+      const game = await tx.game.findUniqueOrThrow({ where: { id: gameId } });
+      const mainCount = await tx.gameRegistration.count({
+        where: { gameId, isWaitingList: false },
+      });
+      if (mainCount >= game.maxMainSpots) {
+        throw new GameFullException();
+      }
+
+      const first = await tx.gameRegistration.findFirst({
+        where: { gameId, isWaitingList: true },
+        orderBy: { position: 'asc' },
+        include: REGISTRATION_INCLUDE,
+      });
+      if (!first) {
+        throw new NoOneInWaitListException();
+      }
+      return first;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     const updated = await this.promote(gameId, firstInWait.id, actorId, { silent: true });
     const promotedName = displayName(firstInWait);
-    return { updated: updated as any, promotedName };
+    return { updated, promotedName };
   }
 
   async demote(gameId: string, regId: string, actorId: string) {
@@ -732,7 +747,6 @@ export class GamesService {
       });
       if (!reg) throw new NotRegisteredException();
 
-      // Compact main list positions above the demoted player
       await tx.gameRegistration.updateMany({
         where: { gameId, isWaitingList: false, position: { gt: reg.position } },
         data: { position: { decrement: 1 } },
@@ -752,7 +766,7 @@ export class GamesService {
         },
         include: REGISTRATION_INCLUDE,
       });
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     await this.audit.log({
       gameId,
@@ -1013,7 +1027,7 @@ export class GamesService {
           data: { position: i + 1, isWaitingList: true },
         });
       }
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     await this.audit.log({
       gameId,

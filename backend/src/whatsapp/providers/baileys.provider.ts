@@ -34,6 +34,9 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
   private connectionOpenedAt = 0;
   private reconnectBackoff = INITIAL_BACKOFF_MS;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private shuttingDown = false;
+  private connectInProgress = false;
+  private lidMapBuilding = false;
 
   constructor(private readonly prisma: PrismaService) {
     this.groupId = process.env.WHATSAPP_GROUP_ID || '';
@@ -53,12 +56,13 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
 
   async onModuleInit() {
     if (!this.groupId) {
-      this.logger.warn('WHATSAPP_GROUP_ID no configurado, no se recibirán mensajes del grupo');
+      this.logger.warn('WHATSAPP_GROUP_ID no configurado — el bot NO procesará mensajes');
     }
     await this.connect();
   }
 
   async onModuleDestroy() {
+    this.shuttingDown = true;
     this.teardown();
   }
 
@@ -77,20 +81,25 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
       this.sock = null;
     }
     this.connected = false;
+    this.connectInProgress = false;
   }
 
   private scheduleReconnect() {
-    if (this.reconnectTimer) return;
+    if (this.shuttingDown || this.reconnectTimer) return;
     this.connectionStatus = 'reconnecting';
     this.logger.log(`Reconectando en ${this.reconnectBackoff / 1000}s...`);
     this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
-      await this.connect();
+      if (!this.shuttingDown) {
+        await this.connect();
+      }
     }, this.reconnectBackoff);
     this.reconnectBackoff = Math.min(this.reconnectBackoff * 2, MAX_BACKOFF_MS);
   }
 
   private async connect() {
+    if (this.shuttingDown || this.connectInProgress) return;
+    this.connectInProgress = true;
     this.teardown();
     this.connectionStatus = 'connecting';
 
@@ -103,66 +112,88 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
 
       this.sock = makeWASocket({
         auth: state,
-        printQRInTerminal: true,
+        printQRInTerminal: process.env.NODE_ENV !== 'production',
       });
 
-      this.sock.ev.on('creds.update', saveCreds);
+      this.sock.ev.on('creds.update', () => {
+        saveCreds().catch((e: unknown) => this.logger.error('Error guardando credenciales:', e));
+      });
 
       this.sock.ev.on('connection.update', async (update: any) => {
-        const { connection, lastDisconnect, qr } = update;
+        try {
+          const { connection, lastDisconnect, qr } = update;
 
-        if (qr) {
-          this.currentQR = qr;
-          this.logger.log('Nuevo QR generado — escanéalo en /api/whatsapp/qr');
-        }
-
-        if (connection === 'open') {
-          this.connected = true;
-          this.connectionStatus = 'connected';
-          this.currentQR = null;
-          this.connectionOpenedAt = Date.now();
-          this.reconnectBackoff = INITIAL_BACKOFF_MS;
-          this.logger.log('WhatsApp conectado exitosamente');
-          await this.buildLidToPhoneMap();
-        } else if (connection === 'close') {
-          this.connected = false;
-          const code = lastDisconnect?.error?.output?.statusCode;
-          const shouldReconnect = code !== DisconnectReason.loggedOut;
-          this.logger.warn(`Conexión cerrada (código ${code}). Reconectando: ${shouldReconnect}`);
-          if (shouldReconnect) {
-            this.scheduleReconnect();
-          } else {
-            this.connectionStatus = 'disconnected';
-            this.logger.warn('Sesión cerrada por logout. Borra la sesión de DB y re-escanea el QR.');
+          if (qr) {
+            this.currentQR = qr;
+            this.logger.log('Nuevo QR generado — escanéalo en /api/whatsapp/qr');
           }
+
+          if (connection === 'open') {
+            this.connected = true;
+            this.connectionStatus = 'connected';
+            this.currentQR = null;
+            this.connectionOpenedAt = Date.now();
+            this.reconnectBackoff = INITIAL_BACKOFF_MS;
+            this.logger.log('WhatsApp conectado exitosamente');
+            await this.buildLidToPhoneMap();
+          } else if (connection === 'close') {
+            this.connected = false;
+            if (this.shuttingDown) {
+              this.connectionStatus = 'disconnected';
+              return;
+            }
+            const code = lastDisconnect?.error?.output?.statusCode;
+            const shouldReconnect = code !== DisconnectReason.loggedOut;
+            this.logger.warn(`Conexión cerrada (código ${code}). Reconectando: ${shouldReconnect}`);
+            if (shouldReconnect) {
+              this.scheduleReconnect();
+            } else {
+              this.connectionStatus = 'disconnected';
+              this.logger.warn('Sesión cerrada por logout. Borra la sesión de DB y re-escanea el QR.');
+            }
+          }
+        } catch (e) {
+          this.logger.error('Error en connection.update handler:', e);
         }
       });
 
       this.sock.ev.on('messages.upsert', async (upsert: any) => {
-        if (upsert.type !== 'notify') return;
-
-        for (const msg of upsert.messages) {
-          await this.processMessage(msg);
+        try {
+          if (upsert.type !== 'notify') return;
+          for (const msg of upsert.messages) {
+            await this.processMessage(msg);
+          }
+        } catch (e) {
+          this.logger.error('Error en messages.upsert handler:', e);
         }
       });
     } catch (e) {
       this.connectionStatus = 'disconnected';
       this.logger.error('Error inicializando Baileys:', e);
-      this.logger.warn('Asegúrate de tener instalado @whiskeysockets/baileys');
+      if (!this.shuttingDown) {
+        this.scheduleReconnect();
+      }
+    } finally {
+      this.connectInProgress = false;
     }
   }
 
   private async processMessage(msg: any): Promise<void> {
     if (!msg.message || msg.key.fromMe) return;
 
-    const timestamp = typeof msg.messageTimestamp === 'number'
-      ? msg.messageTimestamp * 1000
-      : Date.now();
+    const rawTs = msg.messageTimestamp;
+    const timestamp = typeof rawTs === 'number'
+      ? rawTs * 1000
+      : typeof rawTs?.low === 'number'
+        ? rawTs.low * 1000
+        : Date.now();
     if (timestamp < this.connectionOpenedAt) return;
 
     const from = msg.key.remoteJid;
     const isGroup = from?.endsWith('@g.us');
-    if (!isGroup || (this.groupId && from !== this.groupId)) return;
+
+    // Reject all messages if groupId not configured; only process target group
+    if (!this.groupId || !isGroup || from !== this.groupId) return;
 
     const participant = msg.key.participant || '';
     const phone = await this.resolvePhone(participant);
@@ -199,7 +230,8 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
   }
 
   private async buildLidToPhoneMap(): Promise<void> {
-    if (!this.groupId || !this.sock) return;
+    if (!this.groupId || !this.sock || this.lidMapBuilding) return;
+    this.lidMapBuilding = true;
     try {
       const metadata = await this.sock.groupMetadata(this.groupId);
       const participants = metadata?.participants || [];
@@ -222,6 +254,8 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
       this.logger.log(`[LID MAP] Mapa construido con ${this.lidToPhone.size} entradas`);
     } catch (e) {
       this.logger.error('Error construyendo mapa LID->Phone:', e);
+    } finally {
+      this.lidMapBuilding = false;
     }
   }
 
@@ -287,6 +321,7 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
   }
 
   async logout(): Promise<void> {
+    this.shuttingDown = true;
     await this.prisma.whatsappSession.deleteMany();
     this.teardown();
     this.connectionStatus = 'disconnected';

@@ -129,7 +129,12 @@ export class MessageHandlerService {
     };
 
     const match = normalized.match(matchedCommand.regex);
-    await matchedCommand.handler(ctx, match);
+    try {
+      await matchedCommand.handler(ctx, match);
+    } catch (e: unknown) {
+      this.logger.error(`Error no manejado en comando ${matchedCommand.regex.source}:`, e);
+      await this.wp.sendToGroup('❌ Ocurrió un error inesperado procesando tu comando. Intenta de nuevo.').catch(() => {});
+    }
   }
 
   // ─── Command Handlers ─────────────────────────────────────────────────────
@@ -176,8 +181,7 @@ export class MessageHandlerService {
       await this.wp.sendToGroup(result.report);
     } catch (e: unknown) {
       this.logger.error('Error al terminar partido:', e);
-      const msg = e instanceof Error ? e.message : 'Error desconocido';
-      await this.wp.sendToGroup(`❌ Error al terminar partido: ${msg}`);
+      await this.wp.sendToGroup(`❌ No se pudo terminar el partido. Intenta de nuevo.`);
     }
   }
 
@@ -215,8 +219,7 @@ export class MessageHandlerService {
         await this.wp.sendToGroup(`ℹ️ ${targetUser.name} no está anotado en esta lista.`);
       } else {
         this.logger.error('Error al sacar jugador:', e);
-        const msg = e instanceof Error ? e.message : 'Error desconocido';
-        await this.wp.sendToGroup(`❌ Error al sacar a ${targetUser.name}: ${msg}`);
+        await this.wp.sendToGroup(`❌ No se pudo sacar a ${targetUser.name}. Intenta de nuevo.`);
       }
     }
   }
@@ -230,8 +233,7 @@ export class MessageHandlerService {
         await this.wp.sendToGroup(`ℹ️ ${ctx.user!.name}, no tienes ninguna confirmación pendiente.`);
       } else {
         this.logger.error('Error al confirmar:', e);
-        const msg = e instanceof Error ? e.message : 'Error desconocido';
-        await this.wp.sendToGroup(`❌ Error al confirmar: ${msg}`);
+        await this.wp.sendToGroup(`❌ No se pudo confirmar tu asistencia. Intenta de nuevo.`);
       }
     }
   }
@@ -258,8 +260,7 @@ export class MessageHandlerService {
         await this.wp.sendToGroup('ℹ️ No hay nadie en la lista de espera para promover.');
       } else {
         this.logger.error('Error al promover:', e);
-        const msg = e instanceof Error ? e.message : 'Error desconocido';
-        await this.wp.sendToGroup(`❌ Error al promover: ${msg}`);
+        await this.wp.sendToGroup(`❌ No se pudo promover. Intenta de nuevo.`);
       }
     }
   }
@@ -287,8 +288,7 @@ export class MessageHandlerService {
       await this.wp.sendToGroup(`✅ Invitado *${guestName}* fue anotado ${spot} por *${ctx.user!.name}* 🏐\n${counts}${this.games.buildGameLink(ctx.activeGame.id)}`);
     } catch (e: unknown) {
       this.logger.error('Error al invitar:', e);
-      const msg = e instanceof Error ? e.message : 'Error desconocido';
-      await this.wp.sendToGroup(`❌ Error al invitar: ${msg}`);
+      await this.wp.sendToGroup(`❌ No se pudo registrar al invitado. Intenta de nuevo.`);
     }
   }
 
@@ -303,8 +303,7 @@ export class MessageHandlerService {
         await this.wp.sendToGroup(`ℹ️ ${ctx.user!.name}, no estás anotado en esta lista.`);
       } else {
         this.logger.error('Error al salir:', e);
-        const msg = e instanceof Error ? e.message : 'Error desconocido';
-        await this.wp.sendToGroup(`❌ Error al salirte: ${msg}`);
+        await this.wp.sendToGroup(`❌ No se pudo salir de la lista. Intenta de nuevo.`);
       }
     }
   }
@@ -349,8 +348,7 @@ export class MessageHandlerService {
           senderAlreadyRegistered = true;
         } else {
           this.logger.error('Error al anotar al remitente:', e);
-          const msg = e instanceof Error ? e.message : 'Error desconocido';
-          await this.wp.sendToGroup(`❌ Error al anotarte: ${msg}`);
+          await this.wp.sendToGroup(`❌ No se pudo anotarte. Intenta de nuevo.`);
           return;
         }
       }
@@ -396,8 +394,8 @@ export class MessageHandlerService {
         if (e instanceof AlreadyRegisteredException) {
           msgs.push(`ℹ️ ${targetUser.name} ya está anotado en esta lista.`);
         } else {
-          const msg = e instanceof Error ? e.message : 'Error desconocido';
-          msgs.push(`❌ No se pudo anotar a ${targetUser.name}: ${msg}`);
+          this.logger.error(`Error al anotar a ${targetUser.name}:`, e);
+          msgs.push(`❌ No se pudo anotar a ${targetUser.name}.`);
         }
       }
     }
