@@ -112,7 +112,15 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
 
           if (!text || !this.messageHandler) continue;
 
-          await this.messageHandler.handleMessage(phone, text, from, mentionedJids).catch((e) =>
+          // Normalize: if the bot itself is mentioned, replace the mention with @z
+          let normalizedText = text;
+          const botJid = this.sock.user?.id;
+          if (botJid) {
+            const botNumber = botJid.split(':')[0].split('@')[0];
+            normalizedText = normalizedText.replace(new RegExp(`@${botNumber}\\b`, 'g'), '@z');
+          }
+
+          await this.messageHandler.handleMessage(phone, normalizedText, from, mentionedJids).catch((e) =>
             this.logger.error('Error procesando mensaje:', e),
           );
         }
