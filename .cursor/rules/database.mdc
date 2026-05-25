@@ -39,3 +39,4 @@ Usar `Prisma.TransactionIsolationLevel.Serializable` en transacciones de registr
 - Agregar `@@index` para queries frecuentes (cron scheduler, filtros admin, modales de auditoría).
 - Índices actuales: `games(status, registrationOpenAt)`, `games(gameDate, status)`, `audit_logs(gameId, createdAt)`.
 - Al agregar columnas usadas en WHERE/ORDER BY frecuentes, considerar si necesitan índice.
+- **Índices parciales únicos** para reglas de negocio: usar `CREATE UNIQUE INDEX ... WHERE <condición>` para constraints que no aplican a todos los registros (e.g. un solo juego activo por fecha).

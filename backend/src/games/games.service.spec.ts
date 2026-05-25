@@ -2,7 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { GameStatus, Modalidad, Role } from '@prisma/client';
 import { GamesService } from './games.service';
-import { displayName } from './games.service';
+import { displayName } from './games.utils';
+import { formatCutoffTime } from './games.utils';
+import * as gamesUtils from './games.utils';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { GameEventsService } from './game-events.service';
@@ -318,8 +320,7 @@ describe('GamesService', () => {
     it('lanza BadRequestException si el usuario objetivo no está activo (Bug 2)', async () => {
       txMock.gameRegistration.findFirst.mockResolvedValue(null);
       txMock.user.findUnique
-        .mockResolvedValueOnce({ status: 'inactive' })
-        .mockResolvedValueOnce({ role: 'admin' });
+        .mockResolvedValueOnce({ status: 'inactive' });
 
       await expect(
         service.register('game-1', 'target-user', 'admin-user'),
@@ -329,8 +330,8 @@ describe('GamesService', () => {
     it('permite registrar proxy de usuario activo', async () => {
       txMock.gameRegistration.findFirst.mockResolvedValue(null);
       txMock.user.findUnique
-        .mockResolvedValueOnce({ role: 'admin' })
-        .mockResolvedValueOnce({ status: 'active' });
+        .mockResolvedValueOnce({ status: 'active' })
+        .mockResolvedValueOnce({ role: 'admin' });
       txMock.gameRegistration.count.mockResolvedValue(5);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 5 } });
       const created = makeReg({ position: 6 });
@@ -343,10 +344,8 @@ describe('GamesService', () => {
     });
 
     it('proxy registrado con tiempo suficiente antes del cutoff requiere confirmación', async () => {
-      // Mock buildCutoffDateTime to return a time > CONFIRMATION_TIMEOUT_MS (15 min) away
-      // so needsConfirmation = true. Avoids timezone issues in CI.
-      jest.spyOn(service as any, 'buildCutoffDateTime').mockReturnValue(
-        new Date(Date.now() + 60 * 60 * 1000), // 1 hour from now
+      jest.spyOn(gamesUtils, 'buildCutoffDateTime').mockReturnValue(
+        new Date(Date.now() + 60 * 60 * 1000),
       );
       txMock.$queryRaw.mockResolvedValue([{
         id: 'game-1', status: 'registration_open', maxMainSpots: 18,
@@ -355,8 +354,8 @@ describe('GamesService', () => {
       }]);
       txMock.gameRegistration.findFirst.mockResolvedValue(null);
       txMock.user.findUnique
-        .mockResolvedValueOnce({ role: 'admin' })
-        .mockResolvedValueOnce({ status: 'active' });
+        .mockResolvedValueOnce({ status: 'active' })
+        .mockResolvedValueOnce({ role: 'admin' });
       txMock.gameRegistration.count.mockResolvedValue(0);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
       const created = makeReg({ pendingConfirmation: true });
@@ -371,10 +370,8 @@ describe('GamesService', () => {
     });
 
     it('proxy registrado muy cerca del cutoff se auto-confirma (Opción A)', async () => {
-      // Mock buildCutoffDateTime to return < CONFIRMATION_TIMEOUT_MS (15 min) away
-      // so needsConfirmation = false. Avoids timezone issues in CI.
-      jest.spyOn(service as any, 'buildCutoffDateTime').mockReturnValue(
-        new Date(Date.now() + 5 * 60 * 1000), // 5 minutes from now
+      jest.spyOn(gamesUtils, 'buildCutoffDateTime').mockReturnValue(
+        new Date(Date.now() + 5 * 60 * 1000),
       );
       txMock.$queryRaw.mockResolvedValue([{
         id: 'game-1', status: 'registration_open', maxMainSpots: 18,
@@ -383,8 +380,8 @@ describe('GamesService', () => {
       }]);
       txMock.gameRegistration.findFirst.mockResolvedValue(null);
       txMock.user.findUnique
-        .mockResolvedValueOnce({ role: 'admin' })
-        .mockResolvedValueOnce({ status: 'active' });
+        .mockResolvedValueOnce({ status: 'active' })
+        .mockResolvedValueOnce({ role: 'admin' });
       txMock.gameRegistration.count.mockResolvedValue(0);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
       const created = makeReg({ pendingConfirmation: false });
@@ -867,11 +864,13 @@ describe('GamesService', () => {
         findFirst: jest.fn(),
         aggregate: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
       },
     };
 
     beforeEach(() => {
       mockPrisma.$transaction.mockImplementation((cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock));
+      txMock.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
     });
 
     it('mueve jugador de lista principal a lista de espera', async () => {
@@ -1051,23 +1050,23 @@ describe('GamesService', () => {
 
   describe('formatCutoffTime', () => {
     it('formats 13:30 as 1:30 PM', () => {
-      expect((service as any).formatCutoffTime('13:30')).toBe('1:30 PM');
+      expect(formatCutoffTime('13:30')).toBe('1:30 PM');
     });
 
     it('formats 10:00 as 10:00 AM', () => {
-      expect((service as any).formatCutoffTime('10:00')).toBe('10:00 AM');
+      expect(formatCutoffTime('10:00')).toBe('10:00 AM');
     });
 
     it('formats 12:00 as 12:00 PM', () => {
-      expect((service as any).formatCutoffTime('12:00')).toBe('12:00 PM');
+      expect(formatCutoffTime('12:00')).toBe('12:00 PM');
     });
 
     it('formats 00:00 as 12:00 AM', () => {
-      expect((service as any).formatCutoffTime('00:00')).toBe('12:00 AM');
+      expect(formatCutoffTime('00:00')).toBe('12:00 AM');
     });
 
     it('formats 15:45 as 3:45 PM', () => {
-      expect((service as any).formatCutoffTime('15:45')).toBe('3:45 PM');
+      expect(formatCutoffTime('15:45')).toBe('3:45 PM');
     });
   });
 
@@ -1080,12 +1079,16 @@ describe('GamesService', () => {
         count: jest.fn(),
         updateMany: jest.fn(),
         findFirst: jest.fn(),
+        aggregate: jest.fn(),
+        update: jest.fn(),
       },
     };
 
     beforeEach(() => {
       txMock.$queryRaw.mockResolvedValue(undefined);
       txMock.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
+      txMock.gameRegistration.update.mockResolvedValue({});
     });
 
     it('does nothing if game is not open or in progress', async () => {
@@ -1117,7 +1120,6 @@ describe('GamesService', () => {
     });
 
     it('resets confirmationDeclined and promotes first non-declined waiter', async () => {
-      // mainListHasBeenFull: true and gameDate in the past → afterCutoff → guests eligible
       mockPrisma.game.findUnique.mockResolvedValue(makeGame({ maxMainSpots: 18, mainListHasBeenFull: true }));
       const waiter = makeReg({ id: 'wait-1', isWaitingList: true, position: 1, confirmationDeclined: false });
       mockPrisma.$transaction.mockImplementation(
@@ -1126,8 +1128,8 @@ describe('GamesService', () => {
       txMock.gameRegistration.count.mockResolvedValue(16);
       txMock.gameRegistration.updateMany.mockResolvedValue({ count: 1 });
       txMock.gameRegistration.findFirst.mockResolvedValue(waiter);
-      jest.spyOn(service, 'promote').mockResolvedValue(makeGame() as any);
-      mockPrisma.gameRegistration.update.mockResolvedValue({});
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 16 } });
+      txMock.gameRegistration.update.mockResolvedValue(waiter);
       jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.autoPromoteIfNeeded('game-1');
@@ -1138,7 +1140,17 @@ describe('GamesService', () => {
           data: { confirmationDeclined: false },
         }),
       );
-      expect(service.promote).toHaveBeenCalledWith('game-1', 'wait-1', null, { silent: true });
+      // Inline promotion: updates the waiter to main list with confirmation
+      expect(txMock.gameRegistration.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'wait-1' },
+          data: expect.objectContaining({
+            isWaitingList: false,
+            fromWaitList: true,
+            pendingConfirmation: true,
+          }),
+        }),
+      );
     });
 
     it('before cutoff: only promotes non-guests (isGuest: false filter applied)', async () => {
@@ -1206,6 +1218,8 @@ describe('GamesService', () => {
       $queryRaw: jest.fn(),
       gameRegistration: {
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
+        aggregate: jest.fn(),
         updateMany: jest.fn(),
         update: jest.fn(),
       },
@@ -1214,8 +1228,9 @@ describe('GamesService', () => {
     beforeEach(() => {
       mockPrisma.$transaction.mockImplementation((cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock));
       txMock.$queryRaw.mockResolvedValue(undefined);
-      // Default: registro sigue pendiente dentro de la transacción (comportamiento normal)
       txMock.gameRegistration.findUnique.mockResolvedValue({ pendingConfirmation: true });
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
+      txMock.gameRegistration.findFirst.mockResolvedValue(null);
       txMock.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
       txMock.gameRegistration.update.mockResolvedValue({});
     });
@@ -1231,9 +1246,9 @@ describe('GamesService', () => {
     it('marks reg as declined and returns to waiting list (clamped position)', async () => {
       const reg = makeReg({ pendingConfirmation: true, originalWaitPosition: 5 });
       mockPrisma.gameRegistration.findUnique.mockResolvedValue(reg);
-      mockPrisma.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 3 } });
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 3 } });
+      txMock.gameRegistration.findFirst.mockResolvedValue(null);
       jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
-      mockPrisma.gameRegistration.findFirst.mockResolvedValue(null);
 
       await service.handleConfirmationTimeout('reg-1');
 
@@ -1252,9 +1267,9 @@ describe('GamesService', () => {
     it('returns to original position when waiting list is smaller', async () => {
       const reg = makeReg({ pendingConfirmation: true, originalWaitPosition: 2 });
       mockPrisma.gameRegistration.findUnique.mockResolvedValue(reg);
-      mockPrisma.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 5 } });
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 5 } });
+      txMock.gameRegistration.findFirst.mockResolvedValue(null);
       jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
-      mockPrisma.gameRegistration.findFirst.mockResolvedValue(null);
 
       await service.handleConfirmationTimeout('reg-1');
 
@@ -1270,9 +1285,9 @@ describe('GamesService', () => {
     it('sends "nadie confirmó" message when no non-declined waiter available', async () => {
       const reg = makeReg({ pendingConfirmation: true, originalWaitPosition: 1 });
       mockPrisma.gameRegistration.findUnique.mockResolvedValue(reg);
-      mockPrisma.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
+      txMock.gameRegistration.findFirst.mockResolvedValue(null);
       jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
-      mockPrisma.gameRegistration.findFirst.mockResolvedValue(null);
 
       await service.handleConfirmationTimeout('reg-1');
 
@@ -1284,23 +1299,24 @@ describe('GamesService', () => {
     it('promotes next non-declined waiter with 5min deadline', async () => {
       const reg = makeReg({ id: 'reg-timeout', pendingConfirmation: true, originalWaitPosition: 1 });
       mockPrisma.gameRegistration.findUnique.mockResolvedValue(reg);
-      mockPrisma.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
 
       const nextWaiter = makeReg({ id: 'wait-2', userId: 'user-2', isWaitingList: true, position: 2, confirmationDeclined: false,
         user: { id: 'user-2', name: 'Next Player', username: 'next', phone: '222', position: null, gender: null, heightCm: null, birthDate: null, photoUrl: null, bio: null },
       });
-      mockPrisma.gameRegistration.findFirst.mockResolvedValue(nextWaiter);
-      jest.spyOn(service, 'promote').mockResolvedValue(makeGame() as any);
-      mockPrisma.gameRegistration.update.mockResolvedValue({});
+      txMock.gameRegistration.findFirst.mockResolvedValue(nextWaiter);
+      txMock.gameRegistration.update.mockResolvedValue({});
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.handleConfirmationTimeout('reg-timeout');
 
-      expect(service.promote).toHaveBeenCalledWith('game-1', 'wait-2', null, { silent: true });
-      expect(mockPrisma.gameRegistration.update).toHaveBeenCalledWith(
+      // Next waiter should be promoted and given confirmation deadline inside the tx
+      expect(txMock.gameRegistration.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'wait-2' },
           data: expect.objectContaining({
+            isWaitingList: false,
+            fromWaitList: true,
             pendingConfirmation: true,
             originalWaitPosition: 2,
           }),
@@ -1314,13 +1330,13 @@ describe('GamesService', () => {
     it('queries only non-declined waiters for next promote', async () => {
       const reg = makeReg({ pendingConfirmation: true, originalWaitPosition: 1 });
       mockPrisma.gameRegistration.findUnique.mockResolvedValue(reg);
-      mockPrisma.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
+      txMock.gameRegistration.findFirst.mockResolvedValue(null);
       jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
-      mockPrisma.gameRegistration.findFirst.mockResolvedValue(null);
 
       await service.handleConfirmationTimeout('reg-1');
 
-      expect(mockPrisma.gameRegistration.findFirst).toHaveBeenCalledWith(
+      expect(txMock.gameRegistration.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             confirmationDeclined: false,
@@ -1332,14 +1348,12 @@ describe('GamesService', () => {
     // ── Bug 3: proxy sin originalWaitPosition va al final, no a posición 1 ──
 
     it('BUG3: proxy sin originalWaitPosition vuelve al final del waitlist, no a posición 1', async () => {
-      // Proxy registrado directamente en main (nunca estuvo en waitlist)
-      // → originalWaitPosition es null → debería ir al final (maxPos + 1 = 4)
       const reg = makeReg({ pendingConfirmation: true, originalWaitPosition: null });
       mockPrisma.gameRegistration.findUnique.mockResolvedValue(reg);
       mockPrisma.game.findUnique.mockResolvedValue(makeGame({ status: GameStatus.registration_open }));
-      mockPrisma.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 3 } });
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 3 } });
+      txMock.gameRegistration.findFirst.mockResolvedValue(null);
       jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
-      mockPrisma.gameRegistration.findFirst.mockResolvedValue(null);
 
       await service.handleConfirmationTimeout('reg-1');
 
