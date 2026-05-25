@@ -376,15 +376,17 @@ describe('MessageHandlerService — handleMessage', () => {
   // ─── anotar (register other) ──────────────────────────────────────────────
 
   describe('comando anotar (EC7: self-mention)', () => {
-    it('rejects self-mention and suggests @Z anótame', async () => {
+    it('registers sender when only self is mentioned (no other person)', async () => {
       mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.register.mockResolvedValue({ isWaitingList: false, position: 1 });
+      mockGames.findOne.mockResolvedValue(makeActiveGame());
 
       await service.handleMessage('111', '@Z anotar @111', 'group-1', ['111@s.whatsapp.net']);
+      expect(mockGames.register).toHaveBeenCalledWith('game-1', 'user-1', 'user-1', { silent: true });
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(
-        expect.stringContaining('anótame'),
+        expect.stringContaining('se anotó'),
       );
-      expect(mockGames.register).not.toHaveBeenCalled();
     });
   });
 
