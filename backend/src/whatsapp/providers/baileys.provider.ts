@@ -8,6 +8,18 @@ import { WhatsappProvider } from '../whatsapp.interface';
 import { MessageHandlerService } from '../message-handler.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { usePrismaAuthState } from './prisma-auth-state';
+import {
+  extractPhoneFromJid,
+  isPhoneJid,
+  normalizeBotMentions,
+  resolveNonBotMentions,
+  phoneToJid,
+} from '../utils/jid-utils';
+
+type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
+
+const MAX_BACKOFF_MS = 60_000;
+const INITIAL_BACKOFF_MS = 5_000;
 
 @Injectable()
 export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModuleDestroy {
@@ -17,8 +29,11 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
   private groupId: string;
   private messageHandler?: MessageHandlerService;
   private currentQR: string | null = null;
-  private connectionStatus: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
+  private connectionStatus: ConnectionStatus = 'disconnected';
   private lidToPhone = new Map<string, string>();
+  private connectionOpenedAt = 0;
+  private reconnectBackoff = INITIAL_BACKOFF_MS;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly prisma: PrismaService) {
     this.groupId = process.env.WHATSAPP_GROUP_ID || '';
@@ -44,13 +59,41 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
   }
 
   async onModuleDestroy() {
-    if (this.sock) {
-      this.sock.end();
+    this.teardown();
+  }
+
+  private teardown() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
+    if (this.sock) {
+      try {
+        this.sock.ev.removeAllListeners();
+        this.sock.end();
+      } catch {
+        // Socket may already be closed
+      }
+      this.sock = null;
+    }
+    this.connected = false;
+  }
+
+  private scheduleReconnect() {
+    if (this.reconnectTimer) return;
+    this.connectionStatus = 'reconnecting';
+    this.logger.log(`Reconectando en ${this.reconnectBackoff / 1000}s...`);
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
+      await this.connect();
+    }, this.reconnectBackoff);
+    this.reconnectBackoff = Math.min(this.reconnectBackoff * 2, MAX_BACKOFF_MS);
   }
 
   private async connect() {
+    this.teardown();
     this.connectionStatus = 'connecting';
+
     try {
       const baileys = await import('@whiskeysockets/baileys' as any);
       const makeWASocket = baileys.default || baileys.makeWASocket;
@@ -77,95 +120,29 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
           this.connected = true;
           this.connectionStatus = 'connected';
           this.currentQR = null;
+          this.connectionOpenedAt = Date.now();
+          this.reconnectBackoff = INITIAL_BACKOFF_MS;
           this.logger.log('WhatsApp conectado exitosamente');
           await this.buildLidToPhoneMap();
         } else if (connection === 'close') {
           this.connected = false;
-          this.connectionStatus = 'disconnected';
           const code = lastDisconnect?.error?.output?.statusCode;
           const shouldReconnect = code !== DisconnectReason.loggedOut;
           this.logger.warn(`Conexión cerrada (código ${code}). Reconectando: ${shouldReconnect}`);
           if (shouldReconnect) {
-            setTimeout(() => this.connect(), 5000);
+            this.scheduleReconnect();
           } else {
+            this.connectionStatus = 'disconnected';
             this.logger.warn('Sesión cerrada por logout. Borra la sesión de DB y re-escanea el QR.');
           }
         }
       });
 
-      this.sock.ev.on('messages.upsert', async ({ messages }: any) => {
-        for (const msg of messages) {
-          if (!msg.message || msg.key.fromMe) continue;
+      this.sock.ev.on('messages.upsert', async (upsert: any) => {
+        if (upsert.type !== 'notify') return;
 
-          const from = msg.key.remoteJid;
-          const isGroup = from?.endsWith('@g.us');
-          if (!isGroup || (this.groupId && from !== this.groupId)) continue;
-
-          const participant = msg.key.participant || '';
-          const phone = await this.resolvePhone(participant);
-
-          if (!phone) {
-            this.logger.warn(`[MSG] No se pudo resolver teléfono para participant=${participant}`);
-            continue;
-          }
-
-          const text =
-            msg.message.conversation ||
-            msg.message.extendedTextMessage?.text ||
-            '';
-
-          const mentionedJids: string[] =
-            msg.message.extendedTextMessage?.contextInfo?.mentionedJid || [];
-
-          if (!text || !this.messageHandler) continue;
-
-          // Normalize: replace any mention of the bot (by phone or LID) with @z
-          let normalizedText = text;
-          const botJid = this.sock.user?.id;
-          const botLid = this.sock.user?.lid;
-          if (botJid || botLid) {
-            const botNumber = botJid?.split(':')[0].split('@')[0] || '';
-            const botLidNumber = botLid?.split(':')[0].split('@')[0] || '';
-            // Replace @botNumber or @botLid with @z
-            if (botNumber) {
-              normalizedText = normalizedText.replace(new RegExp(`@${botNumber}`, 'g'), '@z');
-            }
-            if (botLidNumber) {
-              normalizedText = normalizedText.replace(new RegExp(`@${botLidNumber}`, 'g'), '@z');
-            }
-            // Also check mentionedJids for the bot's JID/LID
-            for (const jid of mentionedJids) {
-              const jidNumber = jid.split(':')[0].split('@')[0];
-              if (jid === botJid || jid === botLid ||
-                  jidNumber === botNumber || jidNumber === botLidNumber) {
-                normalizedText = normalizedText.replace(new RegExp(`@${jidNumber}`, 'g'), '@z');
-              }
-            }
-          }
-          // Fallback: any @<digits> at the start that didn't match, check if it's in mentionedJids
-          if (/^@\d+/.test(normalizedText) && mentionedJids.length > 0) {
-            const mentionNumber = mentionedJids[0].split(':')[0].split('@')[0];
-            normalizedText = normalizedText.replace(new RegExp(`^@${mentionNumber}`), '@z');
-          }
-
-          // Resolve mentioned JIDs (LIDs) to phone-based JIDs, excluding the bot itself
-          const botJidNum = botJid?.split(':')[0].split('@')[0] || '';
-          const botLidNum = botLid?.split(':')[0].split('@')[0] || '';
-          const resolvedMentions: string[] = [];
-          for (const jid of mentionedJids) {
-            const jidNum = jid.split(':')[0].split('@')[0];
-            if (jidNum === botJidNum || jidNum === botLidNum) continue;
-            const resolvedPhone = await this.resolvePhone(jid);
-            if (resolvedPhone) {
-              resolvedMentions.push(`${resolvedPhone}@s.whatsapp.net`);
-            } else {
-              resolvedMentions.push(jid);
-            }
-          }
-
-          await this.messageHandler.handleMessage(phone, normalizedText, from, resolvedMentions).catch((e) =>
-            this.logger.error('Error procesando mensaje:', e),
-          );
+        for (const msg of upsert.messages) {
+          await this.processMessage(msg);
         }
       });
     } catch (e) {
@@ -175,6 +152,52 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
     }
   }
 
+  private async processMessage(msg: any): Promise<void> {
+    if (!msg.message || msg.key.fromMe) return;
+
+    const timestamp = typeof msg.messageTimestamp === 'number'
+      ? msg.messageTimestamp * 1000
+      : Date.now();
+    if (timestamp < this.connectionOpenedAt) return;
+
+    const from = msg.key.remoteJid;
+    const isGroup = from?.endsWith('@g.us');
+    if (!isGroup || (this.groupId && from !== this.groupId)) return;
+
+    const participant = msg.key.participant || '';
+    const phone = await this.resolvePhone(participant);
+
+    if (!phone) {
+      this.logger.warn(`[MSG] No se pudo resolver teléfono para participant=${participant}`);
+      return;
+    }
+
+    const text =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text ||
+      '';
+
+    const mentionedJids: string[] =
+      msg.message.extendedTextMessage?.contextInfo?.mentionedJid || [];
+
+    if (!text || !this.messageHandler) return;
+
+    const botJid = this.sock?.user?.id;
+    const botLid = this.sock?.user?.lid;
+    const normalizedText = normalizeBotMentions(text, botJid, botLid, mentionedJids);
+
+    const resolvedMentions = await resolveNonBotMentions(
+      mentionedJids,
+      botJid,
+      botLid,
+      (jid) => this.resolvePhone(jid),
+    );
+
+    await this.messageHandler.handleMessage(phone, normalizedText, from, resolvedMentions).catch((e) =>
+      this.logger.error('Error procesando mensaje:', e),
+    );
+  }
+
   private async buildLidToPhoneMap(): Promise<void> {
     if (!this.groupId || !this.sock) return;
     try {
@@ -182,35 +205,34 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
       const participants = metadata?.participants || [];
       this.logger.log(`[LID MAP] Grupo tiene ${participants.length} participantes`);
 
+      const newMap = new Map<string, string>();
       for (const p of participants) {
         const lid: string = p.id || '';
         const phoneJid: string = p.phoneNumber || p.phone || '';
 
         if (lid.includes('@lid') && phoneJid) {
-          const lidNum = lid.split(':')[0].split('@')[0];
-          const phoneNum = phoneJid.split(':')[0].split('@')[0].replace(/[^0-9]/g, '');
-          this.lidToPhone.set(lidNum, phoneNum);
-          this.lidToPhone.set(lid, phoneNum);
-          this.logger.log(`[LID MAP] ${lidNum} -> ${phoneNum}`);
+          const lidNum = extractPhoneFromJid(lid);
+          const phoneNum = extractPhoneFromJid(phoneJid);
+          newMap.set(lidNum, phoneNum);
+          newMap.set(lid, phoneNum);
         }
       }
 
+      this.lidToPhone = newMap;
       this.logger.log(`[LID MAP] Mapa construido con ${this.lidToPhone.size} entradas`);
     } catch (e) {
       this.logger.error('Error construyendo mapa LID->Phone:', e);
     }
   }
 
-  private async resolvePhone(participant: string): Promise<string | null> {
+  async resolvePhone(participant: string): Promise<string | null> {
     if (!participant) return null;
 
-    // If it's a regular phone JID (number@s.whatsapp.net or number:device@s.whatsapp.net)
-    if (participant.includes('@s.whatsapp.net')) {
-      return participant.split(':')[0].split('@')[0].replace(/[^0-9]/g, '');
+    if (isPhoneJid(participant)) {
+      return extractPhoneFromJid(participant);
     }
 
-    // It's a LID — look up in our map
-    const lidNumber = participant.split(':')[0].split('@')[0];
+    const lidNumber = extractPhoneFromJid(participant);
 
     if (this.lidToPhone.has(lidNumber)) {
       return this.lidToPhone.get(lidNumber)!;
@@ -219,14 +241,9 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
       return this.lidToPhone.get(participant)!;
     }
 
-    // Rebuild map in case there's a new participant
     await this.buildLidToPhoneMap();
 
-    if (this.lidToPhone.has(lidNumber)) {
-      return this.lidToPhone.get(lidNumber)!;
-    }
-
-    return null;
+    return this.lidToPhone.get(lidNumber) ?? this.lidToPhone.get(participant) ?? null;
   }
 
   async sendMessage(to: string, message: string): Promise<void> {
@@ -234,8 +251,12 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
       this.logger.warn(`No conectado. Mensaje perdido para ${to}`);
       return;
     }
-    const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
-    await this.sock.sendMessage(jid, { text: message });
+    try {
+      const jid = phoneToJid(to);
+      await this.sock.sendMessage(jid, { text: message });
+    } catch (e) {
+      this.logger.error(`Error enviando mensaje a ${to}:`, e);
+    }
   }
 
   async sendToGroup(message: string): Promise<void> {
@@ -267,11 +288,7 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
 
   async logout(): Promise<void> {
     await this.prisma.whatsappSession.deleteMany();
-    if (this.sock) {
-      this.sock.end();
-      this.sock = null;
-    }
-    this.connected = false;
+    this.teardown();
     this.connectionStatus = 'disconnected';
     this.currentQR = null;
     this.logger.log('Sesión eliminada. Reinicia para generar nuevo QR.');
