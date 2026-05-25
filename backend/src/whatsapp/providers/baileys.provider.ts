@@ -179,7 +179,7 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
 
       // Log raw participant data for diagnostics
       for (const p of participants) {
-        this.logger.log(`[LID MAP] Participante: id=${p.id} lid=${p.lid || 'N/A'}`);
+        this.logger.log(`[LID MAP] Participante: ${JSON.stringify(p)}`);
       }
 
       for (const p of participants) {
