@@ -205,7 +205,7 @@ export class MessageHandlerService {
         return;
       }
 
-      const mentionedPhone = mentionedJids[0].replace('@s.whatsapp.net', '').replace('@lid', '').replace(/[^0-9]/g, '');
+      const mentionedPhone = mentionedJids[0].split(':')[0].split('@')[0].replace(/[^0-9]/g, '');
 
       if (mentionedPhone === phone) {
         await this.wp.sendToGroup(`ℹ️ ${user.name}, para anotarte a ti mismo usa *@Z anótame*.`);

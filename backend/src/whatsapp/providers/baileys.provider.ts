@@ -100,7 +100,7 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
           if (!isGroup || (this.groupId && from !== this.groupId)) continue;
 
           const participant = msg.key.participant || '';
-          const phone = participant.replace('@s.whatsapp.net', '').replace(/[^0-9]/g, '');
+          const phone = participant.split(':')[0].split('@')[0].replace(/[^0-9]/g, '');
 
           const text =
             msg.message.conversation ||
