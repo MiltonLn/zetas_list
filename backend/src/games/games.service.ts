@@ -622,7 +622,10 @@ export class GamesService {
 
     const userName = displayName(reg);
     if (!options?.silent) {
-      let msg = `👋 *${userName}* salió de la lista.`;
+      const removedBySelf = actorId === (reg.userId ?? reg.registeredById);
+      let msg = removedBySelf
+        ? `👋 *${userName}* salió de la lista.`
+        : `🚫 *${userName}* fue sacado de la lista por un admin.`;
       if (orphanedGuests.length > 0) {
         const guestNames = orphanedGuests.map((g) => g.guestName || 'Invitado').join(', ');
         msg += `\n🚫 ${orphanedGuests.length === 1 ? 'Su invitado también fue removido' : 'Sus invitados también fueron removidos'}: ${guestNames}`;
