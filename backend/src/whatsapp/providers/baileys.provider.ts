@@ -102,6 +102,8 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
           const participant = msg.key.participant || '';
           const phone = participant.split(':')[0].split('@')[0].replace(/[^0-9]/g, '');
 
+          this.logger.log(`[MSG] participant=${participant} | extracted phone=${phone}`);
+
           const text =
             msg.message.conversation ||
             msg.message.extendedTextMessage?.text ||
