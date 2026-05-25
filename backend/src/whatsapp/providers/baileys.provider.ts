@@ -178,6 +178,11 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
       const participants = metadata?.participants || [];
       this.logger.log(`[LID MAP] Grupo tiene ${participants.length} participantes`);
 
+      // Log raw participant data for diagnostics
+      for (const p of participants) {
+        this.logger.log(`[LID MAP] Participante: id=${p.id} lid=${p.lid || 'N/A'}`);
+      }
+
       for (const p of participants) {
         const id: string = p.id || '';
         const lid: string = p.lid || '';
@@ -189,22 +194,39 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
           this.lidToPhone.set(lid, phoneNum);
         }
 
-        if (id.includes('@s.whatsapp.net') && !lid) {
-          const phoneNum = id.split(':')[0].split('@')[0];
-          this.lidToPhone.set(id, phoneNum);
+        // If participant id is LID-based, try to cross-reference with our DB
+        if (id.includes('@lid')) {
+          const lidNum = id.split(':')[0].split('@')[0];
+          // Will try to match later via onWhatsApp
+          this.lidToPhone.set(id, lidNum);
         }
       }
 
-      this.logger.log(`[LID MAP] Mapa construido con ${this.lidToPhone.size} entradas`);
-
-      // Fallback: also map using our DB users' phones
+      // Use onWhatsApp() to resolve known phone numbers to their LIDs
       const users = await this.prisma.user.findMany({ select: { phone: true } });
       for (const u of users) {
-        if (u.phone) {
-          // Try to get JID for this phone to map to LID
-          this.lidToPhone.set(u.phone, u.phone);
+        if (!u.phone) continue;
+        try {
+          const [result] = await this.sock.onWhatsApp(u.phone);
+          if (result?.exists && result.jid) {
+            const jidNum = result.jid.split(':')[0].split('@')[0];
+            this.lidToPhone.set(jidNum, u.phone);
+            this.lidToPhone.set(result.jid, u.phone);
+            this.logger.log(`[LID MAP] onWhatsApp(${u.phone}) -> jid=${result.jid}`);
+
+            // If result also has lid field
+            if (result.lid) {
+              const lidNum = result.lid.split(':')[0].split('@')[0];
+              this.lidToPhone.set(lidNum, u.phone);
+              this.lidToPhone.set(result.lid, u.phone);
+            }
+          }
+        } catch (e) {
+          this.logger.warn(`[LID MAP] No se pudo resolver ${u.phone}: ${e}`);
         }
       }
+
+      this.logger.log(`[LID MAP] Mapa final con ${this.lidToPhone.size} entradas`);
     } catch (e) {
       this.logger.error('Error construyendo mapa LID->Phone:', e);
     }
