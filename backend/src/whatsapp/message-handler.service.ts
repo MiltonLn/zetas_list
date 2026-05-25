@@ -11,6 +11,7 @@ const CMD_UNREGISTER = /^@z\s+(salirme|s[aá]came|qu[ií]tame|no\s+voy|no\s+jueg
 const CMD_LIST = /^@z\s+(lista|cupos|qui[eé]nes?\s+van|cu[aá]ntos)\b/i;
 const CMD_FINISH = /^@z\s+(terminar|cerrar|finalizar|completar)\b/i;
 const CMD_PROMOTE = /^@z\s+(promover|subir|jalar|meter)\b/i;
+const CMD_REMOVE_OTHER = /^@z\s+(sacar|quitar|remover|eliminar)\b/i;
 const CMD_INVITE = /^@z\s+invitar\s+(.+)/i;
 const CMD_CONFIRM = /^@z\s+(confirmar|confirmo|listo|lista)\b/i;
 const CMD_HELP = /^@z\s+(ayuda|help|comandos|info)\b/i;
@@ -40,13 +41,14 @@ export class MessageHandlerService {
     const isListCmd = CMD_LIST.test(normalized);
     const isFinishCmd = CMD_FINISH.test(normalized);
     const isPromoteCmd = CMD_PROMOTE.test(normalized);
+    const isRemoveOtherCmd = CMD_REMOVE_OTHER.test(normalized);
     const inviteMatch = normalized.match(CMD_INVITE);
     const isInviteCmd = !!inviteMatch;
     const isConfirmCmd = CMD_CONFIRM.test(normalized);
     const isHelpCmd = CMD_HELP.test(normalized);
 
     const isKnownCommand = isRegisterCmd || isUnregisterCmd || isListCmd || isFinishCmd ||
-        isPromoteCmd || isInviteCmd || isConfirmCmd || isHelpCmd;
+        isPromoteCmd || isRemoveOtherCmd || isInviteCmd || isConfirmCmd || isHelpCmd;
 
     if (!isKnownCommand) {
       await this.wp.sendToGroup(
@@ -95,6 +97,7 @@ export class MessageHandlerService {
         `⬆️ *Gestión de espera:*\n` +
         `• *${BOT_MENTION} promover* — Subir al primero de la lista de espera\n\n` +
         `🔒 *Solo admin:*\n` +
+        `• *${BOT_MENTION} sacar @persona* — Sacar a alguien de la lista\n` +
         `• *${BOT_MENTION} terminar* — Cerrar el partido y generar reporte\n\n` +
         `💡 _Sinónimos: anótame/méteme/voy/juego/entro/anotar, sácame/no voy/salgo, etc._`,
       );
@@ -103,7 +106,7 @@ export class MessageHandlerService {
 
     const user = await this.users.findByPhone(phone);
 
-    const needsActiveAccount = isRegisterCmd || isUnregisterCmd ||
+    const needsActiveAccount = isRegisterCmd || isUnregisterCmd || isRemoveOtherCmd ||
       isInviteCmd || isConfirmCmd || isPromoteCmd || isFinishCmd;
 
     if (needsActiveAccount && user && user.status !== 'active') {
@@ -133,6 +136,50 @@ export class MessageHandlerService {
       } catch (e: any) {
         this.logger.error('Error al terminar partido:', e);
         await this.wp.sendToGroup(`❌ Error al terminar partido: ${e.message}`);
+      }
+      return;
+    }
+
+    if (isRemoveOtherCmd) {
+      if (!user || user.role !== Role.admin) {
+        await this.wp.sendToGroup(`⛔ Solo los administradores pueden sacar a otros de la lista.`);
+        return;
+      }
+      if (!activeGame) {
+        await this.wp.sendToGroup(MSG_NO_ACTIVE_GAME);
+        return;
+      }
+
+      const otherMentions = (mentionedJids || []).filter((jid) => {
+        const jidNumber = jid.split(':')[0].split('@')[0];
+        return jidNumber !== phone;
+      });
+
+      if (otherMentions.length === 0) {
+        await this.wp.sendToGroup(`ℹ️ Debes mencionar a la persona que quieres sacar.\nEjemplo: *${BOT_MENTION} sacar @persona*`);
+        return;
+      }
+
+      const mentionedPhone = otherMentions[0].split(':')[0].split('@')[0].replace(/[^0-9]/g, '');
+      const targetUser = await this.users.findByPhone(mentionedPhone);
+
+      if (!targetUser) {
+        await this.wp.sendToGroup(`❌ El usuario mencionado no está registrado en el sistema.`);
+        return;
+      }
+
+      try {
+        await this.games.removeRegistration(activeGame.id, targetUser.id, user.id, user.role, { silent: true });
+        const updated = await this.games.findOne(activeGame.id);
+        const counts = this.games.buildCounts(updated);
+        await this.wp.sendToGroup(`🚫 *${targetUser.name}* fue sacado de la lista por un admin.\n${counts}${this.games.buildGameLink(activeGame.id)}`);
+      } catch (e: any) {
+        if (e.message?.includes('not found') || e.message?.includes('no encontrado')) {
+          await this.wp.sendToGroup(`ℹ️ ${targetUser.name} no está anotado en esta lista.`);
+        } else {
+          this.logger.error('Error al sacar jugador:', e);
+          await this.wp.sendToGroup(`❌ Error al sacar a ${targetUser.name}: ${e.message}`);
+        }
       }
       return;
     }
@@ -279,7 +326,16 @@ export class MessageHandlerService {
         const jidNumber = jid.split(':')[0].split('@')[0];
         return jidNumber !== phone;
       });
-      const hasTargetMention = otherMentions.length > 0;
+
+      // Non-admins can only register 1 extra person
+      const allowedMentions = user.role === Role.admin
+        ? otherMentions
+        : otherMentions.slice(0, 1);
+      const rejectedMentions = user.role === Role.admin
+        ? []
+        : otherMentions.slice(1);
+
+      const hasTargetMention = allowedMentions.length > 0;
 
       // Step 1: Register the sender
       let senderRegistered = false;
@@ -294,7 +350,6 @@ export class MessageHandlerService {
           if (retry.game) {
             senderRegistered = true;
             if (!retry.promoted) {
-              // On waiting list, still try — but report clearly
               if (!hasTargetMention) {
                 const counts = this.games.buildCounts(retry.game);
                 await this.wp.sendToGroup(`⚠️ *${user.name}*, no hay cupos disponibles en este momento. Si se libera un cupo serás promovido automáticamente.\n${counts}${this.games.buildGameLink(activeGame.id)}`);
@@ -332,52 +387,46 @@ export class MessageHandlerService {
         return;
       }
 
-      // Step 2: Register the mentioned person
-      const mentionedPhone = otherMentions[0].split(':')[0].split('@')[0].replace(/[^0-9]/g, '');
-      const targetUser = await this.users.findByPhone(mentionedPhone);
+      // Step 2: Register mentioned people
+      const msgs: string[] = [];
+      if (senderRegistered) msgs.push(`✅ *${user.name}* se anotó en la lista.`);
 
-      if (!targetUser) {
-        const msgs: string[] = [];
-        if (senderRegistered) msgs.push(`✅ *${user.name}* se anotó en la lista.`);
-        msgs.push(`❌ El usuario mencionado no está registrado en el sistema.`);
-        await this.wp.sendToGroup(msgs.join('\n'));
-        return;
-      }
+      for (const mentionJid of allowedMentions) {
+        const mPhone = mentionJid.split(':')[0].split('@')[0].replace(/[^0-9]/g, '');
+        const targetUser = await this.users.findByPhone(mPhone);
 
-      try {
-        const reg = await this.games.register(activeGame.id, targetUser.id, user.id, { silent: true });
-        const updated = await this.games.findOne(activeGame.id);
-        const counts = this.games.buildCounts(updated);
-        const spot = reg.isWaitingList
-          ? `en la *lista de espera* (puesto ${reg.position})`
-          : `en la *lista principal*`;
-        const msgs: string[] = [];
-        if (senderRegistered) msgs.push(`✅ *${user.name}* se anotó en la lista.`);
-        msgs.push(`✅ *${targetUser.name}* fue anotado ${spot} por *${user.name}* 🏐`);
-        if (reg.pendingConfirmation) {
-          msgs.push(`⏳ *${targetUser.name}* debe confirmar con *${BOT_MENTION} confirmar* antes de la hora de corte.`);
+        if (!targetUser) {
+          msgs.push(`❌ Un usuario mencionado no está registrado en el sistema.`);
+          continue;
         }
-        msgs.push(counts + this.games.buildGameLink(activeGame.id));
-        await this.wp.sendToGroup(msgs.join('\n'));
-      } catch (e: any) {
-        if (e.message?.includes('Ya estás anotado') || e.message?.includes('Ya está')) {
-          const msgs: string[] = [];
-          if (senderRegistered) msgs.push(`✅ *${user.name}* se anotó en la lista.`);
-          msgs.push(`ℹ️ ${targetUser.name} ya está anotado en esta lista.`);
-          await this.wp.sendToGroup(msgs.join('\n'));
-        } else if (e.message?.includes('máximo')) {
-          const msgs: string[] = [];
-          if (senderRegistered) msgs.push(`✅ *${user.name}* se anotó en la lista.`);
-          msgs.push(`⚠️ ${e.message}`);
-          await this.wp.sendToGroup(msgs.join('\n'));
-        } else {
-          this.logger.error('Error al anotar a otro:', e);
-          const msgs: string[] = [];
-          if (senderRegistered) msgs.push(`✅ *${user.name}* se anotó en la lista.`);
-          msgs.push(`❌ Error al anotar a ${targetUser.name}: ${e.message}`);
-          await this.wp.sendToGroup(msgs.join('\n'));
+
+        try {
+          const reg = await this.games.register(activeGame.id, targetUser.id, user.id, { silent: true });
+          const spot = reg.isWaitingList
+            ? `en la *lista de espera* (puesto ${reg.position})`
+            : `en la *lista principal*`;
+          msgs.push(`✅ *${targetUser.name}* fue anotado ${spot} por *${user.name}* 🏐`);
+          if (reg.pendingConfirmation) {
+            msgs.push(`⏳ *${targetUser.name}* debe confirmar con *${BOT_MENTION} confirmar* antes de la hora de corte.`);
+          }
+        } catch (e: any) {
+          if (e.message?.includes('Ya estás anotado') || e.message?.includes('Ya está')) {
+            msgs.push(`ℹ️ ${targetUser.name} ya está anotado en esta lista.`);
+          } else {
+            msgs.push(`❌ No se pudo anotar a ${targetUser.name}: ${e.message}`);
+          }
         }
       }
+
+      // Report rejected mentions (non-admin tried to register more than 1)
+      if (rejectedMentions.length > 0) {
+        msgs.push(`⚠️ Solo puedes anotar a una persona adicional. ${rejectedMentions.length === 1 ? 'Una mención fue ignorada' : `${rejectedMentions.length} menciones fueron ignoradas`}.`);
+      }
+
+      const updated = await this.games.findOne(activeGame.id);
+      const counts = this.games.buildCounts(updated);
+      msgs.push(counts + this.games.buildGameLink(activeGame.id));
+      await this.wp.sendToGroup(msgs.join('\n'));
     }
   }
 }
