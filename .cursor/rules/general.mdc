@@ -25,12 +25,13 @@ alwaysApply: true
 - Desarrollo local vía `docker-compose.yml` en la raíz. No instalar PostgreSQL localmente.
 
 ## Git
-- Todo el trabajo de Phase 1 va en `feat/phase-1-full-stack`.
+- Cada feature/fix va en su propia branch (`feat/`, `fix/`) con PR a `main`.
 - No pushear directamente a `main` sin PR.
+- Hotfixes urgentes: branch `fix/` aparte con PR rápido.
 - Pre-commit hooks activos (`.husky/pre-commit`): lint en archivos staged. Activar con `make hooks`.
 
 ## CI
-- GitHub Actions corre en push/PR a `main` y `feat/phase-1-full-stack`.
+- GitHub Actions corre en push/PR a `main`.
 - Ambos sub-proyectos: typecheck → lint (0 warnings) → tests.
 - Backend usa `npm ci` con `package-lock.json`. No commitear sin lockfile.
 
