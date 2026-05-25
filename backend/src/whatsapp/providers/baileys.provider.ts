@@ -112,13 +112,29 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
 
           if (!text || !this.messageHandler) continue;
 
+          // Log raw message for debugging mentions
+          const botJid = this.sock.user?.id;
+          this.logger.debug(`[MSG] raw text="${text}" botJid="${botJid}" mentionedJids=${JSON.stringify(mentionedJids)}`);
+
           // Normalize: if the bot itself is mentioned, replace the mention with @z
           let normalizedText = text;
-          const botJid = this.sock.user?.id;
           if (botJid) {
             const botNumber = botJid.split(':')[0].split('@')[0];
-            normalizedText = normalizedText.replace(new RegExp(`@${botNumber}\\b`, 'g'), '@z');
+            // Try multiple patterns: @number, @number:device, or @lid format
+            normalizedText = normalizedText
+              .replace(new RegExp(`@${botNumber}\\b`, 'g'), '@z')
+              .replace(new RegExp(`@${botJid.split('@')[0]}`, 'g'), '@z');
+            // Also check if any mentionedJid belongs to the bot and replace its text representation
+            for (const jid of mentionedJids) {
+              if (jid === botJid || jid.startsWith(botNumber)) {
+                const jidNumber = jid.split('@')[0].split(':')[0];
+                normalizedText = normalizedText.replace(new RegExp(`@${jidNumber}`, 'g'), '@z');
+              }
+            }
           }
+
+          this.logger.debug(`[MSG] normalized="${normalizedText}"`);
+
 
           await this.messageHandler.handleMessage(phone, normalizedText, from, mentionedJids).catch((e) =>
             this.logger.error('Error procesando mensaje:', e),
