@@ -18,6 +18,7 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
   private messageHandler?: MessageHandlerService;
   private currentQR: string | null = null;
   private connectionStatus: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
+  private lidToPhone = new Map<string, string>();
 
   constructor(private readonly prisma: PrismaService) {
     this.groupId = process.env.WHATSAPP_GROUP_ID || '';
@@ -77,6 +78,7 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
           this.connectionStatus = 'connected';
           this.currentQR = null;
           this.logger.log('WhatsApp conectado exitosamente');
+          await this.buildLidToPhoneMap();
         } else if (connection === 'close') {
           this.connected = false;
           this.connectionStatus = 'disconnected';
@@ -100,9 +102,12 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
           if (!isGroup || (this.groupId && from !== this.groupId)) continue;
 
           const participant = msg.key.participant || '';
-          const phone = participant.split(':')[0].split('@')[0].replace(/[^0-9]/g, '');
+          const phone = await this.resolvePhone(participant);
 
-          this.logger.log(`[MSG] participant=${participant} | extracted phone=${phone}`);
+          if (!phone) {
+            this.logger.warn(`[MSG] No se pudo resolver teléfono para participant=${participant}`);
+            continue;
+          }
 
           const text =
             msg.message.conversation ||
@@ -143,7 +148,18 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
             normalizedText = normalizedText.replace(new RegExp(`^@${mentionNumber}`), '@z');
           }
 
-          await this.messageHandler.handleMessage(phone, normalizedText, from, mentionedJids).catch((e) =>
+          // Resolve mentioned JIDs (LIDs) to phone-based JIDs
+          const resolvedMentions: string[] = [];
+          for (const jid of mentionedJids) {
+            const resolvedPhone = await this.resolvePhone(jid);
+            if (resolvedPhone) {
+              resolvedMentions.push(`${resolvedPhone}@s.whatsapp.net`);
+            } else {
+              resolvedMentions.push(jid);
+            }
+          }
+
+          await this.messageHandler.handleMessage(phone, normalizedText, from, resolvedMentions).catch((e) =>
             this.logger.error('Error procesando mensaje:', e),
           );
         }
@@ -153,6 +169,73 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
       this.logger.error('Error inicializando Baileys:', e);
       this.logger.warn('Asegúrate de tener instalado @whiskeysockets/baileys');
     }
+  }
+
+  private async buildLidToPhoneMap(): Promise<void> {
+    if (!this.groupId || !this.sock) return;
+    try {
+      const metadata = await this.sock.groupMetadata(this.groupId);
+      const participants = metadata?.participants || [];
+      this.logger.log(`[LID MAP] Grupo tiene ${participants.length} participantes`);
+
+      for (const p of participants) {
+        const id: string = p.id || '';
+        const lid: string = p.lid || '';
+
+        if (id.includes('@s.whatsapp.net') && lid) {
+          const phoneNum = id.split(':')[0].split('@')[0];
+          const lidNum = lid.split(':')[0].split('@')[0];
+          this.lidToPhone.set(lidNum, phoneNum);
+          this.lidToPhone.set(lid, phoneNum);
+        }
+
+        if (id.includes('@s.whatsapp.net') && !lid) {
+          const phoneNum = id.split(':')[0].split('@')[0];
+          this.lidToPhone.set(id, phoneNum);
+        }
+      }
+
+      this.logger.log(`[LID MAP] Mapa construido con ${this.lidToPhone.size} entradas`);
+
+      // Fallback: also map using our DB users' phones
+      const users = await this.prisma.user.findMany({ select: { phone: true } });
+      for (const u of users) {
+        if (u.phone) {
+          // Try to get JID for this phone to map to LID
+          this.lidToPhone.set(u.phone, u.phone);
+        }
+      }
+    } catch (e) {
+      this.logger.error('Error construyendo mapa LID->Phone:', e);
+    }
+  }
+
+  private async resolvePhone(participant: string): Promise<string | null> {
+    if (!participant) return null;
+
+    // If it's a regular phone JID (number@s.whatsapp.net or number:device@s.whatsapp.net)
+    if (participant.includes('@s.whatsapp.net')) {
+      return participant.split(':')[0].split('@')[0].replace(/[^0-9]/g, '');
+    }
+
+    // It's a LID — look up in our map
+    const lidNumber = participant.split(':')[0].split('@')[0];
+
+    if (this.lidToPhone.has(lidNumber)) {
+      return this.lidToPhone.get(lidNumber)!;
+    }
+    if (this.lidToPhone.has(participant)) {
+      return this.lidToPhone.get(participant)!;
+    }
+
+    // Rebuild map in case there's a new participant
+    await this.buildLidToPhoneMap();
+
+    if (this.lidToPhone.has(lidNumber)) {
+      return this.lidToPhone.get(lidNumber)!;
+    }
+
+    return null;
   }
 
   async sendMessage(to: string, message: string): Promise<void> {
