@@ -99,10 +99,13 @@ export default function LoginPage() {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Tu nombre de usuario"
+                  placeholder="573001234567"
                   autoComplete="username"
                   required
                 />
+                <span style={{ display: 'block', color: '#7c8db5', fontSize: 11, marginTop: 5, lineHeight: 1.4 }}>
+                  Tu usuario es tu número de teléfono con indicativo (ej: 573166160159)
+                </span>
               </div>
 
               <div>
@@ -180,7 +183,7 @@ export default function LoginPage() {
                   type="text"
                   value={recoverUsername}
                   onChange={(e) => setRecoverUsername(e.target.value)}
-                  placeholder="Tu nombre de usuario"
+                  placeholder="573001234567"
                   required
                   autoFocus
                 />

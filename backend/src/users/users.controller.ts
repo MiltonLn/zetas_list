@@ -91,6 +91,16 @@ export class UsersController {
     return this.usersService.resetPassword(id, dto.newPassword, user.id);
   }
 
+  @Roles(Role.admin)
+  @Patch(':id/role')
+  updateRole(
+    @Param('id') id: string,
+    @Body() dto: { role: Role },
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.usersService.updateRole(id, dto.role, user.id);
+  }
+
   @Post(':id/photo')
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })

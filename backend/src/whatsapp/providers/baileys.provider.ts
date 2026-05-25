@@ -320,6 +320,25 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
     }
   }
 
+  async getGroupParticipants(): Promise<Array<{ lid: string; phone: string | null }>> {
+    if (!this.sock || !this.connected || !this.groupId) return [];
+    try {
+      const metadata = await this.sock.groupMetadata(this.groupId);
+      const participants = metadata?.participants || [];
+      return participants.map((p: any) => {
+        const lid: string = p.id || '';
+        const phoneJid: string = p.phoneNumber || p.phone || '';
+        const phone = phoneJid
+          ? phoneJid.split(':')[0].split('@')[0].replace(/[^0-9]/g, '')
+          : null;
+        return { lid, phone };
+      });
+    } catch (e) {
+      this.logger.error('Error obteniendo participantes:', e);
+      return [];
+    }
+  }
+
   async logout(): Promise<void> {
     this.shuttingDown = true;
     await this.prisma.whatsappSession.deleteMany();

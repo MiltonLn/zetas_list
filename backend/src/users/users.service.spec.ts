@@ -166,6 +166,34 @@ describe('UsersService', () => {
         expect.objectContaining({ action: 'user_created', actorId }),
       );
     });
+
+    it('deriva username del phone cuando no se envía username', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockPrisma.user.create.mockResolvedValue(makeCreatedUser());
+
+      await service.create({ name: 'Test', phone: '573166160159' } as any, actorId);
+
+      expect(mockPrisma.user.create.mock.calls[0][0].data.username).toBe('573166160159');
+    });
+
+    it('usa username explícito si se provee', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockPrisma.user.create.mockResolvedValue(makeCreatedUser());
+
+      await service.create({ username: 'custom', name: 'Test', phone: '573166160159' } as any, actorId);
+
+      expect(mockPrisma.user.create.mock.calls[0][0].data.username).toBe('custom');
+    });
+
+    it('normaliza phone removiendo caracteres no numéricos', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockPrisma.user.create.mockResolvedValue(makeCreatedUser());
+
+      await service.create({ name: 'Test', phone: '+57-316-6160159' } as any, actorId);
+
+      expect(mockPrisma.user.create.mock.calls[0][0].data.phone).toBe('573166160159');
+      expect(mockPrisma.user.create.mock.calls[0][0].data.username).toBe('573166160159');
+    });
   });
 
   // ─── update ────────────────────────────────────────────────────────────────

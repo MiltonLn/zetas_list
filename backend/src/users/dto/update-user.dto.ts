@@ -7,7 +7,6 @@ import {
   Max,
   IsDateString,
   IsUrl,
-  Matches,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Position, Gender } from '@prisma/client';
@@ -17,12 +16,6 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   name?: string;
-
-  @ApiPropertyOptional({ example: '3001234567' })
-  @IsOptional()
-  @IsString()
-  @Matches(/^\+?\d{7,15}$/, { message: 'Formato de teléfono inválido' })
-  phone?: string;
 
   @ApiPropertyOptional({ enum: Position })
   @IsOptional()

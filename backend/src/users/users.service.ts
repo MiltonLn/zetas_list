@@ -39,12 +39,15 @@ export class UsersService {
   ) {}
 
   async create(dto: CreateUserDto, actorId: string) {
+    const normalizedPhone = dto.phone.replace(/[^0-9]/g, '');
+    const username = dto.username || normalizedPhone;
+
     const existing = await this.prisma.user.findFirst({
-      where: { OR: [{ username: dto.username }, { phone: dto.phone }] },
+      where: { OR: [{ username }, { phone: normalizedPhone }] },
     });
     if (existing) {
       throw new ConflictException(
-        existing.username === dto.username
+        existing.username === username
           ? 'El nombre de usuario ya existe'
           : 'El número de teléfono ya está registrado',
       );
@@ -57,10 +60,10 @@ export class UsersService {
 
     const user = await this.prisma.user.create({
       data: {
-        username: dto.username,
+        username,
         passwordHash,
         name: dto.name,
-        phone: dto.phone,
+        phone: normalizedPhone,
         role: dto.role ?? Role.member,
         position: dto.position,
         gender: dto.gender,
@@ -147,7 +150,6 @@ export class UsersService {
       where: { id },
       data: {
         name: dto.name,
-        phone: dto.phone,
         position: dto.position,
         gender: dto.gender,
         heightCm: dto.heightCm,
@@ -210,5 +212,28 @@ export class UsersService {
     });
 
     return { message: 'Contraseña restablecida correctamente' };
+  }
+
+  async updateRole(id: string, newRole: Role, actorId: string) {
+    const user = await this.findOne(id);
+
+    if (user.id === actorId) {
+      throw new BadRequestException('No puedes cambiar tu propio rol');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { role: newRole },
+      select: USER_PUBLIC_SELECT,
+    });
+
+    await this.audit.log({
+      actorId,
+      targetUserId: id,
+      action: 'user_updated',
+      details: { action: 'role_changed', newRole },
+    });
+
+    return updated;
   }
 }
