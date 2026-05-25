@@ -60,10 +60,20 @@ import { JwtUser } from '../auth/jwt-user.interface';
 ## WhatsApp
 - Los envíos a WhatsApp nunca deben bloquear ni fallar silenciosamente. Usar `.catch((e) => this.logger.warn(...))`.
 - Mensajes repetidos del bot deben ser constantes, no strings inline.
-- Lógica reutilizable (e.g. `buildCounts`, `buildRegistrationOpenMessage`) vive en `GamesService` y se llama desde otros servicios.
+- Lógica reutilizable (e.g. `buildCounts`, `buildRegistrationOpenMessage`) vive en `games.utils.ts` y se expone vía `GamesService`.
+- JID utilities (parse, normalize, resolve) centralizadas en `whatsapp/utils/jid-utils.ts`.
+- El command handler usa un dispatch map (`CommandDef[]`) — no agregar if/else chains.
+- Dispatch envuelto en try/catch global; handlers individuales manejan sus propios errores específicos.
 
 ## Errores
 - `AllExceptionsFilter` está registrado globalmente. Errores 5xx se loggean + capturan en Sentry automáticamente.
-- Usar excepciones de NestJS: `NotFoundException`, `BadRequestException`, `ConflictException`, `ForbiddenException`.
+- **Capa de servicio**: usar excepciones de dominio tipadas en `exceptions/index.ts` (e.g. `AlreadyRegisteredException`, `GameFullException`). Nunca lanzar `Error('string')` genérico.
+- **Capa de controlador**: las excepciones de dominio se mapean a HTTP en el controller o en el filter. Usar `NotFoundException`, `ConflictException`, etc. solo en controllers.
 - Mensajes de error en **español** (son visibles al usuario final).
 - Endpoints sensibles (e.g. recover-password): no revelar si un recurso existe. Retornar respuesta genérica.
+- **Mensajes de error al grupo de WhatsApp**: nunca exponer `.message` interno. Usar mensajes genéricos ("Intenta de nuevo") y loggear el error completo con `this.logger.error()`.
+
+## Utilidades
+- Lógica pura reutilizable (cálculos, formateo, constantes) va en `<module>.utils.ts` al lado del servicio.
+- El servicio importa desde utils. No duplicar lógica entre archivos.
+- Ejemplos: `games.utils.ts` (buildCounts, displayName, shouldGoToWaitingList), `whatsapp/utils/jid-utils.ts`.
