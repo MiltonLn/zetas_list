@@ -42,6 +42,4 @@ COPY backend/package*.json ./
 
 RUN mkdir -p uploads && npx prisma generate
 
-EXPOSE 3000
-
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main"]
