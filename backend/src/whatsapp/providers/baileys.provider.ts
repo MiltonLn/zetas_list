@@ -148,9 +148,13 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
             normalizedText = normalizedText.replace(new RegExp(`^@${mentionNumber}`), '@z');
           }
 
-          // Resolve mentioned JIDs (LIDs) to phone-based JIDs
+          // Resolve mentioned JIDs (LIDs) to phone-based JIDs, excluding the bot itself
+          const botJidNum = botJid?.split(':')[0].split('@')[0] || '';
+          const botLidNum = botLid?.split(':')[0].split('@')[0] || '';
           const resolvedMentions: string[] = [];
           for (const jid of mentionedJids) {
+            const jidNum = jid.split(':')[0].split('@')[0];
+            if (jidNum === botJidNum || jidNum === botLidNum) continue;
             const resolvedPhone = await this.resolvePhone(jid);
             if (resolvedPhone) {
               resolvedMentions.push(`${resolvedPhone}@s.whatsapp.net`);
