@@ -103,11 +103,8 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
 
           const participant = msg.key.participant || '';
           const phone = await this.resolvePhone(participant);
-
-          if (!phone) {
-            this.logger.warn(`[MSG] No se pudo resolver teléfono para participant=${participant}`);
-            continue;
-          }
+          // Pass either the resolved phone or the raw LID number for DB lookup
+          const phoneOrLid = phone || participant.split(':')[0].split('@')[0];
 
           const text =
             msg.message.conversation ||
@@ -159,7 +156,9 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
             }
           }
 
-          await this.messageHandler.handleMessage(phone, normalizedText, from, resolvedMentions).catch((e) =>
+          // Pass rawLid for auto-saving LID mapping when user is found
+          const rawLid = participant.includes('@lid') ? participant.split(':')[0].split('@')[0] : undefined;
+          await this.messageHandler.handleMessage(phoneOrLid, normalizedText, from, resolvedMentions, rawLid).catch((e) =>
             this.logger.error('Error procesando mensaje:', e),
           );
         }

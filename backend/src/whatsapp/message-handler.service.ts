@@ -31,7 +31,7 @@ export class MessageHandlerService {
     private prisma: PrismaService,
   ) {}
 
-  async handleMessage(phone: string, text: string, _groupId: string, mentionedJids?: string[]): Promise<void> {
+  async handleMessage(phone: string, text: string, _groupId: string, mentionedJids?: string[], rawLid?: string): Promise<void> {
     const normalized = text.trim();
 
     if (!CMD_IS_BOT_MENTION.test(normalized)) return;
@@ -103,7 +103,12 @@ export class MessageHandlerService {
       return;
     }
 
-    const user = await this.users.findByPhone(phone);
+    const user = await this.users.findByPhoneOrLid(phone);
+
+    // Auto-save LID mapping if user found and rawLid provided
+    if (user && rawLid) {
+      this.users.setWhatsappLid(user.id, rawLid).catch(() => {});
+    }
 
     const needsActiveAccount = isRegisterCmd || isUnregisterCmd || isRegisterOtherCmd ||
       isInviteCmd || isConfirmCmd || isPromoteCmd || isFinishCmd;
@@ -252,7 +257,7 @@ export class MessageHandlerService {
       }
 
       const mentionedPhone = otherMentions[0].split(':')[0].split('@')[0].replace(/[^0-9]/g, '');
-      const targetUser = await this.users.findByPhone(mentionedPhone);
+      const targetUser = await this.users.findByPhoneOrLid(mentionedPhone);
 
       if (!targetUser) {
         // Report sender registration and mention error together

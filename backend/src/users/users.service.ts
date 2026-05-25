@@ -115,6 +115,22 @@ export class UsersService {
     });
   }
 
+  async findByPhoneOrLid(phoneOrLid: string) {
+    return this.prisma.user.findFirst({
+      where: {
+        OR: [{ phone: phoneOrLid }, { whatsappLid: phoneOrLid }],
+      },
+      select: { id: true, name: true, phone: true, role: true, status: true },
+    });
+  }
+
+  async setWhatsappLid(userId: string, lid: string) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { whatsappLid: lid },
+    });
+  }
+
   async update(
     id: string,
     dto: UpdateUserDto,

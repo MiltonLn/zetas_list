@@ -78,6 +78,7 @@ model User {
   passwordHash String
   name         String
   phone        String     @unique
+  whatsappLid  String?    @unique
   role         Role       @default(member)
   position     Position?
   gender       Gender?
