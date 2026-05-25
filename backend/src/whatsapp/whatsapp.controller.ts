@@ -113,7 +113,7 @@ export class WhatsappController {
       return { error: 'No se pudieron obtener participantes del grupo.' };
     }
 
-    const DEFAULT_PASSWORD = 'Zetas2026!';
+    const DEFAULT_PASSWORD = 'zetas123';
     const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 12);
 
     let created = 0;

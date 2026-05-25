@@ -40,6 +40,9 @@ export const usersService = {
   updateStatus: (id: string, status: UserStatus, reason?: string) =>
     api.patch(`/users/${id}/status`, { status, reason }),
 
+  updateRole: (id: string, role: Role) =>
+    api.patch<User>(`/users/${id}/role`, { role }),
+
   resetPassword: (id: string, newPassword: string) =>
     api.patch(`/users/${id}/reset-password`, { newPassword }),
 

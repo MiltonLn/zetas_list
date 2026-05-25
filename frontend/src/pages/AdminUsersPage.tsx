@@ -394,6 +394,35 @@ export default function AdminUsersPage() {
               {selectedUser.phone}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {selectedUser.role === 'member' ? (
+                <button
+                  className="btn"
+                  onClick={async () => {
+                    try {
+                      const { data } = await usersService.updateRole(selectedUser.id, 'admin');
+                      setUsers((prev) => prev.map((u) => (u.id === data.id ? data : u)));
+                      setSelectedUser(null);
+                    } catch (err) { setError(getApiError(err)); }
+                  }}
+                  style={{ textAlign: 'left', color: '#6e8efb' }}
+                >
+                  👑 Hacer administrador
+                </button>
+              ) : (
+                <button
+                  className="btn"
+                  onClick={async () => {
+                    try {
+                      const { data } = await usersService.updateRole(selectedUser.id, 'member');
+                      setUsers((prev) => prev.map((u) => (u.id === data.id ? data : u)));
+                      setSelectedUser(null);
+                    } catch (err) { setError(getApiError(err)); }
+                  }}
+                  style={{ textAlign: 'left' }}
+                >
+                  👤 Quitar rol de admin
+                </button>
+              )}
               {selectedUser.status !== 'active' && (
                 <button className="btn btn-primary" onClick={() => setStatusAction('active')} style={{ textAlign: 'left' }}>
                   ✅ Activar cuenta

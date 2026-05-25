@@ -53,7 +53,7 @@ export class UsersService {
       );
     }
 
-    const DEFAULT_PASSWORD = 'Zetas2026!';
+    const DEFAULT_PASSWORD = 'zetas123';
     const rawPassword = dto.password || DEFAULT_PASSWORD;
     const passwordHash = await bcrypt.hash(rawPassword, 12);
     const mustChangePassword = !dto.password;
@@ -212,5 +212,28 @@ export class UsersService {
     });
 
     return { message: 'Contraseña restablecida correctamente' };
+  }
+
+  async updateRole(id: string, newRole: Role, actorId: string) {
+    const user = await this.findOne(id);
+
+    if (user.id === actorId) {
+      throw new BadRequestException('No puedes cambiar tu propio rol');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { role: newRole },
+      select: USER_PUBLIC_SELECT,
+    });
+
+    await this.audit.log({
+      actorId,
+      targetUserId: id,
+      action: 'user_updated',
+      details: { action: 'role_changed', newRole },
+    });
+
+    return updated;
   }
 }
