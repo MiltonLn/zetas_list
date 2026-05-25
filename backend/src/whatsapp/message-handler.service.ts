@@ -302,7 +302,7 @@ export class MessageHandlerService {
               }
             }
           } else {
-            const reg = await this.games.register(activeGame.id, user.id, user.id, { silent: true });
+            await this.games.register(activeGame.id, user.id, user.id, { silent: true });
             senderRegistered = true;
           }
         } catch (e: any) {
