@@ -79,6 +79,14 @@ export class WhatsappController {
     return res.send(buffer);
   }
 
+  @Get('groups')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.admin)
+  async getGroups() {
+    const groups = await this.provider.getGroups();
+    return { groups };
+  }
+
   @Post('logout')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.admin)

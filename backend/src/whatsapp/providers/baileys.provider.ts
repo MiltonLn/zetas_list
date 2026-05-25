@@ -145,6 +145,21 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
     return this.connected;
   }
 
+  async getGroups(): Promise<Array<{ id: string; name: string; participants: number }>> {
+    if (!this.sock || !this.connected) return [];
+    try {
+      const groups = await this.sock.groupFetchAllParticipating();
+      return Object.values(groups).map((g: any) => ({
+        id: g.id,
+        name: g.subject,
+        participants: g.participants?.length || 0,
+      }));
+    } catch (e) {
+      this.logger.error('Error obteniendo grupos:', e);
+      return [];
+    }
+  }
+
   async logout(): Promise<void> {
     await this.prisma.whatsappSession.deleteMany();
     if (this.sock) {
