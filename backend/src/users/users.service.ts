@@ -39,28 +39,31 @@ export class UsersService {
   ) {}
 
   async create(dto: CreateUserDto, actorId: string) {
+    const normalizedPhone = dto.phone.replace(/[^0-9]/g, '');
+    const username = dto.username || normalizedPhone;
+
     const existing = await this.prisma.user.findFirst({
-      where: { OR: [{ username: dto.username }, { phone: dto.phone }] },
+      where: { OR: [{ username }, { phone: normalizedPhone }] },
     });
     if (existing) {
       throw new ConflictException(
-        existing.username === dto.username
+        existing.username === username
           ? 'El nombre de usuario ya existe'
           : 'El número de teléfono ya está registrado',
       );
     }
 
-    const DEFAULT_PASSWORD = 'zetas123';
+    const DEFAULT_PASSWORD = 'Zetas2026!';
     const rawPassword = dto.password || DEFAULT_PASSWORD;
     const passwordHash = await bcrypt.hash(rawPassword, 12);
     const mustChangePassword = !dto.password;
 
     const user = await this.prisma.user.create({
       data: {
-        username: dto.username,
+        username,
         passwordHash,
         name: dto.name,
-        phone: dto.phone,
+        phone: normalizedPhone,
         role: dto.role ?? Role.member,
         position: dto.position,
         gender: dto.gender,
@@ -147,7 +150,6 @@ export class UsersService {
       where: { id },
       data: {
         name: dto.name,
-        phone: dto.phone,
         position: dto.position,
         gender: dto.gender,
         heightCm: dto.heightCm,

@@ -15,12 +15,12 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Role, Position, Gender } from '@prisma/client';
 
 export class CreateUserDto {
-  @ApiProperty({ example: 'jperez' })
+  @ApiPropertyOptional({ example: '573001234567', description: 'Opcional — se deriva del phone si no se envía' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  username: string;
+  username?: string;
 
-  @ApiPropertyOptional({ example: 'Contraseña1!', description: 'Si no se envía, se usa zetas123' })
+  @ApiPropertyOptional({ example: 'Contraseña1!', description: 'Si no se envía, se usa Zetas2026!' })
   @IsOptional()
   @IsString()
   @MinLength(8)
@@ -31,7 +31,7 @@ export class CreateUserDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiProperty({ example: '3001234567' })
+  @ApiProperty({ example: '573001234567' })
   @IsString()
   @IsNotEmpty()
   @Matches(/^\+?\d{7,15}$/, { message: 'Formato de teléfono inválido' })

@@ -87,14 +87,14 @@ describe('UsersService', () => {
       await expect(service.create(baseDto as any, actorId)).rejects.toThrow('teléfono');
     });
 
-    it('usa zetas123 como contraseña por defecto cuando no se provee', async () => {
+    it('usa Zetas2026! como contraseña por defecto cuando no se provee', async () => {
       mockPrisma.user.findFirst.mockResolvedValue(null);
       mockPrisma.user.create.mockResolvedValue(makeCreatedUser());
 
       await service.create(baseDto as any, actorId);
 
       const createCall = mockPrisma.user.create.mock.calls[0][0];
-      const isDefault = await bcrypt.compare('zetas123', createCall.data.passwordHash);
+      const isDefault = await bcrypt.compare('Zetas2026!', createCall.data.passwordHash);
       expect(isDefault).toBe(true);
     });
 
@@ -152,7 +152,7 @@ describe('UsersService', () => {
       await service.create(baseDto as any, actorId);
 
       const hash = mockPrisma.user.create.mock.calls[0][0].data.passwordHash;
-      expect(hash).not.toBe('zetas123');
+      expect(hash).not.toBe('Zetas2026!');
       expect(hash).toMatch(/^\$2[ab]\$/);
     });
 

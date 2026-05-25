@@ -2,7 +2,7 @@ import { api } from './api';
 import type { User, Role, Position, Gender, UserStatus } from '../types';
 
 export interface CreateUserPayload {
-  username: string;
+  username?: string;
   password?: string;
   name: string;
   phone: string;
@@ -16,7 +16,6 @@ export interface CreateUserPayload {
 
 export interface UpdateUserPayload {
   name?: string;
-  phone?: string;
   position?: Position;
   gender?: Gender;
   heightCm?: number;
