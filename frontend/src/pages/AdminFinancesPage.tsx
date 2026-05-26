@@ -5,7 +5,7 @@ import { Modal } from '../components/Modal';
 import { financesService, type FinanceTransaction, type Fine } from '../services/finances.service';
 import { usersService } from '../services/users.service';
 import { getApiError } from '../services/api';
-import { useToast } from '../components/Toast';
+import { showToast } from '../utils/toast';
 import type { User } from '../types';
 
 type Tab = 'transactions' | 'fines';
@@ -17,7 +17,6 @@ export function AdminFinancesPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState(new Date().getFullYear());
-  const { showToast } = useToast();
 
   const [showTxModal, setShowTxModal] = useState(false);
   const [editingTx, setEditingTx] = useState<FinanceTransaction | null>(null);
@@ -39,7 +38,7 @@ export function AdminFinancesPage() {
     } finally {
       setLoading(false);
     }
-  }, [year, showToast]);
+  }, [year]);
 
   const loadUsers = useCallback(async () => {
     try {
@@ -272,7 +271,6 @@ function TransactionModal({ transaction, onClose, onSaved }: {
   const [amount, setAmount] = useState(String(transaction?.amount || ''));
   const [description, setDescription] = useState(transaction?.description || '');
   const [saving, setSaving] = useState(false);
-  const { showToast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -335,7 +333,6 @@ function FineModal({ fine, users, onClose, onSaved }: {
   const [reason, setReason] = useState(fine?.reason || '');
   const [status, setStatus] = useState<'pending' | 'paid'>(fine?.status || 'pending');
   const [saving, setSaving] = useState(false);
-  const { showToast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -399,7 +396,6 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
   const [jsonText, setJsonText] = useState('');
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ transactionsCreated: number; finesCreated: number; errors: string[] } | null>(null);
-  const { showToast } = useToast();
 
   const handleImport = async () => {
     setImporting(true);
