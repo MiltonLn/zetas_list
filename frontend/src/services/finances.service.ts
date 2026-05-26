@@ -71,6 +71,7 @@ export interface CreateFinePayload {
 }
 
 export interface UpdateFinePayload {
+  userId?: string | null;
   date?: string;
   amount?: number;
   reason?: string;

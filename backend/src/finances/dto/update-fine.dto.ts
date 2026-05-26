@@ -10,6 +10,11 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { FineStatus } from '@prisma/client';
 
 export class UpdateFineDto {
+  @ApiPropertyOptional({ description: 'User ID to link this fine to' })
+  @IsOptional()
+  @IsString()
+  userId?: string | null;
+
   @ApiPropertyOptional({ example: '2026-01-17' })
   @IsOptional()
   @IsDateString()

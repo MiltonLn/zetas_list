@@ -150,6 +150,7 @@ export class FinancesService {
     if (!existing) throw new NotFoundException('Multa no encontrada');
 
     const data: Record<string, unknown> = {};
+    if (dto.userId !== undefined) data.userId = dto.userId;
     if (dto.date !== undefined) data.date = new Date(dto.date);
     if (dto.amount !== undefined) data.amount = dto.amount;
     if (dto.reason !== undefined) data.reason = dto.reason;
