@@ -95,14 +95,14 @@ describe('jid-utils', () => {
       expect(result).toBe('@z anotame @222333');
     });
 
-    it('uses fallback replacement for leading numeric mention', () => {
+    it('does not replace non-bot mentions even if leading numeric', () => {
       const result = normalizeBotMentions(
         '@999 anotame',
         '573166160159@s.whatsapp.net',
         undefined,
         ['999@s.whatsapp.net'],
       );
-      expect(result).toBe('@z anotame');
+      expect(result).toBe('@999 anotame');
     });
   });
 
