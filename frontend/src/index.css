@@ -1170,6 +1170,13 @@ select.zetas-input {
   border-bottom: 1px solid #2a2d50;
   padding-bottom: 0.4rem;
 }
+.rules-content h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: #b0b5d4;
+}
 .rules-content p {
   margin-bottom: 0.75rem;
   line-height: 1.7;
