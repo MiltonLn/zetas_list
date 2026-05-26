@@ -23,9 +23,15 @@ export class ImportTransactionItem {
 }
 
 export class ImportFineItem {
-  @ApiProperty({ description: 'Phone number (username) of the user' })
+  @ApiPropertyOptional({ description: 'Phone number (username) of the user' })
+  @IsOptional()
   @IsString()
-  userPhone: string;
+  userPhone?: string;
+
+  @ApiPropertyOptional({ description: 'Display name (used when user is not yet linked)' })
+  @IsOptional()
+  @IsString()
+  userName?: string;
 
   @ApiProperty({ example: '2026-01-17' })
   @IsDateString()

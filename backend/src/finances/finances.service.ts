@@ -50,7 +50,7 @@ export class FinancesService {
       pendingFines: pendingFines.map((f) => ({
         id: f.id,
         userId: f.userId,
-        userName: f.user.name,
+        userName: f.user?.name ?? f.userName ?? 'Sin asignar',
         amount: f.amount,
         reason: f.reason,
         date: f.date,
@@ -293,20 +293,28 @@ export class FinancesService {
     }
 
     for (const fineItem of dto.fines) {
-      const user = await this.prisma.user.findFirst({
-        where: {
-          OR: [{ phone: fineItem.userPhone }, { username: fineItem.userPhone }],
-        },
-      });
+      let userId: string | null = null;
+      let displayName: string | null = fineItem.userName ?? null;
 
-      if (!user) {
-        errors.push(`Usuario no encontrado: ${fineItem.userPhone}`);
-        continue;
+      if (fineItem.userPhone) {
+        const user = await this.prisma.user.findFirst({
+          where: {
+            OR: [{ phone: fineItem.userPhone }, { username: fineItem.userPhone }],
+          },
+        });
+
+        if (user) {
+          userId = user.id;
+          displayName = displayName ?? user.name;
+        } else {
+          errors.push(`Usuario no encontrado: ${fineItem.userPhone} (multa creada sin vincular)`);
+        }
       }
 
       await this.prisma.fine.create({
         data: {
-          userId: user.id,
+          userId: userId ?? undefined,
+          userName: displayName ?? undefined,
           date: new Date(fineItem.date),
           amount: fineItem.amount,
           reason: fineItem.reason,

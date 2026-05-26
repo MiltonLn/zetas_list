@@ -32,7 +32,8 @@ export interface FinanceTransaction {
 
 export interface Fine {
   id: string;
-  userId: string;
+  userId: string | null;
+  userName: string | null;
   date: string;
   amount: number;
   reason: string;
@@ -40,7 +41,7 @@ export interface Fine {
   paidAt: string | null;
   gameId: string | null;
   createdById: string;
-  user?: { id: string; name: string; phone: string };
+  user?: { id: string; name: string; phone: string } | null;
   createdBy?: { id: string; name: string };
   createdAt: string;
 }

@@ -221,7 +221,8 @@ model FinanceTransaction {
 
 model Fine {
   id                 String     @id @default(uuid())
-  userId             String
+  userId             String?
+  userName           String?
   date               DateTime   @db.Date
   amount             Int
   reason             String
@@ -233,7 +234,7 @@ model Fine {
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
 
-  user      User  @relation("FinedUser", fields: [userId], references: [id])
+  user      User?  @relation("FinedUser", fields: [userId], references: [id])
   game      Game? @relation(fields: [gameId], references: [id], onDelete: SetNull)
   createdBy User  @relation("FineCreator", fields: [createdById], references: [id])
 

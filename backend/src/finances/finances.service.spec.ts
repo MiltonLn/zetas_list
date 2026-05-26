@@ -280,9 +280,10 @@ describe('FinancesService', () => {
       expect(result.errors).toHaveLength(0);
     });
 
-    it('reporta errores para usuarios no encontrados', async () => {
+    it('reporta warning para usuarios no encontrados pero crea la multa', async () => {
       mockPrisma.financeTransaction.createMany.mockResolvedValue({ count: 0 });
       mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockPrisma.fine.create.mockResolvedValue({ id: 'fine-1' });
 
       const dto = {
         transactions: [],
@@ -291,9 +292,14 @@ describe('FinancesService', () => {
 
       const result = await service.importData(dto, 'actor-1');
 
-      expect(result.finesCreated).toBe(0);
+      expect(result.finesCreated).toBe(1);
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0]).toContain('9999999');
+      expect(mockPrisma.fine.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ userId: undefined }),
+        }),
+      );
     });
   });
 });

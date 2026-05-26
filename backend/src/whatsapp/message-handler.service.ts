@@ -212,7 +212,7 @@ export class MessageHandlerService {
 
       for (const fine of pendingFines) {
         const dateStr = new Date(fine.date).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
-        lines.push(`• ${fine.user.name} - $${fine.amount.toLocaleString('es-CO')} (${fine.reason}) - ${dateStr}`);
+        lines.push(`• ${fine.user?.name ?? fine.userName ?? 'Sin asignar'} - $${fine.amount.toLocaleString('es-CO')} (${fine.reason}) - ${dateStr}`);
         total += fine.amount;
       }
 

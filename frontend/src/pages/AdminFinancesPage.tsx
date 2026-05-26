@@ -311,7 +311,7 @@ function FinesTable({ fines, formatCurrency, formatDate, onEdit, onDelete, onMar
     switch (sortCol) {
       case 'date': cmp = new Date(a.date).getTime() - new Date(b.date).getTime(); break;
       case 'amount': cmp = a.amount - b.amount; break;
-      case 'name': cmp = (a.user?.name || '').localeCompare(b.user?.name || ''); break;
+      case 'name': cmp = (a.user?.name || a.userName || '').localeCompare(b.user?.name || b.userName || ''); break;
       case 'status': cmp = a.status.localeCompare(b.status); break;
     }
     return sortDir === 'asc' ? cmp : -cmp;
@@ -364,7 +364,7 @@ function FinesTable({ fines, formatCurrency, formatDate, onEdit, onDelete, onMar
               {paginated.map((f) => (
                 <tr key={f.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                   <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatDate(f.date)}</td>
-                  <td style={{ padding: '8px 12px' }}>{f.user?.name || 'N/A'}</td>
+                  <td style={{ padding: '8px 12px' }}>{f.user?.name || f.userName || 'Sin asignar'}</td>
                   <td style={{ padding: '8px 12px', opacity: 0.7 }}>{f.reason}</td>
                   <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 500 }}>{formatCurrency(f.amount)}</td>
                   <td style={{ padding: '8px 12px', textAlign: 'center' }}>
