@@ -1,9 +1,3 @@
-# Reglas del Grupo 2026
-
-**Reglamento Zetas Ingenio 🏐**
-
----
-
 ## Lista de juego
 
 - La lista se inicia a las 10:00 a.m. el día del juego.
