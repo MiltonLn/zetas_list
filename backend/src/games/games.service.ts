@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { GameEventsService } from './game-events.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { FinancesService } from '../finances/finances.service';
 import { CreateGameDto } from './dto/create-game.dto';
 import { CancelGameDto } from './dto/cancel-game.dto';
 import { UpdateRegistrationDto } from './dto/update-registration.dto';
@@ -28,6 +29,7 @@ import {
   NoPendingConfirmationException,
   CannotRemoveOtherException,
   NoOneInWaitListException,
+  UserHasUnpaidFinesException,
 } from './exceptions';
 import {
   displayName,
@@ -60,6 +62,7 @@ export class GamesService {
     private events: GameEventsService,
     @Inject(forwardRef(() => WhatsappService))
     private whatsapp: WhatsappService,
+    private finances: FinancesService,
   ) {}
 
   private readonly logger = new Logger(GamesService.name);
@@ -267,6 +270,11 @@ export class GamesService {
           throw new InactiveUserException();
         }
 
+        const hasDebt = await this.finances.hasUnpaidFines(userId);
+        if (hasDebt) {
+          throw new UserHasUnpaidFinesException();
+        }
+
         if (!isSelfRegister) {
           const actor = await tx.user.findUnique({ where: { id: registeredById }, select: { role: true } });
 
@@ -363,6 +371,11 @@ export class GamesService {
     const trimmedName = guestName?.trim();
     if (!trimmedName) {
       throw new GameNotOpenException();
+    }
+
+    const inviterHasDebt = await this.finances.hasUnpaidFines(invitedById);
+    if (inviterHasDebt) {
+      throw new UserHasUnpaidFinesException();
     }
 
     const registration = await this.prisma.$transaction(
@@ -1078,6 +1091,26 @@ export class GamesService {
 
     await this.audit.log({ gameId, actorId, action: 'game_completed', details: {} });
     this.events.emit({ gameId, type: 'status_change', data: { status: GameStatus.completed } });
+
+    // Auto-create fines for no-shows (main list, not attended, not exempt)
+    const fined = game.registrations.filter((r) => !r.attended && !r.isWaitingList && !r.fineExempt);
+    if (fined.length > 0) {
+      await this.finances.createGameFines(gameId, fined, game.fineAmountNoShow, actorId);
+    }
+
+    // Auto-create debts for non-payers (attended but didn't pay)
+    const debts = game.registrations.filter((r) => r.attended && !r.paid);
+    if (debts.length > 0) {
+      await this.finances.createGameDebts(gameId, debts, game.pricePerPlayer, actorId);
+    }
+
+    // Auto-create income entry for net game revenue
+    const totalPaid = game.registrations.filter((r) => r.paid).length;
+    const recaudado = totalPaid * game.pricePerPlayer;
+    const neto = recaudado - (game.vigilante ?? 0);
+    if (neto > 0) {
+      await this.finances.createGameIncome(gameId, neto, game.gameDate, actorId);
+    }
 
     if (!options?.silent) {
       this.whatsapp

@@ -12,6 +12,8 @@ import AdminUsersPage from './pages/AdminUsersPage';
 import CreateGamePage from './pages/CreateGamePage';
 import LegacyParserPage from './pages/LegacyParserPage';
 import RulesPage from './pages/RulesPage';
+import { FinancesDashboardPage } from './pages/FinancesDashboardPage';
+import { AdminFinancesPage } from './pages/AdminFinancesPage';
 
 function AuthenticatedApp({ children }: { children: React.ReactNode }) {
   return (
@@ -88,6 +90,22 @@ export default function App() {
               <AdminApp>
                 <LegacyParserPage />
               </AdminApp>
+            }
+          />
+          <Route
+            path="/admin/finances"
+            element={
+              <AdminApp>
+                <AdminFinancesPage />
+              </AdminApp>
+            }
+          />
+          <Route
+            path="/finances"
+            element={
+              <AuthenticatedApp>
+                <FinancesDashboardPage />
+              </AuthenticatedApp>
             }
           />
           <Route path="*" element={<Navigate to="/" replace />} />

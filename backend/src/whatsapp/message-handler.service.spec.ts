@@ -4,6 +4,7 @@ import { WHATSAPP_PROVIDER } from './whatsapp.interface';
 import { GamesService } from '../games/games.service';
 import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { FinancesService } from '../finances/finances.service';
 import { Role } from '@prisma/client';
 import { AlreadyRegisteredException } from '../games/exceptions';
 
@@ -23,6 +24,10 @@ const mockGames = {
 };
 const mockUsers = { findByPhone: jest.fn(), setWhatsappLid: jest.fn().mockResolvedValue({}) };
 const mockPrisma = { game: { findFirst: jest.fn() } };
+const mockFinances = {
+  getPendingFines: jest.fn().mockResolvedValue([]),
+  hasUnpaidFines: jest.fn().mockResolvedValue(false),
+};
 
 function makeActiveGame(regs: any[] = []) {
   return {
@@ -155,6 +160,7 @@ describe('MessageHandlerService — handleMessage', () => {
         { provide: GamesService, useValue: mockGames },
         { provide: UsersService, useValue: mockUsers },
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: FinancesService, useValue: mockFinances },
       ],
     }).compile();
 

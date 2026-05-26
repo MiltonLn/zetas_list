@@ -3,6 +3,7 @@ import { WhatsappProvider, WHATSAPP_PROVIDER } from './whatsapp.interface';
 import { GamesService } from '../games/games.service';
 import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { FinancesService } from '../finances/finances.service';
 import { Role } from '@prisma/client';
 import {
   AlreadyRegisteredException,
@@ -10,6 +11,7 @@ import {
   NoPendingConfirmationException,
   NotRegisteredException,
   NoOneInWaitListException,
+  UserHasUnpaidFinesException,
 } from '../games/exceptions';
 import { extractPhoneFromJid } from './utils/jid-utils';
 
@@ -24,6 +26,8 @@ const CMD_INVITE = /^@z\s+invitar\s+(.+)/i;
 const CMD_CONFIRM = /^@z\s+(confirmar|confirmo|listo|lista)\b/i;
 const CMD_HELP = /^@z\s+(ayuda|help|comandos|info)\b/i;
 const CMD_RULES = /^@z\s+(reglas|reglamento|normas)\b/i;
+const CMD_FINANCES = /^@z\s+(finanzas|presupuesto|plata|dinero)\b/i;
+const CMD_FINED = /^@z\s+(multados|deudores|morosos)\b/i;
 const CMD_IS_BOT_MENTION = /^@z\b/i;
 
 const MSG_NO_ACTIVE_GAME = 'No hay ninguna lista abierta en el momento 🤷';
@@ -55,11 +59,14 @@ export class MessageHandlerService {
     @Inject(forwardRef(() => GamesService)) private games: GamesService,
     private users: UsersService,
     private prisma: PrismaService,
+    private finances: FinancesService,
   ) {
     this.commands = [
       { regex: CMD_LIST, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: (ctx) => this.handleList(ctx) },
       { regex: CMD_HELP, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleHelp() },
       { regex: CMD_RULES, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleRules() },
+      { regex: CMD_FINANCES, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFinances() },
+      { regex: CMD_FINED, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFined() },
       { regex: CMD_FINISH, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handleFinish(ctx) },
       { regex: CMD_REMOVE_OTHER, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handleRemoveOther(ctx) },
       { regex: CMD_CONFIRM, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handleConfirm(ctx) },
@@ -161,7 +168,9 @@ export class MessageHandlerService {
       `• *${BOT_MENTION} invitar NombreInvitado* — Anotar un invitado externo\n\n` +
       `📋 *Consulta:*\n` +
       `• *${BOT_MENTION} lista* — Ver la lista actual y cupos\n` +
-      `• *${BOT_MENTION} reglas* — Ver las reglas del grupo\n\n` +
+      `• *${BOT_MENTION} reglas* — Ver las reglas del grupo\n` +
+      `• *${BOT_MENTION} finanzas* — Ver el presupuesto del grupo\n` +
+      `• *${BOT_MENTION} multados* — Ver personas con multas pendientes\n\n` +
       `✅ *Confirmación:*\n` +
       `• *${BOT_MENTION} confirmar* — Confirmar asistencia cuando te promueven\n\n` +
       `⬆️ *Gestión de espera:*\n` +
@@ -179,6 +188,42 @@ export class MessageHandlerService {
       `Consulta el reglamento completo aquí:\n` +
       `🔗 https://zetas.club/reglas`,
     );
+  }
+
+  private async handleFinances(): Promise<void> {
+    await this.wp.sendToGroup(
+      `💰 *Finanzas del Grupo Zetas*\n\n` +
+      `Consulta el presupuesto, gastos, entradas y multas aquí:\n` +
+      `🔗 https://zetas.club/finances`,
+    );
+  }
+
+  private async handleFined(): Promise<void> {
+    try {
+      const pendingFines = await this.finances.getPendingFines();
+
+      if (pendingFines.length === 0) {
+        await this.wp.sendToGroup(`✅ No hay personas con multas o deudas pendientes. ¡Todos al día! 🎉`);
+        return;
+      }
+
+      const lines: string[] = [`💰 *Multados / Deudores*\n`];
+      let total = 0;
+
+      for (const fine of pendingFines) {
+        const dateStr = new Date(fine.date).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+        lines.push(`• ${fine.user.name} - $${fine.amount.toLocaleString('es-CO')} (${fine.reason}) - ${dateStr}`);
+        total += fine.amount;
+      }
+
+      lines.push(`\n*Total pendiente:* $${total.toLocaleString('es-CO')}`);
+      lines.push(`\nPonte al día con un admin para poder jugar. 🏐`);
+
+      await this.wp.sendToGroup(lines.join('\n'));
+    } catch (e) {
+      this.logger.error('Error al consultar multados:', e);
+      await this.wp.sendToGroup(`❌ No se pudo consultar los multados. Intenta de nuevo.`);
+    }
   }
 
   private async handleFinish(ctx: CommandContext): Promise<void> {
@@ -357,6 +402,9 @@ export class MessageHandlerService {
       } catch (e: unknown) {
         if (e instanceof AlreadyRegisteredException) {
           senderAlreadyRegistered = true;
+        } else if (e instanceof UserHasUnpaidFinesException) {
+          await this.wp.sendToGroup(`🚫 *${ctx.user!.name}*, no puedes anotarte porque tienes multas/deudas pendientes. Contacta a un admin para ponerte al día.`);
+          return;
         } else {
           this.logger.error('Error al anotar al remitente:', e);
           await this.wp.sendToGroup(`❌ No se pudo anotarte. Intenta de nuevo.`);
@@ -404,6 +452,8 @@ export class MessageHandlerService {
       } catch (e: unknown) {
         if (e instanceof AlreadyRegisteredException) {
           msgs.push(`ℹ️ ${targetUser.name} ya está anotado en esta lista.`);
+        } else if (e instanceof UserHasUnpaidFinesException) {
+          msgs.push(`🚫 ${targetUser.name} tiene multas/deudas pendientes y no puede anotarse.`);
         } else {
           this.logger.error(`Error al anotar a ${targetUser.name}:`, e);
           msgs.push(`❌ No se pudo anotar a ${targetUser.name}.`);
