@@ -1155,14 +1155,6 @@ select.zetas-input {
 }
 
 /* ── Rules Page ── */
-.rules-content h2 {
-  break-before: avoid;
-  break-after: avoid;
-}
-.rules-content h2 + ul,
-.rules-content h2 + p {
-  break-before: avoid;
-}
 .rules-content h1 {
   font-size: 2rem;
   font-weight: 700;
