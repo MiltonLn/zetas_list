@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Sidebar } from './Sidebar';
+import { FinesBanner } from './FinesBanner';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -30,6 +31,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           <img src="/logo.png" alt="Zetas" style={{ width: 30, height: 30, objectFit: 'contain' }} />
           <span className="topbar-title">Volley Zetas Ingenio</span>
         </div>
+        <FinesBanner />
         <div className="app-content">
           {children}
         </div>

@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { GameEventsService } from './game-events.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { FinancesService } from '../finances/finances.service';
 
 const mockPrisma = {
   game: {
@@ -43,6 +44,12 @@ const mockPrisma = {
 const mockAudit = { log: jest.fn() };
 const mockEvents = { emit: jest.fn() };
 const mockWhatsapp = { sendToGroup: jest.fn(), sendMessage: jest.fn() };
+const mockFinances = {
+  createGameFines: jest.fn().mockResolvedValue(undefined),
+  createGameDebts: jest.fn().mockResolvedValue(undefined),
+  createGameIncome: jest.fn().mockResolvedValue(undefined),
+  hasUnpaidFines: jest.fn().mockResolvedValue(false),
+};
 
 function makeReg(overrides: Partial<any> = {}) {
   return {
@@ -77,6 +84,7 @@ function makeGame(overrides: Partial<any> = {}) {
     cancellationReason: null,
     guestCutoffTime: '13:30',
     maxProxyRegistrations: 5,
+    fineAmountNoShow: 5000,
     createdById: 'actor-1',
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -105,6 +113,7 @@ describe('GamesService', () => {
         { provide: AuditService, useValue: mockAudit },
         { provide: GameEventsService, useValue: mockEvents },
         { provide: WhatsappService, useValue: mockWhatsapp },
+        { provide: FinancesService, useValue: mockFinances },
       ],
     }).compile();
 

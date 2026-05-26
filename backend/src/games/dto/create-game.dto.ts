@@ -69,4 +69,10 @@ export class CreateGameDto {
   @IsInt()
   @Min(0)
   maxProxyRegistrations?: number;
+
+  @ApiPropertyOptional({ example: 5000, default: 5000, description: 'Monto de multa por inasistencia' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  fineAmountNoShow?: number;
 }

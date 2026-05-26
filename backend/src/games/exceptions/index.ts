@@ -88,3 +88,9 @@ export class DuplicateGameException extends ConflictException {
     super(`Ya existe un partido programado para el ${date}. Solo se permite uno por día.`);
   }
 }
+
+export class UserHasUnpaidFinesException extends ForbiddenException {
+  constructor() {
+    super('No puedes anotarte porque tienes multas/deudas pendientes. Contacta a un admin para ponerte al día.');
+  }
+}

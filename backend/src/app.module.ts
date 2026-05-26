@@ -11,6 +11,7 @@ import { UsersModule } from './users/users.module';
 import { GamesModule } from './games/games.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { AuditModule } from './audit/audit.module';
+import { FinancesModule } from './finances/finances.module';
 import { HealthController } from './health.controller';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -34,6 +35,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     GamesModule,
     WhatsappModule,
     AuditModule,
+    FinancesModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
