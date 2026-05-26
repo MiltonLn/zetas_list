@@ -1395,6 +1395,10 @@ describe('GamesService', () => {
     it('retorna true cuando mainListHasBeenFull and activeWaitCount > 0', () => {
       expect(service.shouldGoToWaitingList(10, 2, 18, true, false, false)).toBe(true);
     });
+
+    it('retorna false cuando solo hay invitados en espera y estamos antes del corte (eligibleWait=0)', () => {
+      expect(service.shouldGoToWaitingList(17, 0, 18, true, false, false)).toBe(false);
+    });
   });
 
   // ─── isBeforeCutoff ──────────────────────────────────────────────────────

@@ -290,11 +290,22 @@ export class GamesService {
         const mainCount = await tx.gameRegistration.count({
           where: { gameId, isWaitingList: false },
         });
-        const activeWaitCount = await tx.gameRegistration.count({
-          where: { gameId, isWaitingList: true, confirmationDeclined: false },
+
+        const beforeCutoff = isBeforeCutoff(g.guestCutoffTime, g.gameDate);
+        const eligibleWaitCount = await tx.gameRegistration.count({
+          where: {
+            gameId,
+            isWaitingList: true,
+            confirmationDeclined: false,
+            ...(beforeCutoff ? { isGuest: false } : {}),
+          },
         });
 
-        const waitList = shouldGoToWaitingList(mainCount, activeWaitCount, g.maxMainSpots, g.mainListHasBeenFull, false, false);
+        const waitList = shouldGoToWaitingList(mainCount, eligibleWaitCount, g.maxMainSpots, g.mainListHasBeenFull, false, false);
+
+        this.logger.log(
+          `[REGISTER] user=${userId} | mainCount=${mainCount}/${g.maxMainSpots} | eligibleWait=${eligibleWaitCount} | beforeCutoff=${beforeCutoff} | mainListHasBeenFull=${g.mainListHasBeenFull} | -> waitList=${waitList}`,
+        );
 
         if (!waitList && mainCount + 1 >= g.maxMainSpots && !g.mainListHasBeenFull) {
           await tx.game.update({ where: { id: gameId }, data: { mainListHasBeenFull: true } });
@@ -382,12 +393,18 @@ export class GamesService {
         const mainCount = await tx.gameRegistration.count({
           where: { gameId, isWaitingList: false },
         });
-        const activeWaitCount = await tx.gameRegistration.count({
+
+        const beforeCutoff = isBeforeCutoff(g.guestCutoffTime, g.gameDate);
+
+        const eligibleWaitCount = await tx.gameRegistration.count({
           where: { gameId, isWaitingList: true, confirmationDeclined: false },
         });
 
-        const beforeCutoff = isBeforeCutoff(g.guestCutoffTime, g.gameDate);
-        const waitList = shouldGoToWaitingList(mainCount, activeWaitCount, g.maxMainSpots, g.mainListHasBeenFull, true, beforeCutoff);
+        const waitList = shouldGoToWaitingList(mainCount, eligibleWaitCount, g.maxMainSpots, g.mainListHasBeenFull, true, beforeCutoff);
+
+        this.logger.log(
+          `[REGISTER_GUEST] guest="${trimmedName}" | mainCount=${mainCount}/${g.maxMainSpots} | eligibleWait=${eligibleWaitCount} | beforeCutoff=${beforeCutoff} | mainListHasBeenFull=${g.mainListHasBeenFull} | -> waitList=${waitList}`,
+        );
 
         if (!waitList && mainCount + 1 >= g.maxMainSpots && !g.mainListHasBeenFull) {
           await tx.game.update({ where: { id: gameId }, data: { mainListHasBeenFull: true } });
@@ -802,7 +819,10 @@ export class GamesService {
         const mainCount = await tx.gameRegistration.count({
           where: { gameId, isWaitingList: false },
         });
-        if (mainCount >= game.maxMainSpots) return null;
+        if (mainCount >= game.maxMainSpots) {
+          this.logger.log(`[AUTO_PROMOTE] game=${gameId} | mainCount=${mainCount}/${game.maxMainSpots} | FULL, no promotion`);
+          return null;
+        }
 
         await tx.gameRegistration.updateMany({
           where: { gameId, isWaitingList: true, confirmationDeclined: true },
@@ -819,7 +839,10 @@ export class GamesService {
           orderBy: { position: 'asc' },
           include: REGISTRATION_INCLUDE,
         });
-        if (!firstInWait) return null;
+        if (!firstInWait) {
+          this.logger.log(`[AUTO_PROMOTE] game=${gameId} | mainCount=${mainCount}/${game.maxMainSpots} | beforeCutoff=${beforeCutoff} | No eligible waiter found`);
+          return null;
+        }
 
         const originalPos = firstInWait.position;
 
