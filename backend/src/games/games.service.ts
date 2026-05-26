@@ -455,20 +455,32 @@ export class GamesService {
     return registration;
   }
 
-  async confirmRegistration(gameId: string, userId: string) {
-    await this.prisma.$transaction(
+  async confirmRegistration(gameId: string, userId: string): Promise<{ game: any; confirmedOwn: boolean; confirmedGuests: string[] }> {
+    const confirmed = await this.prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
 
-        const reg = await tx.gameRegistration.findFirst({
+        const ownReg = await tx.gameRegistration.findFirst({
           where: { gameId, userId, pendingConfirmation: true },
         });
-        if (!reg) throw new NoPendingConfirmationException();
 
-        await tx.gameRegistration.update({
-          where: { id: reg.id },
+        const guestRegs = await tx.gameRegistration.findMany({
+          where: { gameId, registeredById: userId, isGuest: true, pendingConfirmation: true },
+          include: { registeredBy: { select: { name: true } } },
+        });
+
+        const allPending = [...(ownReg ? [ownReg] : []), ...guestRegs];
+        if (allPending.length === 0) throw new NoPendingConfirmationException();
+
+        await tx.gameRegistration.updateMany({
+          where: { id: { in: allPending.map((r) => r.id) } },
           data: { pendingConfirmation: false, confirmationDeadline: null },
         });
+
+        return {
+          confirmedOwn: !!ownReg,
+          confirmedGuests: guestRegs.map((r) => r.guestName || 'Invitado'),
+        };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
@@ -478,11 +490,12 @@ export class GamesService {
       actorId: userId,
       targetUserId: userId,
       action: 'confirmation_received',
+      details: { confirmedOwn: confirmed.confirmedOwn, confirmedGuests: confirmed.confirmedGuests },
     });
 
     const updated = await this.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
-    return updated;
+    return { game: updated, ...confirmed };
   }
 
   async retryFromWaitingList(gameId: string, userId: string) {
@@ -719,8 +732,9 @@ export class GamesService {
 
     const userName = displayName(promoted);
     if (!options?.silent) {
+      const byAdmin = actorId ? ' por un admin' : '';
       this.whatsapp
-        .sendToGroup(`⬆️ *${userName}* fue promovido a la *lista principal* 🏐\n${buildCounts(updated)}${buildGameLink(gameId)}`)
+        .sendToGroup(`⬆️ *${userName}* fue promovido a la *lista principal*${byAdmin} 🏐\n${buildCounts(updated)}${buildGameLink(gameId)}`)
         .catch((e) => this.logger.warn('WhatsApp send failed', e));
     }
 
@@ -823,11 +837,6 @@ export class GamesService {
           this.logger.log(`[AUTO_PROMOTE] game=${gameId} | mainCount=${mainCount}/${game.maxMainSpots} | FULL, no promotion`);
           return null;
         }
-
-        await tx.gameRegistration.updateMany({
-          where: { gameId, isWaitingList: true, confirmationDeclined: true },
-          data: { confirmationDeclined: false },
-        });
 
         const firstInWait = await tx.gameRegistration.findFirst({
           where: {
@@ -959,7 +968,8 @@ export class GamesService {
 
         if (nextInWait) {
           const nextOriginalPos = nextInWait.position;
-          const nextDeadline = new Date(Date.now() + NEXT_CONFIRM_TIMEOUT_MS);
+          const isFirstChance = !nextInWait.fromWaitList;
+          const nextDeadline = new Date(Date.now() + (isFirstChance ? CONFIRMATION_TIMEOUT_MS : NEXT_CONFIRM_TIMEOUT_MS));
 
           const maxMainPos = await tx.gameRegistration.aggregate({
             where: { gameId: reg.gameId, isWaitingList: false },
@@ -978,10 +988,10 @@ export class GamesService {
             },
           });
 
-          return { returnPos, nextInWait, nextDeadline, nextOriginalPos };
+          return { returnPos, nextInWait, nextDeadline, nextOriginalPos, isFirstChance };
         }
 
-        return { returnPos, nextInWait: null, nextDeadline: null, nextOriginalPos: null };
+        return { returnPos, nextInWait: null, nextDeadline: null, nextOriginalPos: null, isFirstChance: false };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
@@ -1028,7 +1038,7 @@ export class GamesService {
     this.events.emit({ gameId: reg.gameId, type: 'update', data: finalUpdated });
 
     this.whatsapp
-      .sendToGroup(`⬆️ *${nextName}* fue promovido a la *lista principal* 🏐\n${nextConfirmTarget}, confirma con *@Z confirmar* en los próximos 5 min.\n${buildCounts(finalUpdated)}${buildGameLink(reg.gameId)}`)
+      .sendToGroup(`⬆️ *${nextName}* fue promovido a la *lista principal* 🏐\n${nextConfirmTarget}, confirma con *@Z confirmar* en los próximos ${result.isFirstChance ? '15' : '5'} min.\n${buildCounts(finalUpdated)}${buildGameLink(reg.gameId)}`)
       .catch((e) => this.logger.warn('WhatsApp send failed', e));
   }
 

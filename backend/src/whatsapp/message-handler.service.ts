@@ -226,8 +226,11 @@ export class MessageHandlerService {
 
   private async handleConfirm(ctx: CommandContext): Promise<void> {
     try {
-      await this.games.confirmRegistration(ctx.activeGame.id, ctx.user!.id);
-      await this.wp.sendToGroup(`✅ *${ctx.user!.name}* confirmó su asistencia 🏐`);
+      const result = await this.games.confirmRegistration(ctx.activeGame.id, ctx.user!.id);
+      const parts: string[] = [];
+      if (result.confirmedOwn) parts.push('su asistencia');
+      if (result.confirmedGuests.length > 0) parts.push(`la de ${result.confirmedGuests.join(', ')}`);
+      await this.wp.sendToGroup(`✅ *${ctx.user!.name}* confirmó ${parts.join(' y ')} 🏐`);
     } catch (e: unknown) {
       if (e instanceof NoPendingConfirmationException) {
         await this.wp.sendToGroup(`ℹ️ ${ctx.user!.name}, no tienes ninguna confirmación pendiente.`);

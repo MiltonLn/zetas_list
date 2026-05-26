@@ -995,19 +995,49 @@ describe('GamesService', () => {
     it('confirma un registro pendiente', async () => {
       const pendingReg = makeReg({ pendingConfirmation: true });
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(pendingReg);
-      mockPrisma.gameRegistration.update.mockResolvedValue({ ...pendingReg, pendingConfirmation: false });
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
+      mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 1 });
       jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
 
-      await service.confirmRegistration('game-1', 'user-1');
+      const result = await service.confirmRegistration('game-1', 'user-1');
 
-      expect(mockPrisma.gameRegistration.update).toHaveBeenCalledWith(
+      expect(mockPrisma.gameRegistration.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: { pendingConfirmation: false, confirmationDeadline: null },
         }),
       );
+      expect(result.confirmedOwn).toBe(true);
+      expect(result.confirmedGuests).toEqual([]);
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'confirmation_received' }),
       );
+    });
+
+    it('confirma invitados del usuario junto con su propio registro', async () => {
+      const pendingReg = makeReg({ pendingConfirmation: true });
+      const guestReg = { id: 'guest-reg-1', gameId: 'game-1', isGuest: true, guestName: 'Topota', pendingConfirmation: true, registeredById: 'user-1', registeredBy: { name: 'Milton' } };
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(pendingReg);
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([guestReg]);
+      mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 2 });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      const result = await service.confirmRegistration('game-1', 'user-1');
+
+      expect(result.confirmedOwn).toBe(true);
+      expect(result.confirmedGuests).toEqual(['Topota']);
+    });
+
+    it('confirma solo invitados si el usuario no tiene pendiente propia', async () => {
+      const guestReg = { id: 'guest-reg-1', gameId: 'game-1', isGuest: true, guestName: 'Jeffer', pendingConfirmation: true, registeredById: 'user-1', registeredBy: { name: 'Milton' } };
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(null);
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([guestReg]);
+      mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 1 });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      const result = await service.confirmRegistration('game-1', 'user-1');
+
+      expect(result.confirmedOwn).toBe(false);
+      expect(result.confirmedGuests).toEqual(['Jeffer']);
     });
 
     it('lanza NotFoundException si no tiene confirmación pendiente', async () => {
@@ -1119,14 +1149,13 @@ describe('GamesService', () => {
       expect(mockWhatsapp.sendToGroup).not.toHaveBeenCalled();
     });
 
-    it('resets confirmationDeclined and promotes first non-declined waiter', async () => {
+    it('promotes first non-declined waiter without resetting confirmationDeclined flags', async () => {
       mockPrisma.game.findUnique.mockResolvedValue(makeGame({ maxMainSpots: 18, mainListHasBeenFull: true }));
       const waiter = makeReg({ id: 'wait-1', isWaitingList: true, position: 1, confirmationDeclined: false });
       mockPrisma.$transaction.mockImplementation(
         (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
       );
       txMock.gameRegistration.count.mockResolvedValue(16);
-      txMock.gameRegistration.updateMany.mockResolvedValue({ count: 1 });
       txMock.gameRegistration.findFirst.mockResolvedValue(waiter);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 16 } });
       txMock.gameRegistration.update.mockResolvedValue(waiter);
@@ -1134,13 +1163,12 @@ describe('GamesService', () => {
 
       await service.autoPromoteIfNeeded('game-1');
 
-      expect(txMock.gameRegistration.updateMany).toHaveBeenCalledWith(
+      expect(txMock.gameRegistration.updateMany).not.toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ confirmationDeclined: true }),
           data: { confirmationDeclined: false },
         }),
       );
-      // Inline promotion: updates the waiter to main list with confirmation
       expect(txMock.gameRegistration.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'wait-1' },
