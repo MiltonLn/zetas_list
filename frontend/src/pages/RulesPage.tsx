@@ -27,15 +27,15 @@ export default function RulesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f1020] text-[#e8eaf6] px-4 py-8 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto">
-        <div className="mb-8 flex flex-col items-center gap-2">
-          <img src="/logo.png" alt="Zetas" className="w-16 h-16 rounded-full" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-          <h1 className="text-2xl font-bold text-white">Reglas del Grupo 2026</h1>
-          <p className="text-sm text-[#a0a4c8]">Reglamento Zetas Ingenio</p>
+    <div className="min-h-screen bg-[#0f1020] text-[#e8eaf6] px-4 py-10 sm:px-6 lg:px-8">
+      <div className="max-w-5xl mx-auto">
+        <div className="mb-10 flex flex-col items-center gap-3">
+          <img src="/logo.png" alt="Zetas" className="w-24 h-24 rounded-full" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          <h1 className="text-3xl sm:text-4xl font-bold text-white">Reglas del Grupo 2026</h1>
+          <p className="text-lg text-[#a0a4c8]">Reglamento Zetas Club 🏐</p>
         </div>
 
-        <article className="rules-content">
+        <article className="rules-content columns-1 lg:columns-2 gap-8">
           <ReactMarkdown>{content}</ReactMarkdown>
         </article>
 
