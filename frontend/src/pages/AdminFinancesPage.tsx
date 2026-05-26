@@ -3,6 +3,19 @@ import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
 import { Modal } from '../components/Modal';
 import { financesService, type FinanceTransaction, type Fine } from '../services/finances.service';
+
+const PAGE_SIZE = 10;
+
+function Pagination({ page, totalPages, onPageChange }: { page: number; totalPages: number; onPageChange: (p: number) => void }) {
+  if (totalPages <= 1) return null;
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '12px 0' }}>
+      <button className="btn" style={{ fontSize: 12, padding: '4px 10px' }} disabled={page === 1} onClick={() => onPageChange(page - 1)}>← Anterior</button>
+      <span style={{ fontSize: 12, opacity: 0.7 }}>Pág. {page} de {totalPages}</span>
+      <button className="btn" style={{ fontSize: 12, padding: '4px 10px' }} disabled={page === totalPages} onClick={() => onPageChange(page + 1)}>Siguiente →</button>
+    </div>
+  );
+}
 import { usersService } from '../services/users.service';
 import { getApiError } from '../services/api';
 import { showToast } from '../utils/toast';
@@ -175,6 +188,7 @@ function TransactionsTable({ transactions, formatCurrency, formatDate, onEdit, o
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [sortCol, setSortCol] = useState<'date' | 'amount' | 'description' | 'type'>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [page, setPage] = useState(1);
 
   const handleSort = (col: typeof sortCol) => {
     if (sortCol === col) {
@@ -183,6 +197,7 @@ function TransactionsTable({ transactions, formatCurrency, formatDate, onEdit, o
       setSortCol(col);
       setSortDir(col === 'date' ? 'desc' : 'asc');
     }
+    setPage(1);
   };
 
   const filtered = typeFilter === 'all' ? transactions : transactions.filter((t) => t.type === typeFilter);
@@ -197,6 +212,9 @@ function TransactionsTable({ transactions, formatCurrency, formatDate, onEdit, o
     }
     return sortDir === 'asc' ? cmp : -cmp;
   });
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const paginated = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const sortIcon = (col: typeof sortCol) => {
     if (sortCol !== col) return ' ↕';
@@ -216,7 +234,7 @@ function TransactionsTable({ transactions, formatCurrency, formatDate, onEdit, o
             key={f}
             className={`btn ${typeFilter === f ? 'btn-primary' : ''}`}
             style={{ fontSize: 12, padding: '4px 10px' }}
-            onClick={() => setTypeFilter(f)}
+            onClick={() => { setTypeFilter(f); setPage(1); }}
           >
             {f === 'all' ? 'Todos' : f === 'income' ? 'Entradas' : 'Gastos'}
           </button>
@@ -238,7 +256,7 @@ function TransactionsTable({ transactions, formatCurrency, formatDate, onEdit, o
               </tr>
             </thead>
             <tbody>
-              {sorted.map((tx) => (
+              {paginated.map((tx) => (
                 <tr key={tx.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                   <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatDate(tx.date)}</td>
                   <td style={{ padding: '8px 12px' }}>
@@ -256,6 +274,7 @@ function TransactionsTable({ transactions, formatCurrency, formatDate, onEdit, o
               ))}
             </tbody>
           </table>
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       )}
     </>
@@ -273,6 +292,7 @@ function FinesTable({ fines, formatCurrency, formatDate, onEdit, onDelete, onMar
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'paid'>('all');
   const [sortCol, setSortCol] = useState<'date' | 'amount' | 'name' | 'status'>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [page, setPage] = useState(1);
 
   const handleSort = (col: typeof sortCol) => {
     if (sortCol === col) {
@@ -281,6 +301,7 @@ function FinesTable({ fines, formatCurrency, formatDate, onEdit, onDelete, onMar
       setSortCol(col);
       setSortDir(col === 'date' ? 'desc' : 'asc');
     }
+    setPage(1);
   };
 
   const filtered = statusFilter === 'all' ? fines : fines.filter((f) => f.status === statusFilter);
@@ -295,6 +316,9 @@ function FinesTable({ fines, formatCurrency, formatDate, onEdit, onDelete, onMar
     }
     return sortDir === 'asc' ? cmp : -cmp;
   });
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const paginated = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const sortIcon = (col: typeof sortCol) => {
     if (sortCol !== col) return ' ↕';
@@ -314,7 +338,7 @@ function FinesTable({ fines, formatCurrency, formatDate, onEdit, onDelete, onMar
             key={f}
             className={`btn ${statusFilter === f ? 'btn-primary' : ''}`}
             style={{ fontSize: 12, padding: '4px 10px' }}
-            onClick={() => setStatusFilter(f)}
+            onClick={() => { setStatusFilter(f); setPage(1); }}
           >
             {f === 'all' ? 'Todos' : f === 'pending' ? 'Pendientes' : 'Pagados'}
           </button>
@@ -337,7 +361,7 @@ function FinesTable({ fines, formatCurrency, formatDate, onEdit, onDelete, onMar
               </tr>
             </thead>
             <tbody>
-              {sorted.map((f) => (
+              {paginated.map((f) => (
                 <tr key={f.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                   <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatDate(f.date)}</td>
                   <td style={{ padding: '8px 12px' }}>{f.user?.name || 'N/A'}</td>
@@ -359,6 +383,7 @@ function FinesTable({ fines, formatCurrency, formatDate, onEdit, onDelete, onMar
               ))}
             </tbody>
           </table>
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       )}
     </>
