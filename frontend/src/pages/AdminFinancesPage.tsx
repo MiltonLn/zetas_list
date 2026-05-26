@@ -291,7 +291,7 @@ function TransactionModal({ transaction, onClose, onSaved }: {
   };
 
   return (
-    <Modal title={transaction ? 'Editar Transacción' : 'Nueva Transacción'} onClose={onClose}>
+    <Modal open title={transaction ? 'Editar Transacción' : 'Nueva Transacción'} onClose={onClose}>
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: 12 }}>
           <label style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>Tipo</label>
@@ -353,7 +353,7 @@ function FineModal({ fine, users, onClose, onSaved }: {
   };
 
   return (
-    <Modal title={fine ? 'Editar Multa' : 'Nueva Multa'} onClose={onClose}>
+    <Modal open title={fine ? 'Editar Multa' : 'Nueva Multa'} onClose={onClose}>
       <form onSubmit={handleSubmit}>
         {!fine && (
           <div style={{ marginBottom: 12 }}>
@@ -416,7 +416,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
   };
 
   return (
-    <Modal title="Importar Datos Financieros" onClose={onClose}>
+    <Modal open title="Importar Datos Financieros" onClose={onClose}>
       <div style={{ marginBottom: 12 }}>
         <label style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
           Pega el JSON con el formato: {`{ "transactions": [...], "fines": [...] }`}
