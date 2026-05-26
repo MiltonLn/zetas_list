@@ -90,7 +90,7 @@ export function buildRegistrationOpenMessage(game: { id: string; title: string }
 
 export function shouldGoToWaitingList(
   mainCount: number,
-  waitCount: number,
+  eligibleWaitCount: number,
   maxMainSpots: number,
   mainListHasBeenFull: boolean,
   isGuest: boolean,
@@ -98,7 +98,7 @@ export function shouldGoToWaitingList(
 ): boolean {
   if (isGuest && beforeCutoff) return true;
   if (mainCount >= maxMainSpots) return true;
-  if (mainListHasBeenFull && waitCount > 0) return true;
+  if (mainListHasBeenFull && eligibleWaitCount > 0) return true;
   return false;
 }
 
