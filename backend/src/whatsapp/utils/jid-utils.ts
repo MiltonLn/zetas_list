@@ -55,11 +55,6 @@ export function normalizeBotMentions(
     }
   }
 
-  if (/^@\d+/.test(normalized) && mentionedJids.length > 0) {
-    const mentionNumber = extractPhoneFromJid(mentionedJids[0]);
-    normalized = normalized.replace(new RegExp(`^@${mentionNumber}`), '@z');
-  }
-
   return normalized;
 }
 
