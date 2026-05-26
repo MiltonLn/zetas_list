@@ -172,41 +172,93 @@ function TransactionsTable({ transactions, formatCurrency, formatDate, onEdit, o
   onEdit: (tx: FinanceTransaction) => void;
   onDelete: (id: string) => void;
 }) {
-  if (transactions.length === 0) {
-    return <div className="card" style={{ padding: 20, textAlign: 'center', opacity: 0.5 }}>No hay transacciones</div>;
-  }
+  const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
+  const [sortCol, setSortCol] = useState<'date' | 'amount' | 'description' | 'type'>('date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (col: typeof sortCol) => {
+    if (sortCol === col) {
+      setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortCol(col);
+      setSortDir(col === 'date' ? 'desc' : 'asc');
+    }
+  };
+
+  const filtered = typeFilter === 'all' ? transactions : transactions.filter((t) => t.type === typeFilter);
+
+  const sorted = [...filtered].sort((a, b) => {
+    let cmp = 0;
+    switch (sortCol) {
+      case 'date': cmp = new Date(a.date).getTime() - new Date(b.date).getTime(); break;
+      case 'amount': cmp = a.amount - b.amount; break;
+      case 'description': cmp = a.description.localeCompare(b.description); break;
+      case 'type': cmp = a.type.localeCompare(b.type); break;
+    }
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const sortIcon = (col: typeof sortCol) => {
+    if (sortCol !== col) return ' ↕';
+    return sortDir === 'asc' ? ' ↑' : ' ↓';
+  };
+
+  const thStyle = (col: typeof sortCol, align: string = 'left'): React.CSSProperties => ({
+    padding: '10px 12px', textAlign: align as 'left' | 'right' | 'center', cursor: 'pointer', userSelect: 'none',
+    color: sortCol === col ? '#6e8efb' : undefined,
+  });
+
   return (
-    <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-            <th style={{ padding: '10px 12px', textAlign: 'left' }}>Fecha</th>
-            <th style={{ padding: '10px 12px', textAlign: 'left' }}>Tipo</th>
-            <th style={{ padding: '10px 12px', textAlign: 'left' }}>Descripción</th>
-            <th style={{ padding: '10px 12px', textAlign: 'right' }}>Monto</th>
-            <th style={{ padding: '10px 12px', textAlign: 'center' }}>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {transactions.map((tx) => (
-            <tr key={tx.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-              <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatDate(tx.date)}</td>
-              <td style={{ padding: '8px 12px' }}>
-                <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, background: tx.type === 'income' ? 'rgba(102,187,106,0.2)' : 'rgba(239,83,80,0.2)', color: tx.type === 'income' ? '#66bb6a' : '#ef5350' }}>
-                  {tx.type === 'income' ? 'Entrada' : 'Gasto'}
-                </span>
-              </td>
-              <td style={{ padding: '8px 12px' }}>{tx.description}</td>
-              <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 500 }}>{formatCurrency(tx.amount)}</td>
-              <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                <button className="btn" style={{ fontSize: 11, padding: '2px 8px', marginRight: 4 }} onClick={() => onEdit(tx)}>Editar</button>
-                <button className="btn" style={{ fontSize: 11, padding: '2px 8px', color: '#ef5350' }} onClick={() => onDelete(tx.id)}>Eliminar</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        {(['all', 'income', 'expense'] as const).map((f) => (
+          <button
+            key={f}
+            className={`btn ${typeFilter === f ? 'btn-primary' : ''}`}
+            style={{ fontSize: 12, padding: '4px 10px' }}
+            onClick={() => setTypeFilter(f)}
+          >
+            {f === 'all' ? 'Todos' : f === 'income' ? 'Entradas' : 'Gastos'}
+          </button>
+        ))}
+        <span style={{ marginLeft: 'auto', fontSize: 12, opacity: 0.5 }}>{sorted.length} registro(s)</span>
+      </div>
+      {sorted.length === 0 ? (
+        <div className="card" style={{ padding: 20, textAlign: 'center', opacity: 0.5 }}>No hay transacciones</div>
+      ) : (
+        <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                <th style={thStyle('date')} onClick={() => handleSort('date')}>Fecha{sortIcon('date')}</th>
+                <th style={thStyle('type')} onClick={() => handleSort('type')}>Tipo{sortIcon('type')}</th>
+                <th style={thStyle('description')} onClick={() => handleSort('description')}>Descripción{sortIcon('description')}</th>
+                <th style={thStyle('amount', 'right')} onClick={() => handleSort('amount')}>Monto{sortIcon('amount')}</th>
+                <th style={{ padding: '10px 12px', textAlign: 'center' }}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((tx) => (
+                <tr key={tx.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatDate(tx.date)}</td>
+                  <td style={{ padding: '8px 12px' }}>
+                    <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, background: tx.type === 'income' ? 'rgba(102,187,106,0.2)' : 'rgba(239,83,80,0.2)', color: tx.type === 'income' ? '#66bb6a' : '#ef5350' }}>
+                      {tx.type === 'income' ? 'Entrada' : 'Gasto'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '8px 12px' }}>{tx.description}</td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 500 }}>{formatCurrency(tx.amount)}</td>
+                  <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                    <button className="btn" style={{ fontSize: 11, padding: '2px 8px', marginRight: 4 }} onClick={() => onEdit(tx)}>Editar</button>
+                    <button className="btn" style={{ fontSize: 11, padding: '2px 8px', color: '#ef5350' }} onClick={() => onDelete(tx.id)}>Eliminar</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -218,46 +270,98 @@ function FinesTable({ fines, formatCurrency, formatDate, onEdit, onDelete, onMar
   onDelete: (id: string) => void;
   onMarkPaid: (id: string) => void;
 }) {
-  if (fines.length === 0) {
-    return <div className="card" style={{ padding: 20, textAlign: 'center', opacity: 0.5 }}>No hay multas o deudas</div>;
-  }
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'paid'>('all');
+  const [sortCol, setSortCol] = useState<'date' | 'amount' | 'name' | 'status'>('date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (col: typeof sortCol) => {
+    if (sortCol === col) {
+      setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortCol(col);
+      setSortDir(col === 'date' ? 'desc' : 'asc');
+    }
+  };
+
+  const filtered = statusFilter === 'all' ? fines : fines.filter((f) => f.status === statusFilter);
+
+  const sorted = [...filtered].sort((a, b) => {
+    let cmp = 0;
+    switch (sortCol) {
+      case 'date': cmp = new Date(a.date).getTime() - new Date(b.date).getTime(); break;
+      case 'amount': cmp = a.amount - b.amount; break;
+      case 'name': cmp = (a.user?.name || '').localeCompare(b.user?.name || ''); break;
+      case 'status': cmp = a.status.localeCompare(b.status); break;
+    }
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const sortIcon = (col: typeof sortCol) => {
+    if (sortCol !== col) return ' ↕';
+    return sortDir === 'asc' ? ' ↑' : ' ↓';
+  };
+
+  const thStyle = (col: typeof sortCol, align: string = 'left'): React.CSSProperties => ({
+    padding: '10px 12px', textAlign: align as 'left' | 'right' | 'center', cursor: 'pointer', userSelect: 'none',
+    color: sortCol === col ? '#6e8efb' : undefined,
+  });
+
   return (
-    <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-            <th style={{ padding: '10px 12px', textAlign: 'left' }}>Fecha</th>
-            <th style={{ padding: '10px 12px', textAlign: 'left' }}>Nombre</th>
-            <th style={{ padding: '10px 12px', textAlign: 'left' }}>Motivo</th>
-            <th style={{ padding: '10px 12px', textAlign: 'right' }}>Monto</th>
-            <th style={{ padding: '10px 12px', textAlign: 'center' }}>Estado</th>
-            <th style={{ padding: '10px 12px', textAlign: 'center' }}>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {fines.map((f) => (
-            <tr key={f.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-              <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatDate(f.date)}</td>
-              <td style={{ padding: '8px 12px' }}>{f.user?.name || 'N/A'}</td>
-              <td style={{ padding: '8px 12px', opacity: 0.7 }}>{f.reason}</td>
-              <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 500 }}>{formatCurrency(f.amount)}</td>
-              <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, background: f.status === 'paid' ? 'rgba(102,187,106,0.2)' : 'rgba(255,167,38,0.2)', color: f.status === 'paid' ? '#66bb6a' : '#ffa726' }}>
-                  {f.status === 'paid' ? 'PAGADO' : 'DEBE'}
-                </span>
-              </td>
-              <td style={{ padding: '8px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                {f.status === 'pending' && (
-                  <button className="btn btn-success" style={{ fontSize: 11, padding: '2px 8px', marginRight: 4 }} onClick={() => onMarkPaid(f.id)}>Pagar</button>
-                )}
-                <button className="btn" style={{ fontSize: 11, padding: '2px 8px', marginRight: 4 }} onClick={() => onEdit(f)}>Editar</button>
-                <button className="btn" style={{ fontSize: 11, padding: '2px 8px', color: '#ef5350' }} onClick={() => onDelete(f.id)}>Eliminar</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        {(['all', 'pending', 'paid'] as const).map((f) => (
+          <button
+            key={f}
+            className={`btn ${statusFilter === f ? 'btn-primary' : ''}`}
+            style={{ fontSize: 12, padding: '4px 10px' }}
+            onClick={() => setStatusFilter(f)}
+          >
+            {f === 'all' ? 'Todos' : f === 'pending' ? 'Pendientes' : 'Pagados'}
+          </button>
+        ))}
+        <span style={{ marginLeft: 'auto', fontSize: 12, opacity: 0.5 }}>{sorted.length} registro(s)</span>
+      </div>
+      {sorted.length === 0 ? (
+        <div className="card" style={{ padding: 20, textAlign: 'center', opacity: 0.5 }}>No hay multas o deudas</div>
+      ) : (
+        <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                <th style={thStyle('date')} onClick={() => handleSort('date')}>Fecha{sortIcon('date')}</th>
+                <th style={thStyle('name')} onClick={() => handleSort('name')}>Nombre{sortIcon('name')}</th>
+                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Motivo</th>
+                <th style={thStyle('amount', 'right')} onClick={() => handleSort('amount')}>Monto{sortIcon('amount')}</th>
+                <th style={thStyle('status', 'center')} onClick={() => handleSort('status')}>Estado{sortIcon('status')}</th>
+                <th style={{ padding: '10px 12px', textAlign: 'center' }}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((f) => (
+                <tr key={f.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatDate(f.date)}</td>
+                  <td style={{ padding: '8px 12px' }}>{f.user?.name || 'N/A'}</td>
+                  <td style={{ padding: '8px 12px', opacity: 0.7 }}>{f.reason}</td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 500 }}>{formatCurrency(f.amount)}</td>
+                  <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                    <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, background: f.status === 'paid' ? 'rgba(102,187,106,0.2)' : 'rgba(255,167,38,0.2)', color: f.status === 'paid' ? '#66bb6a' : '#ffa726' }}>
+                      {f.status === 'paid' ? 'PAGADO' : 'DEBE'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '8px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    {f.status === 'pending' && (
+                      <button className="btn btn-success" style={{ fontSize: 11, padding: '2px 8px', marginRight: 4 }} onClick={() => onMarkPaid(f.id)}>Pagar</button>
+                    )}
+                    <button className="btn" style={{ fontSize: 11, padding: '2px 8px', marginRight: 4 }} onClick={() => onEdit(f)}>Editar</button>
+                    <button className="btn" style={{ fontSize: 11, padding: '2px 8px', color: '#ef5350' }} onClick={() => onDelete(f.id)}>Eliminar</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -328,14 +432,27 @@ function FineModal({ fine, users, onClose, onSaved }: {
   onSaved: () => void;
 }) {
   const [userId, setUserId] = useState(fine?.userId || '');
+  const [userSearch, setUserSearch] = useState('');
   const [date, setDate] = useState(fine?.date?.split('T')[0] || new Date().toISOString().split('T')[0]);
   const [amount, setAmount] = useState(String(fine?.amount || ''));
   const [reason, setReason] = useState(fine?.reason || '');
   const [status, setStatus] = useState<'pending' | 'paid'>(fine?.status || 'pending');
   const [saving, setSaving] = useState(false);
 
+  const selectedUser = users.find((u) => u.id === userId);
+
+  const filteredUsers = users.filter((u) => {
+    const q = userSearch.toLowerCase().trim();
+    if (!q) return true;
+    return u.name.toLowerCase().includes(q) || (u.phone || '').includes(q) || u.username.toLowerCase().includes(q);
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!fine && !userId) {
+      showToast('Selecciona una persona', 'error');
+      return;
+    }
     setSaving(true);
     try {
       if (fine) {
@@ -358,10 +475,79 @@ function FineModal({ fine, users, onClose, onSaved }: {
         {!fine && (
           <div style={{ marginBottom: 12 }}>
             <label style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>Persona</label>
-            <select className="zetas-input" value={userId} onChange={(e) => setUserId(e.target.value)} required>
-              <option value="">Seleccionar...</option>
-              {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
+            {selectedUser ? (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                background: '#1a1d38', border: '1px solid #2a2f5a', borderRadius: 10,
+                padding: '10px 14px',
+              }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%', background: '#3b5bdb33',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#6e8efb', fontWeight: 700, fontSize: 14, flexShrink: 0,
+                }}>
+                  {selectedUser.name.charAt(0).toUpperCase()}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: '#e8eaf6' }}>{selectedUser.name}</div>
+                  <div style={{ color: '#7c8db5', fontSize: 11 }}>@{selectedUser.username}</div>
+                </div>
+                <button type="button" onClick={() => setUserId('')} style={{
+                  background: 'none', border: 'none', color: '#7c8db5', cursor: 'pointer', fontSize: 16,
+                }}>✕</button>
+              </div>
+            ) : (
+              <>
+                <input
+                  className="zetas-input"
+                  type="text"
+                  placeholder="Buscar por nombre, usuario o teléfono..."
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  style={{ marginBottom: 8 }}
+                />
+                <div style={{
+                  border: '1px solid #2a2f5a', borderRadius: 10,
+                  maxHeight: 200, overflowY: 'auto', background: '#0f1020',
+                }}>
+                  {filteredUsers.length === 0 ? (
+                    <div style={{ padding: '16px', textAlign: 'center', color: '#7c8db5', fontSize: 13 }}>
+                      {userSearch.trim() ? 'No se encontraron miembros' : 'No hay miembros'}
+                    </div>
+                  ) : (
+                    filteredUsers.map((u, i) => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => { setUserId(u.id); setUserSearch(''); }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          width: '100%', textAlign: 'left', background: 'transparent',
+                          border: 'none',
+                          borderBottom: i < filteredUsers.length - 1 ? '1px solid #2a2f5a44' : 'none',
+                          padding: '10px 14px', color: '#e8eaf6', cursor: 'pointer', fontSize: 13,
+                          transition: 'background 0.1s',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = '#3b5bdb18'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <div style={{
+                          width: 30, height: 30, borderRadius: '50%', background: '#3b5bdb33',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: '#6e8efb', fontWeight: 700, fontSize: 13, flexShrink: 0,
+                        }}>
+                          {u.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600 }}>{u.name}</div>
+                          <div style={{ color: '#7c8db5', fontSize: 11 }}>@{u.username}</div>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
         <div style={{ marginBottom: 12 }}>
