@@ -11,6 +11,7 @@ import GameDetailPage from './pages/GameDetailPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import CreateGamePage from './pages/CreateGamePage';
 import LegacyParserPage from './pages/LegacyParserPage';
+import RulesPage from './pages/RulesPage';
 
 function AuthenticatedApp({ children }: { children: React.ReactNode }) {
   return (
@@ -35,6 +36,7 @@ export default function App() {
         <ToastContainer />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/reglas" element={<RulesPage />} />
           <Route path="/change-password" element={
             <PrivateRoute>
               <ChangePasswordPage />

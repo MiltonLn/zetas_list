@@ -23,6 +23,7 @@ const CMD_REMOVE_OTHER = /^@z\s+(sacar|quitar|remover|eliminar)\b/i;
 const CMD_INVITE = /^@z\s+invitar\s+(.+)/i;
 const CMD_CONFIRM = /^@z\s+(confirmar|confirmo|listo|lista)\b/i;
 const CMD_HELP = /^@z\s+(ayuda|help|comandos|info)\b/i;
+const CMD_RULES = /^@z\s+(reglas|reglamento|normas)\b/i;
 const CMD_IS_BOT_MENTION = /^@z\b/i;
 
 const MSG_NO_ACTIVE_GAME = 'No hay ninguna lista abierta en el momento 🤷';
@@ -58,6 +59,7 @@ export class MessageHandlerService {
     this.commands = [
       { regex: CMD_LIST, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: (ctx) => this.handleList(ctx) },
       { regex: CMD_HELP, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleHelp() },
+      { regex: CMD_RULES, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleRules() },
       { regex: CMD_FINISH, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handleFinish(ctx) },
       { regex: CMD_REMOVE_OTHER, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handleRemoveOther(ctx) },
       { regex: CMD_CONFIRM, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handleConfirm(ctx) },
@@ -158,7 +160,8 @@ export class MessageHandlerService {
       `• *${BOT_MENTION} sácame* — Salir de la lista\n` +
       `• *${BOT_MENTION} invitar NombreInvitado* — Anotar un invitado externo\n\n` +
       `📋 *Consulta:*\n` +
-      `• *${BOT_MENTION} lista* — Ver la lista actual y cupos\n\n` +
+      `• *${BOT_MENTION} lista* — Ver la lista actual y cupos\n` +
+      `• *${BOT_MENTION} reglas* — Ver las reglas del grupo\n\n` +
       `✅ *Confirmación:*\n` +
       `• *${BOT_MENTION} confirmar* — Confirmar asistencia cuando te promueven\n\n` +
       `⬆️ *Gestión de espera:*\n` +
@@ -167,6 +170,14 @@ export class MessageHandlerService {
       `• *${BOT_MENTION} sacar @persona* — Sacar a alguien de la lista\n` +
       `• *${BOT_MENTION} terminar* — Cerrar el partido y generar reporte\n\n` +
       `💡 _Sinónimos: anótame/méteme/voy/juego/entro/anotar, sácame/no voy/salgo, etc._`,
+    );
+  }
+
+  private async handleRules(): Promise<void> {
+    await this.wp.sendToGroup(
+      `📜 *Reglas del Grupo Zetas 2026*\n\n` +
+      `Consulta el reglamento completo aquí:\n` +
+      `🔗 https://zetas.club/reglas`,
     );
   }
 
