@@ -84,6 +84,12 @@ export class GameSchedulerService {
           data: { cutoffNotified: true },
         });
 
+        await this.whatsapp.sendToGroup(
+          `⏰ *Hora de corte alcanzada* para *${game.title}*\n` +
+          `A partir de ahora, invitados y miembros en lista de espera tienen la misma prioridad para cupos libres.`,
+        );
+        this.logger.log(`Cutoff notificado para: ${game.title}`);
+
         const unconfirmed = await this.prisma.gameRegistration.findMany({
           where: {
             gameId: game.id,
@@ -98,12 +104,6 @@ export class GameSchedulerService {
           await this.games.handleConfirmationTimeout(reg.id);
           this.logger.log(`Proxy no confirmado movido a espera: ${reg.user?.name}`);
         }
-
-        await this.whatsapp.sendToGroup(
-          `⏰ *Hora de corte alcanzada* para *${game.title}*\n` +
-          `A partir de ahora, invitados y miembros en lista de espera tienen la misma prioridad para cupos libres.`,
-        );
-        this.logger.log(`Cutoff notificado para: ${game.title}`);
 
         // After cutoff, fill any open spots from the waitlist (guests now have equal priority)
         await this.games.autoPromoteIfNeeded(game.id);

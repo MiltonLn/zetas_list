@@ -201,6 +201,30 @@ describe('GameSchedulerService', () => {
       expect(mockGames.handleConfirmationTimeout).toHaveBeenCalledTimes(2);
     });
 
+    it('envía el anuncio de corte ANTES de procesar timeouts', async () => {
+      mockPrisma.game.findMany.mockResolvedValue([makeGame()]);
+      mockGames.isBeforeCutoff.mockReturnValue(false);
+      mockPrisma.game.update.mockResolvedValue({});
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([
+        makeReg({ id: 'r1', user: { name: 'Carlos' } }),
+      ]);
+
+      const callOrder: string[] = [];
+      mockWhatsapp.sendToGroup.mockImplementation(() => {
+        callOrder.push('announce');
+        return Promise.resolve();
+      });
+      mockGames.handleConfirmationTimeout.mockImplementation(() => {
+        callOrder.push('timeout');
+        return Promise.resolve();
+      });
+
+      await scheduler.checkGuestCutoff();
+
+      expect(callOrder[0]).toBe('announce');
+      expect(callOrder[1]).toBe('timeout');
+    });
+
     it('continúa con otros partidos si uno falla', async () => {
       mockPrisma.game.findMany.mockResolvedValue([makeGame({ id: 'g1' }), makeGame({ id: 'g2' })]);
       mockGames.isBeforeCutoff.mockReturnValue(false);

@@ -636,11 +636,29 @@ describe('MessageHandlerService — handleMessage', () => {
     it('confirma exitosamente', async () => {
       mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
-      mockGames.confirmRegistration.mockResolvedValue(makeActiveGame());
+      mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: true, confirmedGuests: [] });
 
       await service.handleMessage('111', '@Z confirmar', 'group-1');
       expect(mockGames.confirmRegistration).toHaveBeenCalledWith('game-1', 'user-1');
-      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('confirmó'));
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('confirmó su asistencia'));
+    });
+
+    it('confirma invitados del usuario', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: false, confirmedGuests: ['Topota'] });
+
+      await service.handleMessage('111', '@Z confirmar', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('la de Topota'));
+    });
+
+    it('confirma ambos (propio y invitados)', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: true, confirmedGuests: ['Topota', 'Jeffer'] });
+
+      await service.handleMessage('111', '@Z confirmar', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('su asistencia y la de Topota, Jeffer'));
     });
 
     it('informa si no hay confirmación pendiente', async () => {
