@@ -75,7 +75,7 @@ function makeGame(overrides: Partial<any> = {}) {
     title: 'Test Game',
     modalidad: Modalidad.seis_x_seis,
     gameDate: new Date('2026-05-11'),
-    startTime: '19:50',
+    startTime: '18:50',
     registrationOpenAt: new Date('2026-05-11T10:00:00-05:00'),
     maxMainSpots: 18,
     pricePerPlayer: 2000,
@@ -242,7 +242,7 @@ describe('GamesService', () => {
     const dto = {
       modalidad: Modalidad.seis_x_seis,
       gameDate: '2026-06-01',
-      startTime: '19:50',
+      startTime: '18:50',
       registrationOpenTime: '10:00',
       pricePerPlayer: 2000,
       vigilante: 10000,
@@ -262,7 +262,7 @@ describe('GamesService', () => {
       await service.create({ modalidad: Modalidad.seis_x_seis, gameDate: '2026-06-01' } as any, actorId);
 
       const createCall = mockPrisma.game.create.mock.calls[0][0];
-      expect(createCall.data.startTime).toBe('19:50');
+      expect(createCall.data.startTime).toBe('18:50');
       expect(createCall.data.maxMainSpots).toBe(18);
       expect(createCall.data.pricePerPlayer).toBe(2000);
       expect(createCall.data.vigilante).toBe(10000);

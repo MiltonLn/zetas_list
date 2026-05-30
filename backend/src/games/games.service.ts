@@ -96,7 +96,7 @@ export class GamesService {
           throw new DuplicateGameException(dto.gameDate);
         }
 
-        const startTime = dto.startTime ?? '19:50';
+        const startTime = dto.startTime ?? '18:50';
         const title = dto.customTitle?.trim() || buildTitle(dto.modalidad, dto.gameDate, startTime);
         const maxMainSpots = dto.maxMainSpots ?? DEFAULT_SPOTS[dto.modalidad];
 
