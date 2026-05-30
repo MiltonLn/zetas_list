@@ -36,7 +36,6 @@ enum Gender {
 enum Modalidad {
   seis_x_seis
   cuatro_x_cuatro
-  torneo
 }
 
 enum GameStatus {

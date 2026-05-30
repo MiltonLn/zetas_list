@@ -11,7 +11,6 @@ import { getApiError } from '../services/api';
 const MODALIDAD_SPOTS: Record<Modalidad, number> = {
   seis_x_seis: 18,
   cuatro_x_cuatro: 12,
-  torneo: 18,
 };
 
 function buildAutoTitle(modalidad: Modalidad, gameDate: string, startTime: string) {
