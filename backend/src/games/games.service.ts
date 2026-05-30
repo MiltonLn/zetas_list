@@ -852,8 +852,9 @@ export class GamesService {
     this.events.emit({ gameId, type: 'update', data: updated });
 
     const userName = displayName(demoted);
+    const adminNote = actorId !== demoted.userId ? ' (por un admin)' : '';
     this.whatsapp
-      .sendToGroup(`⬇️ *${userName}* fue movido a la *lista de espera* (puesto ${demoted.position})\n${buildCounts(updated)}${buildGameLink(gameId)}`)
+      .sendToGroup(`⬇️ *${userName}* fue movido a la *lista de espera*${adminNote} (puesto ${demoted.position})\n${buildCounts(updated)}${buildGameLink(gameId)}`)
       .catch((e) => this.logger.warn('WhatsApp send failed', e));
 
     return updated;
