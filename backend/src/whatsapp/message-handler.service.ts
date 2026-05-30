@@ -285,7 +285,10 @@ export class MessageHandlerService {
       const result = await this.games.confirmRegistration(ctx.activeGame.id, ctx.user!.id);
       const parts: string[] = [];
       if (result.confirmedOwn) parts.push('su asistencia');
-      if (result.confirmedGuests.length > 0) parts.push(`la de ${result.confirmedGuests.join(', ')}`);
+      if (result.confirmedGuests.length > 0) {
+        const guestNames = result.confirmedGuests.join(', ');
+        parts.push(result.confirmedOwn ? `la de ${guestNames}` : `asistencia de ${guestNames}`);
+      }
       await this.wp.sendToGroup(`✅ *${ctx.user!.name}* confirmó ${parts.join(' y ')} 🏐`);
     } catch (e: unknown) {
       if (e instanceof NoPendingConfirmationException) {
