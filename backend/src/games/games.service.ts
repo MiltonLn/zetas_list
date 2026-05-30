@@ -260,6 +260,34 @@ export class GamesService {
           where: { gameId, userId },
         });
         if (existing) {
+          if (existing.confirmationDeclined && existing.isWaitingList) {
+            await tx.gameRegistration.update({
+              where: { id: existing.id },
+              data: { confirmationDeclined: false },
+            });
+
+            const mainCount = await tx.gameRegistration.count({
+              where: { gameId, isWaitingList: false },
+            });
+
+            if (mainCount < g.maxMainSpots) {
+              const maxPos = await tx.gameRegistration.aggregate({
+                where: { gameId, isWaitingList: false },
+                _max: { position: true },
+              });
+              return tx.gameRegistration.update({
+                where: { id: existing.id },
+                data: { isWaitingList: false, position: (maxPos._max.position ?? 0) + 1 },
+                include: REGISTRATION_INCLUDE,
+              });
+            }
+
+            return tx.gameRegistration.update({
+              where: { id: existing.id },
+              data: { confirmationDeclined: false },
+              include: REGISTRATION_INCLUDE,
+            });
+          }
           throw new AlreadyRegisteredException();
         }
 
