@@ -649,7 +649,7 @@ describe('MessageHandlerService — handleMessage', () => {
       mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: false, confirmedGuests: ['Topota'] });
 
       await service.handleMessage('111', '@Z confirmar', 'group-1');
-      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('la de Topota'));
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('asistencia de Topota'));
     });
 
     it('confirma ambos (propio y invitados)', async () => {

@@ -860,10 +860,10 @@ export class GamesService {
     return updated;
   }
 
-  async autoPromoteIfNeeded(gameId: string) {
+  async autoPromoteIfNeeded(gameId: string, options?: { skipMainListFullCheck?: boolean }) {
     const game = await this.prisma.game.findUnique({ where: { id: gameId } });
     if (!game || (game.status !== 'registration_open' && game.status !== 'in_progress')) return;
-    if (!game.mainListHasBeenFull) return;
+    if (!options?.skipMainListFullCheck && !game.mainListHasBeenFull) return;
 
     const beforeCutoff = isBeforeCutoff(game.guestCutoffTime, game.gameDate);
 

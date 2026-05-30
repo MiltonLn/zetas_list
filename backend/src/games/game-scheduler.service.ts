@@ -106,7 +106,7 @@ export class GameSchedulerService {
         }
 
         // After cutoff, fill any open spots from the waitlist (guests now have equal priority)
-        await this.games.autoPromoteIfNeeded(game.id);
+        await this.games.autoPromoteIfNeeded(game.id, { skipMainListFullCheck: true });
       } catch (e) {
         this.logger.error(`Error procesando cutoff para ${game.id}:`, e);
       }

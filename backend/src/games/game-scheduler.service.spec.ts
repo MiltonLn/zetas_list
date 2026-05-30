@@ -245,7 +245,7 @@ describe('GameSchedulerService', () => {
 
       await scheduler.checkGuestCutoff();
 
-      expect(mockGames.autoPromoteIfNeeded).toHaveBeenCalledWith('game-1');
+      expect(mockGames.autoPromoteIfNeeded).toHaveBeenCalledWith('game-1', { skipMainListFullCheck: true });
     });
 
     // ── Bug 1&2: el mismo registro no debe procesarse dos veces si ambos crons coinciden ──
