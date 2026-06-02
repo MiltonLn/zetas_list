@@ -216,7 +216,7 @@ export default function GuidePage() {
               cupo, o en la lista de espera si ya está llena.
             </StepCard>
             <StepCard n={2} icon="🧑‍🤝‍🧑" title="Suma a alguien">
-              ¿Vienes con un parcero? <Code>@Z invitar Carlos</Code> anota a un invitado externo, o{' '}
+              ¿Vienes con alguien más? <Code>@Z invitar Carlos</Code> anota a un invitado externo, o{' '}
               <Code>@Z anótame @amigo</Code> anota a otro miembro del grupo.
             </StepCard>
             <StepCard n={3} icon="⏳" title="Lista de espera">

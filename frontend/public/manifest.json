@@ -1,7 +1,7 @@
 {
-  "name": "Asistencia Zetas",
-  "short_name": "Zetas",
-  "description": "Control de asistencia y pagos del equipo Zetas Volleyball",
+  "name": "Zetas App",
+  "short_name": "Zetas App",
+  "description": "Tu lista de vóley: ordenada, justa y sin dramas. Vive en WhatsApp.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
