@@ -5,13 +5,11 @@ const COLOMBIA_OFFSET_MIN = -5 * 60;
 export const DEFAULT_SPOTS: Record<Modalidad, number> = {
   seis_x_seis: 18,
   cuatro_x_cuatro: 12,
-  torneo: 18,
 };
 
 export const MODALIDAD_LABEL: Record<Modalidad, string> = {
   seis_x_seis: '6x6',
   cuatro_x_cuatro: '4x4',
-  torneo: 'Torneo',
 };
 
 export const CONFIRMATION_TIMEOUT_MS = 15 * 60 * 1000;

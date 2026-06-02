@@ -51,6 +51,9 @@ export const gamesService = {
   confirmRegistration: (gameId: string) =>
     api.post(`/games/${gameId}/confirm`),
 
+  confirmRegistrationById: (gameId: string, regId: string) =>
+    api.post(`/games/${gameId}/confirm-reg/${regId}`),
+
   getAvailableMembers: (gameId: string) =>
     api.get<Array<{ id: string; name: string; phone: string; username: string }>>(`/games/${gameId}/available-members`),
 

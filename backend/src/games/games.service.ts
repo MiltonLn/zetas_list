@@ -39,8 +39,6 @@ import {
   buildRegistrationOpenMessage,
   shouldGoToWaitingList,
   isBeforeCutoff,
-  buildCutoffDateTime,
-  formatCutoffTime,
   REGISTRATION_INCLUDE,
   DEFAULT_SPOTS,
   CONFIRMATION_TIMEOUT_MS,
@@ -96,7 +94,7 @@ export class GamesService {
           throw new DuplicateGameException(dto.gameDate);
         }
 
-        const startTime = dto.startTime ?? '19:50';
+        const startTime = dto.startTime ?? '18:50';
         const title = dto.customTitle?.trim() || buildTitle(dto.modalidad, dto.gameDate, startTime);
         const maxMainSpots = dto.maxMainSpots ?? DEFAULT_SPOTS[dto.modalidad];
 
@@ -260,6 +258,34 @@ export class GamesService {
           where: { gameId, userId },
         });
         if (existing) {
+          if (existing.confirmationDeclined && existing.isWaitingList) {
+            await tx.gameRegistration.update({
+              where: { id: existing.id },
+              data: { confirmationDeclined: false },
+            });
+
+            const mainCount = await tx.gameRegistration.count({
+              where: { gameId, isWaitingList: false },
+            });
+
+            if (mainCount < g.maxMainSpots) {
+              const maxPos = await tx.gameRegistration.aggregate({
+                where: { gameId, isWaitingList: false },
+                _max: { position: true },
+              });
+              return tx.gameRegistration.update({
+                where: { id: existing.id },
+                data: { isWaitingList: false, position: (maxPos._max.position ?? 0) + 1 },
+                include: REGISTRATION_INCLUDE,
+              });
+            }
+
+            return tx.gameRegistration.update({
+              where: { id: existing.id },
+              data: { confirmationDeclined: false },
+              include: REGISTRATION_INCLUDE,
+            });
+          }
           throw new AlreadyRegisteredException();
         }
 
@@ -328,11 +354,9 @@ export class GamesService {
         });
         const nextPosition = (maxPositionResult._max.position ?? 0) + 1;
 
-        const cutoffDt = buildCutoffDateTime(g.guestCutoffTime, g.gameDate);
-        const msUntilCutoff = cutoffDt.getTime() - Date.now();
-        const needsConfirmation = !isSelfRegister && isBeforeCutoff(g.guestCutoffTime, g.gameDate) && msUntilCutoff > CONFIRMATION_TIMEOUT_MS;
-        const confirmationDeadline = needsConfirmation ? cutoffDt : null;
-
+        // No confirmation flow for proxy registrations: anyone registered (self
+        // or by another member) is registered directly. The only confirmation
+        // flow lives in auto-promotion from the waiting list.
         return tx.gameRegistration.create({
           data: {
             gameId,
@@ -341,8 +365,6 @@ export class GamesService {
             isWaitingList: waitList,
             registeredAt: new Date(),
             registeredById,
-            pendingConfirmation: needsConfirmation,
-            confirmationDeadline: needsConfirmation ? confirmationDeadline : undefined,
           },
           include: REGISTRATION_INCLUDE,
         });
@@ -367,11 +389,7 @@ export class GamesService {
       ? `en la *lista de espera* (puesto ${registration.position})`
       : `en la *lista principal*`;
     if (!options?.silent) {
-      let msg = `✅ *${userName}* se anotó ${spot}! 🏐\n${buildCounts(updated)}`;
-      if (registration.pendingConfirmation) {
-        msg += `\n⏳ *${userName}* debe confirmar con *@Z confirmar* antes de la ${formatCutoffTime(updated.guestCutoffTime)}.`;
-      }
-      msg += buildGameLink(gameId);
+      const msg = `✅ *${userName}* se anotó ${spot}! 🏐\n${buildCounts(updated)}${buildGameLink(gameId)}`;
       this.whatsapp.sendToGroup(msg).catch((e) => this.logger.warn('WhatsApp send failed', e));
     }
 
@@ -468,7 +486,7 @@ export class GamesService {
     return registration;
   }
 
-  async confirmRegistration(gameId: string, userId: string): Promise<{ game: any; confirmedOwn: boolean; confirmedGuests: string[] }> {
+  async confirmRegistration(gameId: string, userId: string, actorId: string = userId): Promise<{ game: any; confirmedOwn: boolean; confirmedGuests: string[] }> {
     const confirmed = await this.prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
@@ -500,15 +518,64 @@ export class GamesService {
 
     await this.audit.log({
       gameId,
-      actorId: userId,
+      actorId,
       targetUserId: userId,
       action: 'confirmation_received',
-      details: { confirmedOwn: confirmed.confirmedOwn, confirmedGuests: confirmed.confirmedGuests },
+      details: { confirmedOwn: confirmed.confirmedOwn, confirmedGuests: confirmed.confirmedGuests, onBehalf: actorId !== userId },
     });
 
     const updated = await this.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
     return { game: updated, ...confirmed };
+  }
+
+  /**
+   * Confirma un registro puntual por su id. Pensado para la acción de admin desde
+   * la UI: funciona tanto para miembros (autopromoción) como para invitados, que
+   * no tienen `userId` propio y por eso no pueden confirmarse por usuario.
+   */
+  async confirmRegistrationById(gameId: string, regId: string, actorId: string): Promise<{ game: any; name: string }> {
+    const confirmed = await this.prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
+
+        const reg = await tx.gameRegistration.findFirst({
+          where: { id: regId, gameId, pendingConfirmation: true },
+          include: { user: { select: { name: true } } },
+        });
+        if (!reg) throw new NoPendingConfirmationException();
+
+        await tx.gameRegistration.update({
+          where: { id: reg.id },
+          data: { pendingConfirmation: false, confirmationDeadline: null },
+        });
+
+        return {
+          name: reg.isGuest ? reg.guestName || 'Invitado' : reg.user?.name || 'Jugador',
+          userId: reg.userId as string | null,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    await this.audit.log({
+      gameId,
+      actorId,
+      targetUserId: confirmed.userId ?? undefined,
+      action: 'confirmation_received',
+      details: { confirmedRegId: regId, onBehalf: true },
+    });
+
+    const actor = await this.prisma.user.findUnique({ where: { id: actorId }, select: { name: true } });
+
+    const updated = await this.findOne(gameId);
+    this.events.emit({ gameId, type: 'update', data: updated });
+
+    this.whatsapp
+      .sendToGroup(`✅ *${actor?.name || 'Un admin'}* confirmó la asistencia de *${confirmed.name}* 🏐`)
+      .catch((e) => this.logger.warn('WhatsApp send failed', e));
+
+    return { game: updated, name: confirmed.name };
   }
 
   async retryFromWaitingList(gameId: string, userId: string) {
@@ -824,17 +891,18 @@ export class GamesService {
     this.events.emit({ gameId, type: 'update', data: updated });
 
     const userName = displayName(demoted);
+    const adminNote = actorId !== demoted.userId ? ' (por un admin)' : '';
     this.whatsapp
-      .sendToGroup(`⬇️ *${userName}* fue movido a la *lista de espera* (puesto ${demoted.position})\n${buildCounts(updated)}${buildGameLink(gameId)}`)
+      .sendToGroup(`⬇️ *${userName}* fue movido a la *lista de espera*${adminNote} (puesto ${demoted.position})\n${buildCounts(updated)}${buildGameLink(gameId)}`)
       .catch((e) => this.logger.warn('WhatsApp send failed', e));
 
     return updated;
   }
 
-  async autoPromoteIfNeeded(gameId: string) {
+  async autoPromoteIfNeeded(gameId: string, options?: { skipMainListFullCheck?: boolean }) {
     const game = await this.prisma.game.findUnique({ where: { id: gameId } });
     if (!game || (game.status !== 'registration_open' && game.status !== 'in_progress')) return;
-    if (!game.mainListHasBeenFull) return;
+    if (!options?.skipMainListFullCheck && !game.mainListHasBeenFull) return;
 
     const beforeCutoff = isBeforeCutoff(game.guestCutoffTime, game.gameDate);
 
@@ -981,8 +1049,12 @@ export class GamesService {
 
         if (nextInWait) {
           const nextOriginalPos = nextInWait.position;
-          const isFirstChance = !nextInWait.fromWaitList;
-          const nextDeadline = new Date(Date.now() + (isFirstChance ? CONFIRMATION_TIMEOUT_MS : NEXT_CONFIRM_TIMEOUT_MS));
+          // Esta promoción ocurre porque el candidato anterior dejó vencer su
+          // ventana: es la continuación de la misma "línea" que arrancó cuando se
+          // liberó el cupo. Las continuaciones reciben la ventana corta; solo la
+          // primera promoción de un cupo recién liberado (autoPromoteIfNeeded)
+          // recibe CONFIRMATION_TIMEOUT_MS (15 min).
+          const nextDeadline = new Date(Date.now() + NEXT_CONFIRM_TIMEOUT_MS);
 
           const maxMainPos = await tx.gameRegistration.aggregate({
             where: { gameId: reg.gameId, isWaitingList: false },
@@ -1001,10 +1073,10 @@ export class GamesService {
             },
           });
 
-          return { returnPos, nextInWait, nextDeadline, nextOriginalPos, isFirstChance };
+          return { returnPos, nextInWait, nextDeadline, nextOriginalPos };
         }
 
-        return { returnPos, nextInWait: null, nextDeadline: null, nextOriginalPos: null, isFirstChance: false };
+        return { returnPos, nextInWait: null, nextDeadline: null, nextOriginalPos: null };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
@@ -1051,7 +1123,7 @@ export class GamesService {
     this.events.emit({ gameId: reg.gameId, type: 'update', data: finalUpdated });
 
     this.whatsapp
-      .sendToGroup(`⬆️ *${nextName}* fue promovido a la *lista principal* 🏐\n${nextConfirmTarget}, confirma con *@Z confirmar* en los próximos ${result.isFirstChance ? '15' : '5'} min.\n${buildCounts(finalUpdated)}${buildGameLink(reg.gameId)}`)
+      .sendToGroup(`⬆️ *${nextName}* fue promovido a la *lista principal* 🏐\n${nextConfirmTarget}, confirma con *@Z confirmar* en los próximos 5 min.\n${buildCounts(finalUpdated)}${buildGameLink(reg.gameId)}`)
       .catch((e) => this.logger.warn('WhatsApp send failed', e));
   }
 
