@@ -12,6 +12,7 @@ import AdminUsersPage from './pages/AdminUsersPage';
 import CreateGamePage from './pages/CreateGamePage';
 import LegacyParserPage from './pages/LegacyParserPage';
 import RulesPage from './pages/RulesPage';
+import GuidePage from './pages/GuidePage';
 import { FinancesDashboardPage } from './pages/FinancesDashboardPage';
 import { AdminFinancesPage } from './pages/AdminFinancesPage';
 
@@ -39,6 +40,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/reglas" element={<RulesPage />} />
+          <Route path="/guia" element={<GuidePage />} />
           <Route path="/change-password" element={
             <PrivateRoute>
               <ChangePasswordPage />
