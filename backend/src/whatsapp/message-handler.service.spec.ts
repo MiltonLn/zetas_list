@@ -48,7 +48,7 @@ describe('MessageHandlerService — regex', () => {
   // We import the patterns indirectly by testing handleMessage behavior
 
   const CMD_REGISTER = /^@z\s+(an[oó]tame|m[eé]teme|ap[uú]ntame|juego|voy|entro|anotar|an[oó]ta|apuntar|ap[uú]nta)\b/i;
-  const CMD_UNREGISTER = /^@z\s+(salirme|s[aá]came|qu[ií]tame|no\s+voy|no\s+juego|salgo)\b/i;
+  const CMD_UNREGISTER = /^@z\s+(salirme|s[aá]came|qu[ií]tame|no\s+voy|no\s+juego|salgo|salir)\b/i;
   const CMD_LIST = /^@z\s+(lista|cupos|qui[eé]nes?\s+van|cu[aá]ntos)\b/i;
   const CMD_FINISH = /^@z\s+(terminar|cerrar|finalizar|completar)\b/i;
 
@@ -89,6 +89,8 @@ describe('MessageHandlerService — regex', () => {
       ['@Z no voy'],
       ['@Z no juego'],
       ['@Z salgo'],
+      ['@Z salir'],
+      ['@z salir'],
     ])('reconoce "%s"', (cmd) => {
       expect(CMD_UNREGISTER.test(cmd)).toBe(true);
     });
@@ -270,6 +272,34 @@ describe('MessageHandlerService — handleMessage', () => {
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('ya estás anotado'));
     });
 
+    it('un declined en espera usa "anótame" y es promovido si hay cupo', async () => {
+      // El remitente ya tiene un registro, pero declinó y volvió a la espera.
+      // "anótame" debe reintentar (retryFromWaitingList), no decir "ya estás anotado".
+      mockPrisma.game.findFirst.mockResolvedValue(
+        makeActiveGame([{ user: { id: 'user-1' }, isWaitingList: true, confirmationDeclined: true, position: 1 }]),
+      );
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.retryFromWaitingList.mockResolvedValue({ promoted: true, game: makeActiveGame() });
+      mockGames.findOne.mockResolvedValue(makeActiveGame([{ user: { id: 'user-1' }, isWaitingList: false, position: 5 }]));
+
+      await service.handleMessage('111', '@Z anotame', 'group-1');
+
+      expect(mockGames.retryFromWaitingList).toHaveBeenCalledWith('game-1', 'user-1');
+      expect(mockWp.sendToGroup).not.toHaveBeenCalledWith(expect.stringContaining('ya estás anotado'));
+    });
+
+    it('un registro activo normal sí responde "ya estás anotado"', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(
+        makeActiveGame([{ user: { id: 'user-1' }, isWaitingList: false, confirmationDeclined: false, position: 3 }]),
+      );
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+
+      await service.handleMessage('111', '@Z anotame', 'group-1');
+
+      expect(mockGames.retryFromWaitingList).not.toHaveBeenCalled();
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('ya estás anotado'));
+    });
+
     it('funciona también con el sinónimo "voy"', async () => {
       mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
@@ -320,6 +350,34 @@ describe('MessageHandlerService — handleMessage', () => {
 
       await service.handleMessage('111', '@Z sacame', 'group-1');
       expect(mockGames.removeRegistration).toHaveBeenCalled();
+    });
+
+    it('funciona también con el sinónimo "salir"', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.removeRegistration.mockResolvedValue({});
+      mockGames.findOne.mockResolvedValue(makeActiveGame());
+
+      await service.handleMessage('111', '@Z salir', 'group-1');
+      expect(mockGames.removeRegistration).toHaveBeenCalled();
+    });
+
+    it('al salir, aclara que sus invitados también fueron removidos', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(
+        makeActiveGame([
+          { user: { id: 'user-1' }, isGuest: false },
+          { isGuest: true, registeredById: 'user-1', guestName: 'Pepito' },
+          { isGuest: true, registeredById: 'user-1', guestName: 'Juanito' },
+        ]),
+      );
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.removeRegistration.mockResolvedValue({});
+      mockGames.findOne.mockResolvedValue(makeActiveGame());
+
+      await service.handleMessage('111', '@Z salir', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('Sus invitados también fueron removidos: Pepito, Juanito'),
+      );
     });
   });
 
@@ -604,6 +662,27 @@ describe('MessageHandlerService — handleMessage', () => {
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('sacado'));
     });
 
+    it('al sacar a alguien con invitados, aclara que también fueron removidos', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(
+        makeActiveGame([
+          { user: { id: 'user-2' }, isGuest: false },
+          { isGuest: true, registeredById: 'user-2', guestName: 'Pepito' },
+        ]),
+      );
+      mockUsers.findByPhone.mockImplementation((phone: string) => {
+        if (phone === '111') return Promise.resolve(makeUser({ role: Role.admin }));
+        if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
+        return Promise.resolve(null);
+      });
+      mockGames.removeRegistration.mockResolvedValue(undefined);
+      mockGames.findOne.mockResolvedValue(makeActiveGame());
+
+      await service.handleMessage('111', '@Z sacar @222', 'group-1', ['222@s.whatsapp.net']);
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('Su invitado también fue removido: Pepito'),
+      );
+    });
+
     it('informa si el target no está en la lista', async () => {
       const { NotRegisteredException } = require('../games/exceptions');
       mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
@@ -649,7 +728,7 @@ describe('MessageHandlerService — handleMessage', () => {
       mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: false, confirmedGuests: ['Topota'] });
 
       await service.handleMessage('111', '@Z confirmar', 'group-1');
-      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('la de Topota'));
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('asistencia de Topota'));
     });
 
     it('confirma ambos (propio y invitados)', async () => {
@@ -678,6 +757,50 @@ describe('MessageHandlerService — handleMessage', () => {
 
       await service.handleMessage('111', '@Z confirmo', 'group-1');
       expect(mockGames.confirmRegistration).toHaveBeenCalled();
+    });
+
+    it('admin confirma por otro mencionándolo (pasa actorId del admin)', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockImplementation((phone: string) => {
+        if (phone === '111') return Promise.resolve(makeUser({ role: Role.admin }));
+        if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
+        return Promise.resolve(null);
+      });
+      mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: true, confirmedGuests: [] });
+
+      await service.handleMessage('111', '@Z confirmar @222', 'group-1', ['222@s.whatsapp.net']);
+
+      expect(mockGames.confirmRegistration).toHaveBeenCalledWith('game-1', 'user-2', 'user-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('confirmó la asistencia de Juan'));
+    });
+
+    it('rechaza confirmar por otro si no es admin', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockImplementation((phone: string) => {
+        if (phone === '111') return Promise.resolve(makeUser({ role: Role.member }));
+        if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
+        return Promise.resolve(null);
+      });
+
+      await service.handleMessage('111', '@Z confirmar @222', 'group-1', ['222@s.whatsapp.net']);
+
+      expect(mockGames.confirmRegistration).not.toHaveBeenCalled();
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Solo los administradores'));
+    });
+
+    it('informa si no hay confirmación pendiente del mencionado', async () => {
+      const { NoPendingConfirmationException } = require('../games/exceptions');
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockImplementation((phone: string) => {
+        if (phone === '111') return Promise.resolve(makeUser({ role: Role.admin }));
+        if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
+        return Promise.resolve(null);
+      });
+      mockGames.confirmRegistration.mockRejectedValue(new NoPendingConfirmationException());
+
+      await service.handleMessage('111', '@Z confirmar @222', 'group-1', ['222@s.whatsapp.net']);
+
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('no tiene ninguna confirmación pendiente'));
     });
   });
 

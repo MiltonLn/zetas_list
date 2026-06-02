@@ -42,3 +42,12 @@ alwaysApply: true
 - **Toda funcionalidad nueva o modificada debe incluir tests**. No se debe mergear código sin cobertura.
 - Al modificar un service o handler existente, actualizar los tests correspondientes.
 - Al crear un endpoint nuevo, agregar tests para los happy paths y los casos de error principales.
+
+### Tipos de test
+- **Tests unitarios** (`*.spec.ts`): aíslan un método con mocks; el estado de la DB se mockea por paso. Son la base de la cobertura.
+- **Tests de escenario** (`*.scenario.spec.ts`): pruebas *stateful* de extremo a extremo a nivel de servicio. Usan un **Prisma en memoria** (`backend/src/games/testing/in-memory-prisma.ts`) que mantiene estado real entre llamadas, encadenando operaciones para reproducir flujos reales (inscribir N personas, pasar el cutoff, subir/bajar de la lista de espera, timeouts de confirmación, completar el juego, etc.). Siguen siendo unitarios: corren con `npm test`, sin Docker ni Postgres.
+
+### Bug-first: reproducir primero
+- Cuando se encuentra un bug, el **primer paso** es escribir un test que lo reproduzca y falle (rojo), *antes* de arreglarlo.
+- Si el bug involucra un flujo con estado que evoluciona (listas, posiciones, promociones, cutoff), usar un **test de escenario**. Si es un caso puntual de un método, basta un test unitario.
+- Luego se arregla el código hasta que el test pase (verde). El test queda como regresión permanente.

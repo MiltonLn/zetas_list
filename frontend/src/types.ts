@@ -2,7 +2,7 @@ export type Role = 'admin' | 'member';
 export type UserStatus = 'active' | 'inactive' | 'banned';
 export type Position = 'auxiliar' | 'libero' | 'armador' | 'central' | 'opuesto';
 export type Gender = 'masculino' | 'femenino' | 'otro';
-export type Modalidad = 'seis_x_seis' | 'cuatro_x_cuatro' | 'torneo';
+export type Modalidad = 'seis_x_seis' | 'cuatro_x_cuatro';
 export type GameStatus =
   | 'scheduled'
   | 'registration_open'
@@ -113,7 +113,6 @@ export interface AuditLog {
 export const MODALIDAD_LABELS: Record<Modalidad, string> = {
   seis_x_seis: '6x6',
   cuatro_x_cuatro: '4x4',
-  torneo: 'Torneo',
 };
 
 export const POSITION_LABELS: Record<Position, string> = {

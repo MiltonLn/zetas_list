@@ -14,6 +14,7 @@ interface Props {
   onTogglePaid?: () => void;
   onPromote?: () => void;
   onDemote?: () => void;
+  onConfirm?: () => void;
   onRemove?: () => void;
   isSelf: boolean;
   allowSelfRemove: boolean;
@@ -31,6 +32,7 @@ export function SortableRegistrationRow({
   onTogglePaid,
   onPromote,
   onDemote,
+  onConfirm,
   onRemove,
   isSelf,
   allowSelfRemove,
@@ -106,6 +108,20 @@ export function SortableRegistrationRow({
           )}
         </div>
       </div>
+
+      {isAdmin && !isReadonly && reg.pendingConfirmation && onConfirm && (
+        <button
+          onClick={onConfirm}
+          title="Confirmar asistencia por este jugador"
+          style={{
+            background: '#2da44e22', border: '1px solid #2da44e55',
+            borderRadius: 6, padding: '4px 8px',
+            color: '#2da44e', cursor: 'pointer', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
+          }}
+        >
+          Confirmar
+        </button>
+      )}
 
       {isAdmin && !isReadonly && (
         <>

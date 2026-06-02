@@ -17,7 +17,7 @@ import { extractPhoneFromJid } from './utils/jid-utils';
 
 const BOT_MENTION = '@Z';
 const CMD_REGISTER = /^@z\s+(an[oó]tame|m[eé]teme|ap[uú]ntame|juego|voy|entro|anotar|an[oó]ta|apuntar|ap[uú]nta)\b/i;
-const CMD_UNREGISTER = /^@z\s+(salirme|s[aá]came|qu[ií]tame|no\s+voy|no\s+juego|salgo)\b/i;
+const CMD_UNREGISTER = /^@z\s+(salirme|s[aá]came|qu[ií]tame|no\s+voy|no\s+juego|salgo|salir)\b/i;
 const CMD_LIST = /^@z\s+(lista|cupos|qui[eé]nes?\s+van|cu[aá]ntos)\b/i;
 const CMD_FINISH = /^@z\s+(terminar|cerrar|finalizar|completar)\b/i;
 const CMD_PROMOTE = /^@z\s+(promover|subir|jalar|meter)\b/i;
@@ -177,6 +177,7 @@ export class MessageHandlerService {
       `• *${BOT_MENTION} promover* — Subir al primero de la lista de espera\n\n` +
       `🔒 *Solo admin:*\n` +
       `• *${BOT_MENTION} sacar @persona* — Sacar a alguien de la lista\n` +
+      `• *${BOT_MENTION} confirmar @persona* — Confirmar por otro jugador\n` +
       `• *${BOT_MENTION} terminar* — Cerrar el partido y generar reporte\n\n` +
       `💡 _Sinónimos: anótame/méteme/voy/juego/entro/anotar, sácame/no voy/salgo, etc._`,
     );
@@ -241,6 +242,22 @@ export class MessageHandlerService {
     }
   }
 
+  /**
+   * Construye el sufijo que aclara que los invitados de un jugador también
+   * fueron removidos al salir/sacarlo. Se calcula desde el snapshot del partido
+   * (las inscripciones aún presentes antes de la baja).
+   */
+  private removedGuestsSuffix(ctx: CommandContext, ownerUserId: string): string {
+    const guestNames = ctx.activeGame.registrations
+      .filter((r: any) => r.isGuest && r.registeredById === ownerUserId)
+      .map((r: any) => r.guestName || 'Invitado');
+    if (guestNames.length === 0) return '';
+    const label = guestNames.length === 1
+      ? 'Su invitado también fue removido'
+      : 'Sus invitados también fueron removidos';
+    return `\n🚫 ${label}: ${guestNames.join(', ')}`;
+  }
+
   private async handleRemoveOther(ctx: CommandContext): Promise<void> {
     if (ctx.user!.role !== Role.admin) {
       await this.wp.sendToGroup(`⛔ Solo los administradores pueden sacar a otros de la lista.`);
@@ -266,10 +283,11 @@ export class MessageHandlerService {
     }
 
     try {
+      const guestsSuffix = this.removedGuestsSuffix(ctx, targetUser.id);
       await this.games.removeRegistration(ctx.activeGame.id, targetUser.id, ctx.user!.id, ctx.user!.role, { silent: true });
       const updated = await this.games.findOne(ctx.activeGame.id);
       const counts = this.games.buildCounts(updated);
-      await this.wp.sendToGroup(`🚫 *${targetUser.name}* fue sacado de la lista por un admin.\n${counts}${this.games.buildGameLink(ctx.activeGame.id)}`);
+      await this.wp.sendToGroup(`🚫 *${targetUser.name}* fue sacado de la lista por un admin.${guestsSuffix}\n${counts}${this.games.buildGameLink(ctx.activeGame.id)}`);
     } catch (e: unknown) {
       if (e instanceof NotRegisteredException) {
         await this.wp.sendToGroup(`ℹ️ ${targetUser.name} no está anotado en esta lista.`);
@@ -281,11 +299,53 @@ export class MessageHandlerService {
   }
 
   private async handleConfirm(ctx: CommandContext): Promise<void> {
+    const otherMentions = ctx.mentionedJids.filter((jid) => {
+      const jidNumber = extractPhoneFromJid(jid);
+      return jidNumber !== ctx.phone;
+    });
+
+    // Admin confirma por otros mencionándolos: "@Z confirmar @persona".
+    if (otherMentions.length > 0) {
+      if (ctx.user!.role !== Role.admin) {
+        await this.wp.sendToGroup(`⛔ Solo los administradores pueden confirmar por otros.`);
+        return;
+      }
+
+      const confirmedNames: string[] = [];
+      for (const jid of otherMentions) {
+        const mPhone = extractPhoneFromJid(jid);
+        const targetUser = await this.users.findByPhone(mPhone);
+        if (!targetUser) {
+          await this.wp.sendToGroup(`❌ Un usuario mencionado no está registrado en el sistema.`);
+          continue;
+        }
+        try {
+          await this.games.confirmRegistration(ctx.activeGame.id, targetUser.id, ctx.user!.id);
+          confirmedNames.push(targetUser.name);
+        } catch (e: unknown) {
+          if (e instanceof NoPendingConfirmationException) {
+            await this.wp.sendToGroup(`ℹ️ ${targetUser.name} no tiene ninguna confirmación pendiente.`);
+          } else {
+            this.logger.error('Error al confirmar por otro:', e);
+            await this.wp.sendToGroup(`❌ No se pudo confirmar a ${targetUser.name}. Intenta de nuevo.`);
+          }
+        }
+      }
+
+      if (confirmedNames.length > 0) {
+        await this.wp.sendToGroup(`✅ *${ctx.user!.name}* confirmó la asistencia de ${confirmedNames.join(', ')} 🏐`);
+      }
+      return;
+    }
+
     try {
       const result = await this.games.confirmRegistration(ctx.activeGame.id, ctx.user!.id);
       const parts: string[] = [];
       if (result.confirmedOwn) parts.push('su asistencia');
-      if (result.confirmedGuests.length > 0) parts.push(`la de ${result.confirmedGuests.join(', ')}`);
+      if (result.confirmedGuests.length > 0) {
+        const guestNames = result.confirmedGuests.join(', ');
+        parts.push(result.confirmedOwn ? `la de ${guestNames}` : `asistencia de ${guestNames}`);
+      }
       await this.wp.sendToGroup(`✅ *${ctx.user!.name}* confirmó ${parts.join(' y ')} 🏐`);
     } catch (e: unknown) {
       if (e instanceof NoPendingConfirmationException) {
@@ -353,10 +413,11 @@ export class MessageHandlerService {
 
   private async handleUnregister(ctx: CommandContext): Promise<void> {
     try {
+      const guestsSuffix = this.removedGuestsSuffix(ctx, ctx.user!.id);
       await this.games.removeRegistration(ctx.activeGame.id, ctx.user!.id, ctx.user!.id, ctx.user!.role, { silent: true });
       const updated = await this.games.findOne(ctx.activeGame.id);
       const counts = this.games.buildCounts(updated);
-      await this.wp.sendToGroup(`👋 *${ctx.user!.name}* salió de la lista.\n${counts}${this.games.buildGameLink(ctx.activeGame.id)}`);
+      await this.wp.sendToGroup(`👋 *${ctx.user!.name}* salió de la lista.${guestsSuffix}\n${counts}${this.games.buildGameLink(ctx.activeGame.id)}`);
     } catch (e: unknown) {
       if (e instanceof NotRegisteredException) {
         await this.wp.sendToGroup(`ℹ️ ${ctx.user!.name}, no estás anotado en esta lista.`);
@@ -385,8 +446,12 @@ export class MessageHandlerService {
     let senderRegistered = false;
     let senderAlreadyRegistered = false;
     const existingSenderReg = ctx.activeGame.registrations.find((r: any) => r.user?.id === ctx.user!.id);
+    // Un jugador que no confirmó a tiempo vuelve a la lista de espera marcado como
+    // "declined". Si usa "anótame" de nuevo, debe reactivarse y —si hay cupo libre—
+    // subir de inmediato a la principal, en vez de recibir "ya estás anotado".
+    const isDeclinedWaiter = !!existingSenderReg?.isWaitingList && !!existingSenderReg?.confirmationDeclined;
 
-    if (existingSenderReg) {
+    if (existingSenderReg && !isDeclinedWaiter) {
       senderAlreadyRegistered = true;
     } else {
       try {
@@ -449,9 +514,6 @@ export class MessageHandlerService {
           ? `en la *lista de espera* (puesto ${reg.position})`
           : `en la *lista principal*`;
         msgs.push(`✅ *${targetUser.name}* fue anotado ${spot} por *${ctx.user!.name}* 🏐`);
-        if (reg.pendingConfirmation) {
-          msgs.push(`⏳ *${targetUser.name}* debe confirmar con *${BOT_MENTION} confirmar* antes de la hora de corte.`);
-        }
       } catch (e: unknown) {
         if (e instanceof AlreadyRegisteredException) {
           msgs.push(`ℹ️ ${targetUser.name} ya está anotado en esta lista.`);

@@ -117,6 +117,16 @@ export class GamesController {
     return this.gamesService.confirmRegistration(id, user.id);
   }
 
+  @Roles(Role.admin)
+  @Post(':id/confirm-reg/:regId')
+  confirmRegById(
+    @Param('id') id: string,
+    @Param('regId') regId: string,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.gamesService.confirmRegistrationById(id, regId, user.id);
+  }
+
   @Get(':id/available-members')
   getAvailableMembers(@Param('id') id: string) {
     return this.gamesService.getAvailableMembers(id);

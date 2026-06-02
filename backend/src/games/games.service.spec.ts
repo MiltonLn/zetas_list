@@ -4,7 +4,6 @@ import { GameStatus, Modalidad, Role } from '@prisma/client';
 import { GamesService } from './games.service';
 import { displayName } from './games.utils';
 import { formatCutoffTime } from './games.utils';
-import * as gamesUtils from './games.utils';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { GameEventsService } from './game-events.service';
@@ -75,7 +74,7 @@ function makeGame(overrides: Partial<any> = {}) {
     title: 'Test Game',
     modalidad: Modalidad.seis_x_seis,
     gameDate: new Date('2026-05-11'),
-    startTime: '19:50',
+    startTime: '18:50',
     registrationOpenAt: new Date('2026-05-11T10:00:00-05:00'),
     maxMainSpots: 18,
     pricePerPlayer: 2000,
@@ -242,7 +241,7 @@ describe('GamesService', () => {
     const dto = {
       modalidad: Modalidad.seis_x_seis,
       gameDate: '2026-06-01',
-      startTime: '19:50',
+      startTime: '18:50',
       registrationOpenTime: '10:00',
       pricePerPlayer: 2000,
       vigilante: 10000,
@@ -262,7 +261,7 @@ describe('GamesService', () => {
       await service.create({ modalidad: Modalidad.seis_x_seis, gameDate: '2026-06-01' } as any, actorId);
 
       const createCall = mockPrisma.game.create.mock.calls[0][0];
-      expect(createCall.data.startTime).toBe('19:50');
+      expect(createCall.data.startTime).toBe('18:50');
       expect(createCall.data.maxMainSpots).toBe(18);
       expect(createCall.data.pricePerPlayer).toBe(2000);
       expect(createCall.data.vigilante).toBe(10000);
@@ -352,10 +351,7 @@ describe('GamesService', () => {
       ).resolves.toBeDefined();
     });
 
-    it('proxy registrado con tiempo suficiente antes del cutoff requiere confirmación', async () => {
-      jest.spyOn(gamesUtils, 'buildCutoffDateTime').mockReturnValue(
-        new Date(Date.now() + 60 * 60 * 1000),
-      );
+    it('el registro proxy NO requiere confirmación (se registra directo)', async () => {
       txMock.$queryRaw.mockResolvedValue([{
         id: 'game-1', status: 'registration_open', maxMainSpots: 18,
         mainListHasBeenFull: false, guestCutoffTime: '23:59', maxProxyRegistrations: 5,
@@ -367,41 +363,14 @@ describe('GamesService', () => {
         .mockResolvedValueOnce({ role: 'admin' });
       txMock.gameRegistration.count.mockResolvedValue(0);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
-      const created = makeReg({ pendingConfirmation: true });
-      txMock.gameRegistration.create.mockResolvedValue(created);
+      txMock.gameRegistration.create.mockResolvedValue(makeReg());
       jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.register('game-1', 'target-user', 'admin-user');
 
-      expect(txMock.gameRegistration.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ pendingConfirmation: true }) }),
-      );
-    });
-
-    it('proxy registrado muy cerca del cutoff se auto-confirma (Opción A)', async () => {
-      jest.spyOn(gamesUtils, 'buildCutoffDateTime').mockReturnValue(
-        new Date(Date.now() + 5 * 60 * 1000),
-      );
-      txMock.$queryRaw.mockResolvedValue([{
-        id: 'game-1', status: 'registration_open', maxMainSpots: 18,
-        mainListHasBeenFull: false, guestCutoffTime: '13:30', maxProxyRegistrations: 5,
-        gameDate: new Date(),
-      }]);
-      txMock.gameRegistration.findFirst.mockResolvedValue(null);
-      txMock.user.findUnique
-        .mockResolvedValueOnce({ status: 'active' })
-        .mockResolvedValueOnce({ role: 'admin' });
-      txMock.gameRegistration.count.mockResolvedValue(0);
-      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
-      const created = makeReg({ pendingConfirmation: false });
-      txMock.gameRegistration.create.mockResolvedValue(created);
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
-
-      await service.register('game-1', 'target-user', 'admin-user');
-
-      expect(txMock.gameRegistration.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ pendingConfirmation: false }) }),
-      );
+      const createArg = txMock.gameRegistration.create.mock.calls[0][0];
+      expect(createArg.data.pendingConfirmation).toBeUndefined();
+      expect(createArg.data.confirmationDeadline).toBeUndefined();
     });
   });
 
