@@ -90,22 +90,10 @@ export class GameSchedulerService {
         );
         this.logger.log(`Cutoff notificado para: ${game.title}`);
 
-        const unconfirmed = await this.prisma.gameRegistration.findMany({
-          where: {
-            gameId: game.id,
-            pendingConfirmation: true,
-            isWaitingList: false,
-            isGuest: false,
-          },
-          include: { user: { select: { name: true } } },
-        });
-
-        for (const reg of unconfirmed) {
-          await this.games.handleConfirmationTimeout(reg.id);
-          this.logger.log(`Proxy no confirmado movido a espera: ${reg.user?.name}`);
-        }
-
-        // After cutoff, fill any open spots from the waitlist (guests now have equal priority)
+        // After cutoff, fill any open spots from the waitlist (guests now have equal priority).
+        // Auto-promotion confirmations keep their own 15-min window and are handled
+        // by checkConfirmationTimeouts when they actually expire — the cutoff must
+        // not prematurely expire a still-pending auto-promotion.
         await this.games.autoPromoteIfNeeded(game.id, { skipMainListFullCheck: true });
       } catch (e) {
         this.logger.error(`Error procesando cutoff para ${game.id}:`, e);

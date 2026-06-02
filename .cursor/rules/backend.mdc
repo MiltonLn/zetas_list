@@ -77,3 +77,21 @@ import { JwtUser } from '../auth/jwt-user.interface';
 - Lógica pura reutilizable (cálculos, formateo, constantes) va en `<module>.utils.ts` al lado del servicio.
 - El servicio importa desde utils. No duplicar lógica entre archivos.
 - Ejemplos: `games.utils.ts` (buildCounts, displayName, shouldGoToWaitingList), `whatsapp/utils/jid-utils.ts`.
+
+## Tests de escenario (stateful)
+Para flujos que dependen de estado que evoluciona (listas, posiciones, promociones, cutoff, confirmaciones), usar **tests de escenario** en lugar de mocks por paso.
+
+- Archivo: `<module>.scenario.spec.ts` (lo corre Jest como cualquier `*.spec.ts`).
+- Motor: `InMemoryPrisma` en `games/testing/in-memory-prisma.ts` — Prisma en memoria con estado real (soporta `$transaction`, el `FOR UPDATE` vía `$queryRaw`, filtros `gt/gte/in/notIn/not`, `increment/decrement`, `orderBy`, `include`). El helper vive fuera de `*.spec.ts` para que no se ejecute como suite.
+- Se inyecta como `PrismaService`; el resto de dependencias (Audit, Events, Whatsapp, Finances) siguen mockeadas.
+- Las aserciones se hacen sobre el **estado resultante** de las listas (principal/espera, posiciones, flags), no sobre llamadas a mocks.
+- Si un escenario nuevo necesita una operación de Prisma que el motor no soporta, **extender `InMemoryPrisma`** (no volver a mocks por paso).
+
+```typescript
+// ✅ Escenario: llenar lista, desbordar a espera, salir y auto-promover
+for (const m of members) await service.register(gameId, m.id, m.id, { silent: true });
+await service.removeRegistration(gameId, leaving.userId, leaving.userId, Role.member, { silent: true });
+const { main, wait } = lists(prisma, gameId);
+expect(main).toHaveLength(4);
+expect(main.find((r) => r.fromWaitList)?.pendingConfirmation).toBe(true);
+```

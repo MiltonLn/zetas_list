@@ -211,6 +211,17 @@ export default function GameDetailPage() {
     }
   }
 
+  async function handleConfirmFor(regId: string) {
+    if (!id) return;
+    try {
+      await gamesService.confirmRegistrationById(id, regId);
+      showToast('Confirmación registrada');
+      fetchGame();
+    } catch (e) {
+      setError(getApiError(e));
+    }
+  }
+
   async function loadAudit() {
     if (!id) return;
     setAuditLoading(true);
@@ -491,6 +502,7 @@ export default function GameDetailPage() {
                   onTogglePaid={() => handleToggle(reg.id, 'paid', reg.paid)}
                   onPromote={() => handlePromote(reg.id)}
                   onDemote={() => handleDemote(reg.id)}
+                  onConfirm={() => handleConfirmFor(reg.id)}
                   onRemove={() => handleRemove(reg.userId, reg.isGuest ? reg.id : undefined)}
                   isSelf={reg.userId === user?.id}
                   allowSelfRemove={isOpen}
@@ -548,6 +560,7 @@ export default function GameDetailPage() {
                       onTogglePaid={() => handleToggle(reg.id, 'paid', reg.paid)}
                       onPromote={() => handlePromote(reg.id)}
                       onDemote={() => handleDemote(reg.id)}
+                      onConfirm={() => handleConfirmFor(reg.id)}
                       onRemove={() => handleRemove(reg.userId, reg.isGuest ? reg.id : undefined)}
                       isSelf={reg.userId === user?.id}
                       allowSelfRemove={isOpen}

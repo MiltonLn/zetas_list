@@ -186,43 +186,39 @@ describe('GameSchedulerService', () => {
       );
     });
 
-    it('procesa el timeout de proxies no confirmados al corte', async () => {
+    it('al corte NO expira confirmaciones pendientes (las maneja checkConfirmationTimeouts)', async () => {
+      // Al quitar la confirmación de proxy, el corte ya no debe expirar
+      // confirmaciones: las autopromociones conservan su ventana de 15 min y
+      // son manejadas exclusivamente por checkConfirmationTimeouts cuando vencen.
       mockPrisma.game.findMany.mockResolvedValue([makeGame()]);
       mockGames.isBeforeCutoff.mockReturnValue(false);
       mockPrisma.game.update.mockResolvedValue({});
-      mockPrisma.gameRegistration.findMany.mockResolvedValue([
-        makeReg({ id: 'r1', user: { name: 'Carlos' } }),
-        makeReg({ id: 'r2', user: { name: 'Laura' } }),
-      ]);
-      mockGames.handleConfirmationTimeout.mockResolvedValue(undefined);
+      mockGames.autoPromoteIfNeeded.mockResolvedValue(undefined);
 
       await scheduler.checkGuestCutoff();
 
-      expect(mockGames.handleConfirmationTimeout).toHaveBeenCalledTimes(2);
+      expect(mockGames.handleConfirmationTimeout).not.toHaveBeenCalled();
     });
 
-    it('envía el anuncio de corte ANTES de procesar timeouts', async () => {
+    it('envía el anuncio de corte ANTES de auto-promover', async () => {
       mockPrisma.game.findMany.mockResolvedValue([makeGame()]);
       mockGames.isBeforeCutoff.mockReturnValue(false);
       mockPrisma.game.update.mockResolvedValue({});
-      mockPrisma.gameRegistration.findMany.mockResolvedValue([
-        makeReg({ id: 'r1', user: { name: 'Carlos' } }),
-      ]);
 
       const callOrder: string[] = [];
       mockWhatsapp.sendToGroup.mockImplementation(() => {
         callOrder.push('announce');
         return Promise.resolve();
       });
-      mockGames.handleConfirmationTimeout.mockImplementation(() => {
-        callOrder.push('timeout');
+      mockGames.autoPromoteIfNeeded.mockImplementation(() => {
+        callOrder.push('autopromote');
         return Promise.resolve();
       });
 
       await scheduler.checkGuestCutoff();
 
       expect(callOrder[0]).toBe('announce');
-      expect(callOrder[1]).toBe('timeout');
+      expect(callOrder[1]).toBe('autopromote');
     });
 
     it('continúa con otros partidos si uno falla', async () => {
@@ -248,41 +244,35 @@ describe('GameSchedulerService', () => {
       expect(mockGames.autoPromoteIfNeeded).toHaveBeenCalledWith('game-1', { skipMainListFullCheck: true });
     });
 
-    // ── Bug 1&2: el mismo registro no debe procesarse dos veces si ambos crons coinciden ──
+    // ── El corte ya no compite con las confirmaciones de autopromoción ──
 
-    it('BUG1&2: checkConfirmationTimeouts no procesa registros que checkGuestCutoff ya maneja en el mismo tick', async () => {
-      // Escenario: un partido llega al cutoff y tiene un proxy sin confirmar.
-      // checkGuestCutoff lo procesa. checkConfirmationTimeouts también lo encuentra
-      // porque su confirmationDeadline == cutoffTime <= now. Ambos crons corren en el mismo minuto.
+    it('el corte NO expira autopromociones; solo checkConfirmationTimeouts lo hace al vencer', async () => {
+      // Bug previo: una autopromoción recibía su ventana de 15 min, pero el corte
+      // la expiraba antes de tiempo. Ahora el corte no toca confirmaciones, así que
+      // solo checkConfirmationTimeouts las expira (cuando confirmationDeadline <= now).
 
-      const sharedRegId = 'shared-reg-1';
+      const promotedRegId = 'autopromo-reg-1';
 
-      // checkGuestCutoff: encuentra el partido con cutoffNotified=false, cutoff ya pasó
+      // checkGuestCutoff corre al llegar el corte: no debe expirar nada.
       mockPrisma.game.findMany.mockResolvedValue([makeGame({ cutoffNotified: false })]);
       mockGames.isBeforeCutoff.mockReturnValue(false);
       mockPrisma.game.update.mockResolvedValue({});
-      // El partido tiene UN registro pendiente de confirmación
-      mockPrisma.gameRegistration.findMany.mockResolvedValue([
-        makeReg({ id: sharedRegId, user: { name: 'Juan' } }),
-      ]);
-      mockGames.handleConfirmationTimeout.mockResolvedValue(undefined);
+      mockGames.autoPromoteIfNeeded.mockResolvedValue(undefined);
 
       await scheduler.checkGuestCutoff();
 
-      // checkConfirmationTimeouts: encuentra el MISMO registro (deadline <= now)
+      expect(mockGames.handleConfirmationTimeout).not.toHaveBeenCalled();
+
+      // checkConfirmationTimeouts: encuentra la autopromoción vencida (deadline <= now)
       mockPrisma.gameRegistration.findMany.mockResolvedValue([
-        makeReg({ id: sharedRegId, game: { status: GameStatus.registration_open } }),
+        makeReg({ id: promotedRegId, game: { status: GameStatus.registration_open } }),
       ]);
+      mockGames.handleConfirmationTimeout.mockResolvedValue(undefined);
 
       await scheduler.checkConfirmationTimeouts();
 
-      // handleConfirmationTimeout debe ser idempotente — llamarlo dos veces no debe
-      // causar un segundo mensaje. El servicio (handleConfirmationTimeout) es responsable
-      // de hacer el re-check dentro de la transacción.
-      // Aquí verificamos que el scheduler lo llama, pero el servicio es quien garantiza idempotencia.
-      expect(mockGames.handleConfirmationTimeout).toHaveBeenCalledWith(sharedRegId);
-      expect(mockGames.handleConfirmationTimeout).toHaveBeenCalledTimes(2); // ambos crons lo llaman
-      // La idempotencia real se verifica en games.service.spec.ts (BUG1&2 test)
+      expect(mockGames.handleConfirmationTimeout).toHaveBeenCalledWith(promotedRegId);
+      expect(mockGames.handleConfirmationTimeout).toHaveBeenCalledTimes(1);
     });
   });
 });
