@@ -18,6 +18,8 @@ interface Props {
   onRemove?: () => void;
   isSelf: boolean;
   allowSelfRemove: boolean;
+  /** True when the current (non-admin) user is the member who invited this guest. */
+  isOwnGuest?: boolean;
   draggable: boolean;
   onNameClick: () => void;
 }
@@ -36,6 +38,7 @@ export function SortableRegistrationRow({
   onRemove,
   isSelf,
   allowSelfRemove,
+  isOwnGuest = false,
   draggable,
   onNameClick,
 }: Props) {
@@ -204,7 +207,7 @@ export function SortableRegistrationRow({
         </button>
       )}
 
-      {!isAdmin && allowSelfRemove && isSelf && (
+      {!isAdmin && allowSelfRemove && (isSelf || isOwnGuest) && (
         <button
           onClick={() => {
             if (confirmRemove) {
@@ -216,6 +219,7 @@ export function SortableRegistrationRow({
               confirmTimer.current = setTimeout(() => setConfirmRemove(false), 3000);
             }
           }}
+          title={isOwnGuest ? 'Sacar a tu invitado' : undefined}
           style={{
             background: confirmRemove ? '#e031311a' : 'none',
             border: confirmRemove ? '1px solid #e0313155' : '1px solid #2a2f5a',
@@ -224,7 +228,7 @@ export function SortableRegistrationRow({
             fontSize: 12, fontWeight: 600, transition: 'all 0.15s ease', whiteSpace: 'nowrap',
           }}
         >
-          {confirmRemove ? '¿Seguro?' : 'Salirme'}
+          {confirmRemove ? '¿Seguro?' : isOwnGuest ? 'Sacar' : 'Salirme'}
         </button>
       )}
     </div>

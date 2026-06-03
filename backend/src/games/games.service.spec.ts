@@ -351,6 +351,31 @@ describe('GamesService', () => {
       ).resolves.toBeDefined();
     });
 
+    it('anuncia "X anotó a Y" cuando el registro es en nombre de otro', async () => {
+      txMock.gameRegistration.findFirst.mockResolvedValue(null);
+      txMock.user.findUnique
+        .mockResolvedValueOnce({ status: 'active' })
+        .mockResolvedValueOnce({ role: 'admin' });
+      txMock.gameRegistration.count.mockResolvedValue(5);
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 5 } });
+      txMock.gameRegistration.create.mockResolvedValue(
+        makeReg({
+          position: 6,
+          userId: 'target-user',
+          registeredById: 'admin-user',
+          user: { id: 'target-user', name: 'Carlos', username: 'carlos', phone: '222', position: null, gender: null, heightCm: null, birthDate: null, photoUrl: null, bio: null },
+          registeredBy: { id: 'admin-user', name: 'Milton', username: 'milton' },
+        }),
+      );
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.register('game-1', 'target-user', 'admin-user');
+
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('*Milton* anotó a *Carlos*'),
+      );
+    });
+
     it('el registro proxy NO requiere confirmación (se registra directo)', async () => {
       txMock.$queryRaw.mockResolvedValue([{
         id: 'game-1', status: 'registration_open', maxMainSpots: 18,
@@ -594,6 +619,47 @@ describe('GamesService', () => {
       expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
         expect.stringContaining('Carlos'),
       );
+    });
+
+    it('mensaje de salida propia dice "salió"', async () => {
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(makeReg({ userId: 'user-1', isWaitingList: false }));
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
+      mockPrisma.gameRegistration.delete.mockResolvedValue({});
+      mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
+
+      await service.removeRegistration('game-1', 'user-1', 'user-1', Role.member);
+
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('salió'));
+    });
+
+    it('mensaje de baja por admin dice "sacado de la lista por un admin"', async () => {
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(makeReg({ userId: 'user-1', isWaitingList: false }));
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
+      mockPrisma.gameRegistration.delete.mockResolvedValue({});
+      mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
+
+      await service.removeRegistration('game-1', 'user-1', 'admin-1', Role.admin);
+
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('sacado de la lista por un admin'));
+    });
+
+    it('envía el mensaje de salida ANTES de auto-promover (orden correcto en el chat)', async () => {
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(makeReg({ userId: 'user-1', isWaitingList: false }));
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
+      mockPrisma.gameRegistration.delete.mockResolvedValue({});
+      mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      const autoPromoteSpy = jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
+
+      await service.removeRegistration('game-1', 'user-1', 'user-1', Role.member);
+
+      const sendOrder = mockWhatsapp.sendToGroup.mock.invocationCallOrder[0];
+      const promoteOrder = autoPromoteSpy.mock.invocationCallOrder[0];
+      expect(sendOrder).toBeLessThan(promoteOrder);
     });
 
     it('permite remover un invitado por regId', async () => {
@@ -1127,6 +1193,29 @@ describe('GamesService', () => {
       expect(mockWhatsapp.sendToGroup).not.toHaveBeenCalled();
     });
 
+    it('menciona por whatsappLid cuando está disponible (en vez del teléfono)', async () => {
+      mockPrisma.game.findUnique.mockResolvedValue(makeGame({ maxMainSpots: 18, mainListHasBeenFull: true }));
+      const waiter = makeReg({
+        id: 'wait-1', isWaitingList: true, position: 1, confirmationDeclined: false,
+        user: { id: 'user-1', name: 'Test User', username: 'test', phone: '111', whatsappLid: '99999@lid', position: null, gender: null, heightCm: null, birthDate: null, photoUrl: null, bio: null },
+      });
+      mockPrisma.$transaction.mockImplementation(
+        (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
+      );
+      txMock.gameRegistration.count.mockResolvedValue(16);
+      txMock.gameRegistration.findFirst.mockResolvedValue(waiter);
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 16 } });
+      txMock.gameRegistration.update.mockResolvedValue(waiter);
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.autoPromoteIfNeeded('game-1');
+
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('@99999'),
+        { mentions: ['99999@lid'] },
+      );
+    });
+
     it('promotes first non-declined waiter without resetting confirmationDeclined flags', async () => {
       mockPrisma.game.findUnique.mockResolvedValue(makeGame({ maxMainSpots: 18, mainListHasBeenFull: true }));
       const waiter = makeReg({ id: 'wait-1', isWaitingList: true, position: 1, confirmationDeclined: false });
@@ -1156,6 +1245,12 @@ describe('GamesService', () => {
             pendingConfirmation: true,
           }),
         }),
+      );
+      // The confirmation request must @mention the promoted player so they
+      // get a WhatsApp notification (falls back to phone JID when no LID).
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('@111'),
+        { mentions: ['111@s.whatsapp.net'] },
       );
     });
 
@@ -1330,6 +1425,7 @@ describe('GamesService', () => {
       );
       expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
         expect.stringContaining('5 min'),
+        { mentions: ['222@s.whatsapp.net'] },
       );
     });
 
