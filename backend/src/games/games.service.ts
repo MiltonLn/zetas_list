@@ -40,7 +40,7 @@ import {
   shouldGoToWaitingList,
   isBeforeCutoff,
   REGISTRATION_INCLUDE,
-  mentionTag,
+  buildMention,
   DEFAULT_SPOTS,
   CONFIRMATION_TIMEOUT_MS,
   NEXT_CONFIRM_TIMEOUT_MS,
@@ -986,13 +986,11 @@ export class GamesService {
     this.events.emit({ gameId, type: 'update', data: updated });
 
     const name = displayName(promoted.reg);
-    // Mention the person who must confirm by phone so they get a WhatsApp
-    // notification. For guests it's the responsible member who invited them.
-    const confirmPhone = promoted.reg.isGuest
-      ? promoted.reg.registeredBy?.phone
-      : promoted.reg.user?.phone;
-    const confirmTarget = confirmPhone
-      ? mentionTag(confirmPhone)
+    // @mention the person who must confirm so they get a WhatsApp notification.
+    // For guests it's the responsible member who invited them.
+    const mention = buildMention(promoted.reg.isGuest ? promoted.reg.registeredBy : promoted.reg.user);
+    const confirmTarget = mention
+      ? mention.tag
       : promoted.reg.isGuest
         ? `*${promoted.reg.registeredBy?.name || 'Responsable'}*`
         : `*${promoted.reg.user?.name || 'Alguien'}*`;
@@ -1000,7 +998,7 @@ export class GamesService {
     this.whatsapp
       .sendToGroup(
         `⬆️ *${name}* fue promovido a la *lista principal* 🏐\n${confirmTarget}, confirma con *@Z confirmar* en los próximos 15 min.\n${buildCounts(updated)}${buildGameLink(gameId)}`,
-        confirmPhone ? { mentions: [confirmPhone] } : undefined,
+        mention ? { mentions: [mention.jid] } : undefined,
       )
       .catch((e) => this.logger.warn('WhatsApp send failed', e));
   }
@@ -1135,11 +1133,9 @@ export class GamesService {
     });
 
     const nextName = displayName(result.nextInWait);
-    const nextConfirmPhone = result.nextInWait.isGuest
-      ? result.nextInWait.registeredBy?.phone
-      : result.nextInWait.user?.phone;
-    const nextConfirmTarget = nextConfirmPhone
-      ? mentionTag(nextConfirmPhone)
+    const nextMention = buildMention(result.nextInWait.isGuest ? result.nextInWait.registeredBy : result.nextInWait.user);
+    const nextConfirmTarget = nextMention
+      ? nextMention.tag
       : result.nextInWait.isGuest
         ? `*${result.nextInWait.registeredBy?.name || 'Responsable'}*`
         : `*${result.nextInWait.user?.name || 'Alguien'}*`;
@@ -1150,7 +1146,7 @@ export class GamesService {
     this.whatsapp
       .sendToGroup(
         `⬆️ *${nextName}* fue promovido a la *lista principal* 🏐\n${nextConfirmTarget}, confirma con *@Z confirmar* en los próximos 5 min.\n${buildCounts(finalUpdated)}${buildGameLink(reg.gameId)}`,
-        nextConfirmPhone ? { mentions: [nextConfirmPhone] } : undefined,
+        nextMention ? { mentions: [nextMention.jid] } : undefined,
       )
       .catch((e) => this.logger.warn('WhatsApp send failed', e));
   }

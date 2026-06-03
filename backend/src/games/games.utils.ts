@@ -27,6 +27,7 @@ export const REGISTRATION_INCLUDE = {
       name: true,
       username: true,
       phone: true,
+      whatsappLid: true,
       position: true,
       gender: true,
       heightCm: true,
@@ -36,16 +37,29 @@ export const REGISTRATION_INCLUDE = {
     },
   },
   registeredBy: {
-    select: { id: true, name: true, username: true, phone: true },
+    select: { id: true, name: true, username: true, phone: true, whatsappLid: true },
   },
 } as const;
 
 /**
- * Builds the inline `@<number>` token used in WhatsApp mentions. The number
- * must match the JID user part (digits only) for the mention to resolve.
+ * Builds the data needed to @mention a user in a WhatsApp message.
+ *
+ * This group addresses participants by LID (Linked Identity), not phone — the
+ * same reason inbound mentions arrive as `@lid` JIDs that we resolve to a
+ * phone. So to make an outbound mention actually highlight/notify the person,
+ * we must mention by their `whatsappLid` when we have it, and only fall back to
+ * the phone JID otherwise. The inline `tag` (`@<number>`) must match the JID's
+ * user part for WhatsApp to render it as a real mention.
  */
-export function mentionTag(phone: string): string {
-  return `@${phone.replace(/\D/g, '')}`;
+export function buildMention(
+  target?: { phone?: string | null; whatsappLid?: string | null } | null,
+): { jid: string; tag: string } | null {
+  if (!target) return null;
+  const jid = target.whatsappLid || (target.phone ? `${target.phone}@s.whatsapp.net` : '');
+  if (!jid) return null;
+  const num = jid.split(':')[0].split('@')[0].replace(/\D/g, '');
+  if (!num) return null;
+  return { jid, tag: `@${num}` };
 }
 
 export function displayName(r: { isGuest: boolean; guestName?: string | null; user?: { name: string } | null; registeredBy?: { name: string } | null }): string {

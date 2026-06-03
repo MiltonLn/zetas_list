@@ -1152,6 +1152,29 @@ describe('GamesService', () => {
       expect(mockWhatsapp.sendToGroup).not.toHaveBeenCalled();
     });
 
+    it('menciona por whatsappLid cuando está disponible (en vez del teléfono)', async () => {
+      mockPrisma.game.findUnique.mockResolvedValue(makeGame({ maxMainSpots: 18, mainListHasBeenFull: true }));
+      const waiter = makeReg({
+        id: 'wait-1', isWaitingList: true, position: 1, confirmationDeclined: false,
+        user: { id: 'user-1', name: 'Test User', username: 'test', phone: '111', whatsappLid: '99999@lid', position: null, gender: null, heightCm: null, birthDate: null, photoUrl: null, bio: null },
+      });
+      mockPrisma.$transaction.mockImplementation(
+        (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
+      );
+      txMock.gameRegistration.count.mockResolvedValue(16);
+      txMock.gameRegistration.findFirst.mockResolvedValue(waiter);
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 16 } });
+      txMock.gameRegistration.update.mockResolvedValue(waiter);
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.autoPromoteIfNeeded('game-1');
+
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('@99999'),
+        { mentions: ['99999@lid'] },
+      );
+    });
+
     it('promotes first non-declined waiter without resetting confirmationDeclined flags', async () => {
       mockPrisma.game.findUnique.mockResolvedValue(makeGame({ maxMainSpots: 18, mainListHasBeenFull: true }));
       const waiter = makeReg({ id: 'wait-1', isWaitingList: true, position: 1, confirmationDeclined: false });
@@ -1182,10 +1205,11 @@ describe('GamesService', () => {
           }),
         }),
       );
-      // The confirmation request must @mention the promoted player by phone.
+      // The confirmation request must @mention the promoted player so they
+      // get a WhatsApp notification (falls back to phone JID when no LID).
       expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
         expect.stringContaining('@111'),
-        { mentions: ['111'] },
+        { mentions: ['111@s.whatsapp.net'] },
       );
     });
 
@@ -1360,7 +1384,7 @@ describe('GamesService', () => {
       );
       expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
         expect.stringContaining('5 min'),
-        { mentions: ['222'] },
+        { mentions: ['222@s.whatsapp.net'] },
       );
     });
 
