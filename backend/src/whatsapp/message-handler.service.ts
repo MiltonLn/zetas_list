@@ -245,22 +245,6 @@ export class MessageHandlerService {
     }
   }
 
-  /**
-   * Construye el sufijo que aclara que los invitados de un jugador también
-   * fueron removidos al salir/sacarlo. Se calcula desde el snapshot del partido
-   * (las inscripciones aún presentes antes de la baja).
-   */
-  private removedGuestsSuffix(ctx: CommandContext, ownerUserId: string): string {
-    const guestNames = ctx.activeGame.registrations
-      .filter((r: any) => r.isGuest && r.registeredById === ownerUserId)
-      .map((r: any) => r.guestName || 'Invitado');
-    if (guestNames.length === 0) return '';
-    const label = guestNames.length === 1
-      ? 'Su invitado también fue removido'
-      : 'Sus invitados también fueron removidos';
-    return `\n🚫 ${label}: ${guestNames.join(', ')}`;
-  }
-
   private async handleRemoveOther(ctx: CommandContext): Promise<void> {
     if (ctx.user!.role !== Role.admin) {
       await this.wp.sendToGroup(`⛔ Solo los administradores pueden sacar a otros de la lista.`);
@@ -286,11 +270,10 @@ export class MessageHandlerService {
     }
 
     try {
-      const guestsSuffix = this.removedGuestsSuffix(ctx, targetUser.id);
-      await this.games.removeRegistration(ctx.activeGame.id, targetUser.id, ctx.user!.id, ctx.user!.role, { silent: true });
-      const updated = await this.games.findOne(ctx.activeGame.id);
-      const counts = this.games.buildCounts(updated);
-      await this.wp.sendToGroup(`🚫 *${targetUser.name}* fue sacado de la lista por un admin.${guestsSuffix}\n${counts}${this.games.buildGameLink(ctx.activeGame.id)}`);
+      // removeRegistration sends the "fue sacado" message itself (and the
+      // guest-removal note), awaiting it before any auto-promotion so the chat
+      // stays in order. We must NOT send a duplicate here.
+      await this.games.removeRegistration(ctx.activeGame.id, targetUser.id, ctx.user!.id, ctx.user!.role);
     } catch (e: unknown) {
       if (e instanceof NotRegisteredException) {
         await this.wp.sendToGroup(`ℹ️ ${targetUser.name} no está anotado en esta lista.`);
@@ -416,11 +399,10 @@ export class MessageHandlerService {
 
   private async handleUnregister(ctx: CommandContext): Promise<void> {
     try {
-      const guestsSuffix = this.removedGuestsSuffix(ctx, ctx.user!.id);
-      await this.games.removeRegistration(ctx.activeGame.id, ctx.user!.id, ctx.user!.id, ctx.user!.role, { silent: true });
-      const updated = await this.games.findOne(ctx.activeGame.id);
-      const counts = this.games.buildCounts(updated);
-      await this.wp.sendToGroup(`👋 *${ctx.user!.name}* salió de la lista.${guestsSuffix}\n${counts}${this.games.buildGameLink(ctx.activeGame.id)}`);
+      // removeRegistration sends the "salió" message itself (and the
+      // guest-removal note), awaited before any auto-promotion so the chat
+      // stays in order. We must NOT send a duplicate here.
+      await this.games.removeRegistration(ctx.activeGame.id, ctx.user!.id, ctx.user!.id, ctx.user!.role);
     } catch (e: unknown) {
       if (e instanceof NotRegisteredException) {
         await this.wp.sendToGroup(`ℹ️ ${ctx.user!.name}, no estás anotado en esta lista.`);

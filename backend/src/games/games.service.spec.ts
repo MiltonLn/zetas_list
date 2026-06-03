@@ -621,6 +621,47 @@ describe('GamesService', () => {
       );
     });
 
+    it('mensaje de salida propia dice "salió"', async () => {
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(makeReg({ userId: 'user-1', isWaitingList: false }));
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
+      mockPrisma.gameRegistration.delete.mockResolvedValue({});
+      mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
+
+      await service.removeRegistration('game-1', 'user-1', 'user-1', Role.member);
+
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('salió'));
+    });
+
+    it('mensaje de baja por admin dice "sacado de la lista por un admin"', async () => {
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(makeReg({ userId: 'user-1', isWaitingList: false }));
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
+      mockPrisma.gameRegistration.delete.mockResolvedValue({});
+      mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
+
+      await service.removeRegistration('game-1', 'user-1', 'admin-1', Role.admin);
+
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('sacado de la lista por un admin'));
+    });
+
+    it('envía el mensaje de salida ANTES de auto-promover (orden correcto en el chat)', async () => {
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(makeReg({ userId: 'user-1', isWaitingList: false }));
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
+      mockPrisma.gameRegistration.delete.mockResolvedValue({});
+      mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      const autoPromoteSpy = jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
+
+      await service.removeRegistration('game-1', 'user-1', 'user-1', Role.member);
+
+      const sendOrder = mockWhatsapp.sendToGroup.mock.invocationCallOrder[0];
+      const promoteOrder = autoPromoteSpy.mock.invocationCallOrder[0];
+      expect(sendOrder).toBeLessThan(promoteOrder);
+    });
+
     it('permite remover un invitado por regId', async () => {
       const guestReg = makeReg({ userId: null, isGuest: true, guestName: 'Invitado', isWaitingList: true, user: null });
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(guestReg);

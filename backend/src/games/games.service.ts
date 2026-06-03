@@ -734,7 +734,10 @@ export class GamesService {
         msg += `\n🚫 ${orphanedGuests.length === 1 ? 'Su invitado también fue removido' : 'Sus invitados también fueron removidos'}: ${guestNames}`;
       }
       msg += `\n${buildCounts(updated)}${buildGameLink(gameId)}`;
-      this.whatsapp
+      // Await the removal message so it lands in the chat BEFORE any
+      // auto-promotion notification. Otherwise "X fue promovido" can arrive
+      // before "Y salió/fue sacado", which reads out of order.
+      await this.whatsapp
         .sendToGroup(msg)
         .catch((e) => this.logger.warn('WhatsApp send failed', e));
     }

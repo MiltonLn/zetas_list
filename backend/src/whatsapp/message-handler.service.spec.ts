@@ -336,10 +336,12 @@ describe('MessageHandlerService — handleMessage', () => {
       mockGames.findOne.mockResolvedValue(makeActiveGame());
 
       await service.handleMessage('111', '@Z salirme', 'group-1');
+      // El mensaje y la auto-promoción los maneja removeRegistration (en orden).
+      // El handler delega sin pasar { silent } y sin enviar un duplicado.
       expect(mockGames.removeRegistration).toHaveBeenCalledWith(
-        'game-1', 'user-1', 'user-1', Role.member, { silent: true },
+        'game-1', 'user-1', 'user-1', Role.member,
       );
-      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Test User'));
+      expect(mockWp.sendToGroup).not.toHaveBeenCalled();
     });
 
     it('funciona también con el sinónimo "sacame"', async () => {
@@ -362,22 +364,20 @@ describe('MessageHandlerService — handleMessage', () => {
       expect(mockGames.removeRegistration).toHaveBeenCalled();
     });
 
-    it('al salir, aclara que sus invitados también fueron removidos', async () => {
+    it('delega en removeRegistration sin enviar un mensaje propio', async () => {
       mockPrisma.game.findFirst.mockResolvedValue(
         makeActiveGame([
           { user: { id: 'user-1' }, isGuest: false },
           { isGuest: true, registeredById: 'user-1', guestName: 'Pepito' },
-          { isGuest: true, registeredById: 'user-1', guestName: 'Juanito' },
         ]),
       );
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.removeRegistration.mockResolvedValue({});
-      mockGames.findOne.mockResolvedValue(makeActiveGame());
 
       await service.handleMessage('111', '@Z salir', 'group-1');
-      expect(mockWp.sendToGroup).toHaveBeenCalledWith(
-        expect.stringContaining('Sus invitados también fueron removidos: Pepito, Juanito'),
-      );
+      expect(mockGames.removeRegistration).toHaveBeenCalledWith('game-1', 'user-1', 'user-1', Role.member);
+      // El sufijo de invitados y el mensaje los emite removeRegistration.
+      expect(mockWp.sendToGroup).not.toHaveBeenCalled();
     });
   });
 
@@ -676,29 +676,11 @@ describe('MessageHandlerService — handleMessage', () => {
       mockGames.findOne.mockResolvedValue(makeActiveGame());
 
       await service.handleMessage('111', '@Z sacar @222', 'group-1', ['222@s.whatsapp.net']);
-      expect(mockGames.removeRegistration).toHaveBeenCalledWith('game-1', 'user-2', 'user-1', Role.admin, { silent: true });
-      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('sacado'));
-    });
-
-    it('al sacar a alguien con invitados, aclara que también fueron removidos', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(
-        makeActiveGame([
-          { user: { id: 'user-2' }, isGuest: false },
-          { isGuest: true, registeredById: 'user-2', guestName: 'Pepito' },
-        ]),
-      );
-      mockUsers.findByPhone.mockImplementation((phone: string) => {
-        if (phone === '111') return Promise.resolve(makeUser({ role: Role.admin }));
-        if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
-        return Promise.resolve(null);
-      });
-      mockGames.removeRegistration.mockResolvedValue(undefined);
-      mockGames.findOne.mockResolvedValue(makeActiveGame());
-
-      await service.handleMessage('111', '@Z sacar @222', 'group-1', ['222@s.whatsapp.net']);
-      expect(mockWp.sendToGroup).toHaveBeenCalledWith(
-        expect.stringContaining('Su invitado también fue removido: Pepito'),
-      );
+      // El mensaje "fue sacado" (y el sufijo de invitados) los emite
+      // removeRegistration, awaited antes de la auto-promoción para mantener el
+      // orden del chat. El handler delega sin pasar { silent } ni duplicar.
+      expect(mockGames.removeRegistration).toHaveBeenCalledWith('game-1', 'user-2', 'user-1', Role.admin);
+      expect(mockWp.sendToGroup).not.toHaveBeenCalled();
     });
 
     it('informa si el target no está en la lista', async () => {
