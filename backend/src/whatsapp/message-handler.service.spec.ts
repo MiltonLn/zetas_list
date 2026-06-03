@@ -6,7 +6,7 @@ import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { FinancesService } from '../finances/finances.service';
 import { Role } from '@prisma/client';
-import { AlreadyRegisteredException } from '../games/exceptions';
+import { AlreadyRegisteredException, ProxyLimitExceededException } from '../games/exceptions';
 
 const mockWp = { sendToGroup: jest.fn(), sendMessage: jest.fn(), isConnected: jest.fn() };
 const mockGames = {
@@ -525,6 +525,24 @@ describe('MessageHandlerService — handleMessage', () => {
       );
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(
         expect.stringContaining('ya está anotado'),
+      );
+    });
+
+    it('explica claramente cuando se alcanza el límite de personas a anotar', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockImplementation((phone: string) => {
+        if (phone === '111') return Promise.resolve(makeUser());
+        if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Other User', role: Role.member, status: 'active' });
+        return Promise.resolve(null);
+      });
+      mockGames.register
+        .mockResolvedValueOnce({ isWaitingList: false, position: 1 })
+        .mockRejectedValueOnce(new ProxyLimitExceededException(1));
+      mockGames.findOne.mockResolvedValue(makeActiveGame());
+
+      await service.handleMessage('111', '@Z anótame @222', 'group-1', ['222@s.whatsapp.net']);
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('máximo de personas que puedes anotar'),
       );
     });
   });

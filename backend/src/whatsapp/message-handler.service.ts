@@ -12,6 +12,9 @@ import {
   NotRegisteredException,
   NoOneInWaitListException,
   UserHasUnpaidFinesException,
+  ProxyLimitExceededException,
+  InactiveUserException,
+  MustBeRegisteredFirstException,
 } from '../games/exceptions';
 import { extractPhoneFromJid } from './utils/jid-utils';
 
@@ -519,9 +522,15 @@ export class MessageHandlerService {
           msgs.push(`ℹ️ ${targetUser.name} ya está anotado en esta lista.`);
         } else if (e instanceof UserHasUnpaidFinesException) {
           msgs.push(`🚫 ${targetUser.name} tiene multas/deudas pendientes y no puede anotarse.`);
+        } else if (e instanceof ProxyLimitExceededException) {
+          msgs.push(`🚫 No pudimos anotar a ${targetUser.name}: ya alcanzaste el máximo de personas que puedes anotar en este partido.`);
+        } else if (e instanceof MustBeRegisteredFirstException) {
+          msgs.push(`🚫 No pudimos anotar a ${targetUser.name}: primero debes anotarte tú para poder anotar a alguien más.`);
+        } else if (e instanceof InactiveUserException) {
+          msgs.push(`🚫 No pudimos anotar a ${targetUser.name}: su cuenta no está activa. Contacta a un admin.`);
         } else {
           this.logger.error(`Error al anotar a ${targetUser.name}:`, e);
-          msgs.push(`❌ No se pudo anotar a ${targetUser.name}.`);
+          msgs.push(`❌ No se pudo anotar a ${targetUser.name}. Intenta de nuevo.`);
         }
       }
     }

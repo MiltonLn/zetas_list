@@ -351,6 +351,31 @@ describe('GamesService', () => {
       ).resolves.toBeDefined();
     });
 
+    it('anuncia "X anotó a Y" cuando el registro es en nombre de otro', async () => {
+      txMock.gameRegistration.findFirst.mockResolvedValue(null);
+      txMock.user.findUnique
+        .mockResolvedValueOnce({ status: 'active' })
+        .mockResolvedValueOnce({ role: 'admin' });
+      txMock.gameRegistration.count.mockResolvedValue(5);
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 5 } });
+      txMock.gameRegistration.create.mockResolvedValue(
+        makeReg({
+          position: 6,
+          userId: 'target-user',
+          registeredById: 'admin-user',
+          user: { id: 'target-user', name: 'Carlos', username: 'carlos', phone: '222', position: null, gender: null, heightCm: null, birthDate: null, photoUrl: null, bio: null },
+          registeredBy: { id: 'admin-user', name: 'Milton', username: 'milton' },
+        }),
+      );
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.register('game-1', 'target-user', 'admin-user');
+
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('*Milton* anotó a *Carlos*'),
+      );
+    });
+
     it('el registro proxy NO requiere confirmación (se registra directo)', async () => {
       txMock.$queryRaw.mockResolvedValue([{
         id: 'game-1', status: 'registration_open', maxMainSpots: 18,
@@ -1157,6 +1182,11 @@ describe('GamesService', () => {
           }),
         }),
       );
+      // The confirmation request must @mention the promoted player by phone.
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('@111'),
+        { mentions: ['111'] },
+      );
     });
 
     it('before cutoff: only promotes non-guests (isGuest: false filter applied)', async () => {
@@ -1330,6 +1360,7 @@ describe('GamesService', () => {
       );
       expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
         expect.stringContaining('5 min'),
+        { mentions: ['222'] },
       );
     });
 

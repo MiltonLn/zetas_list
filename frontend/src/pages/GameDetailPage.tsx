@@ -519,9 +519,10 @@ export default function GameDetailPage() {
               reg={reg}
               index={i}
               isAdmin={false}
-              onRemove={() => handleRemove(reg.userId)}
+              onRemove={() => handleRemove(reg.userId, reg.isGuest ? reg.id : undefined)}
               isSelf={reg.userId === user?.id}
               allowSelfRemove={isOpen}
+              isOwnGuest={reg.isGuest && reg.registeredById === user?.id}
               draggable={false}
               onNameClick={() => setSelectedReg(reg)}
             />
@@ -576,12 +577,13 @@ export default function GameDetailPage() {
                   key={reg.id}
                   reg={reg}
                   index={i}
-                  isAdmin={false}
-                  onRemove={() => handleRemove(reg.userId)}
-                  isSelf={reg.userId === user?.id}
-                  allowSelfRemove={isOpen}
-                  draggable={false}
-                  onNameClick={() => setSelectedReg(reg)}
+                isAdmin={false}
+                onRemove={() => handleRemove(reg.userId, reg.isGuest ? reg.id : undefined)}
+                isSelf={reg.userId === user?.id}
+                allowSelfRemove={isOpen}
+                isOwnGuest={reg.isGuest && reg.registeredById === user?.id}
+                draggable={false}
+                onNameClick={() => setSelectedReg(reg)}
                 />
               ))
             )}

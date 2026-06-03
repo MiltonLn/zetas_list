@@ -36,9 +36,17 @@ export const REGISTRATION_INCLUDE = {
     },
   },
   registeredBy: {
-    select: { id: true, name: true, username: true },
+    select: { id: true, name: true, username: true, phone: true },
   },
 } as const;
+
+/**
+ * Builds the inline `@<number>` token used in WhatsApp mentions. The number
+ * must match the JID user part (digits only) for the mention to resolve.
+ */
+export function mentionTag(phone: string): string {
+  return `@${phone.replace(/\D/g, '')}`;
+}
 
 export function displayName(r: { isGuest: boolean; guestName?: string | null; user?: { name: string } | null; registeredBy?: { name: string } | null }): string {
   if (r.isGuest) {
