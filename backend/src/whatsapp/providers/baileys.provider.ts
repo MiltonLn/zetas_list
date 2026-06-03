@@ -4,6 +4,7 @@ import {
   OnModuleInit,
   OnModuleDestroy,
 } from '@nestjs/common';
+import pino from 'pino';
 import { WhatsappProvider } from '../whatsapp.interface';
 import { MessageHandlerService } from '../message-handler.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -24,6 +25,11 @@ const INITIAL_BACKOFF_MS = 5_000;
 @Injectable()
 export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('WhatsApp Baileys');
+  // Dedicated, quiet logger for Baileys internals. Override with WA_LOG_LEVEL
+  // (e.g. 'debug') only when troubleshooting the WhatsApp connection itself.
+  private readonly baileysLogger = pino({
+    level: process.env.WA_LOG_LEVEL || 'warn',
+  });
   private sock: any = null;
   private connected = false;
   private groupId: string;
@@ -113,6 +119,10 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
       this.sock = makeWASocket({
         auth: state,
         printQRInTerminal: process.env.NODE_ENV !== 'production',
+        // Baileys' default logger dumps Signal session internals (including
+        // private keys) and a "url generation failed" line on every send. We
+        // pin it to warn to keep our logs clean and avoid leaking key material.
+        logger: this.baileysLogger,
       });
 
       this.sock.ev.on('creds.update', () => {

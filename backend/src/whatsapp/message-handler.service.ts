@@ -14,6 +14,12 @@ import {
   UserHasUnpaidFinesException,
 } from '../games/exceptions';
 import { extractPhoneFromJid } from './utils/jid-utils';
+import { isExpectedBusinessError } from '../common/errors/is-expected-error';
+import {
+  runWithLogContext,
+  setLogContext,
+  newReqId,
+} from '../common/logging/log-context';
 
 const BOT_MENTION = '@Z';
 const CMD_REGISTER = /^@z\s+(an[oó]tame|m[eé]teme|ap[uú]ntame|juego|voy|entro|anotar|an[oó]ta|apuntar|ap[uú]nta)\b/i;
@@ -77,10 +83,30 @@ export class MessageHandlerService {
     ];
   }
 
-  async handleMessage(phone: string, text: string, _groupId: string, mentionedJids?: string[]): Promise<void> {
+  async handleMessage(phone: string, text: string, groupId: string, mentionedJids?: string[]): Promise<void> {
     const normalized = text.trim();
     if (!CMD_IS_BOT_MENTION.test(normalized)) return;
+    // Bind a correlation context so every log emitted while handling this
+    // command (here + GamesService + scheduler triggers) shares the same reqId.
+    return runWithLogContext({ reqId: newReqId(), source: 'wa', phone }, () =>
+      this.dispatch(phone, normalized, mentionedJids),
+    );
+  }
 
+  /**
+   * Logs a caught error, classifying expected business rejections (4xx) as
+   * debug so they don't pollute error dashboards, while keeping unexpected
+   * failures at error level with the full object.
+   */
+  private logError(context: string, e: unknown): void {
+    if (isExpectedBusinessError(e)) {
+      this.logger.debug(`${context}: ${(e as Error).message}`);
+    } else {
+      this.logger.error(`${context}:`, e as Error);
+    }
+  }
+
+  private async dispatch(phone: string, normalized: string, mentionedJids?: string[]): Promise<void> {
     const matchedCommand = this.commands.find((cmd) => cmd.regex.test(normalized));
 
     if (!matchedCommand) {
@@ -103,6 +129,9 @@ export class MessageHandlerService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    if (activeGame) setLogContext({ gameId: activeGame.id });
+    this.logger.log(`[CMD] ${matchedCommand.regex.source.slice(0, 30)} | phone=${phone}`);
 
     if (matchedCommand.requiresGame && !activeGame) {
       await this.wp.sendToGroup(MSG_NO_ACTIVE_GAME);
@@ -141,7 +170,7 @@ export class MessageHandlerService {
     try {
       await matchedCommand.handler(ctx, match);
     } catch (e: unknown) {
-      this.logger.error(`Error no manejado en comando ${matchedCommand.regex.source}:`, e);
+      this.logError(`Error no manejado en comando ${matchedCommand.regex.source}`, e);
       await this.wp.sendToGroup('❌ Ocurrió un error inesperado procesando tu comando. Intenta de nuevo.').catch(() => {});
     }
   }
@@ -222,7 +251,7 @@ export class MessageHandlerService {
 
       await this.wp.sendToGroup(lines.join('\n'));
     } catch (e) {
-      this.logger.error('Error al consultar multados:', e);
+      this.logError('Error al consultar multados', e);
       await this.wp.sendToGroup(`❌ No se pudo consultar los multados. Intenta de nuevo.`);
     }
   }
@@ -237,7 +266,7 @@ export class MessageHandlerService {
       const result = await this.games.complete(ctx.activeGame.id, ctx.user!.id, { silent: true });
       await this.wp.sendToGroup(result.report);
     } catch (e: unknown) {
-      this.logger.error('Error al terminar partido:', e);
+      this.logError('Error al terminar partido', e);
       await this.wp.sendToGroup(`❌ No se pudo terminar el partido. Intenta de nuevo.`);
     }
   }
@@ -292,7 +321,7 @@ export class MessageHandlerService {
       if (e instanceof NotRegisteredException) {
         await this.wp.sendToGroup(`ℹ️ ${targetUser.name} no está anotado en esta lista.`);
       } else {
-        this.logger.error('Error al sacar jugador:', e);
+        this.logError('Error al sacar jugador', e);
         await this.wp.sendToGroup(`❌ No se pudo sacar a ${targetUser.name}. Intenta de nuevo.`);
       }
     }
@@ -326,7 +355,7 @@ export class MessageHandlerService {
           if (e instanceof NoPendingConfirmationException) {
             await this.wp.sendToGroup(`ℹ️ ${targetUser.name} no tiene ninguna confirmación pendiente.`);
           } else {
-            this.logger.error('Error al confirmar por otro:', e);
+            this.logError('Error al confirmar por otro', e);
             await this.wp.sendToGroup(`❌ No se pudo confirmar a ${targetUser.name}. Intenta de nuevo.`);
           }
         }
@@ -351,7 +380,7 @@ export class MessageHandlerService {
       if (e instanceof NoPendingConfirmationException) {
         await this.wp.sendToGroup(`ℹ️ ${ctx.user!.name}, no tienes ninguna confirmación pendiente.`);
       } else {
-        this.logger.error('Error al confirmar:', e);
+        this.logError('Error al confirmar', e);
         await this.wp.sendToGroup(`❌ No se pudo confirmar tu asistencia. Intenta de nuevo.`);
       }
     }
@@ -378,7 +407,7 @@ export class MessageHandlerService {
       } else if (e instanceof NoOneInWaitListException) {
         await this.wp.sendToGroup('ℹ️ No hay nadie en la lista de espera para promover.');
       } else {
-        this.logger.error('Error al promover:', e);
+        this.logError('Error al promover', e);
         await this.wp.sendToGroup(`❌ No se pudo promover. Intenta de nuevo.`);
       }
     }
@@ -406,7 +435,7 @@ export class MessageHandlerService {
         : `en la *lista principal*`;
       await this.wp.sendToGroup(`✅ Invitado *${guestName}* fue anotado ${spot} por *${ctx.user!.name}* 🏐\n${counts}${this.games.buildGameLink(ctx.activeGame.id)}`);
     } catch (e: unknown) {
-      this.logger.error('Error al invitar:', e);
+      this.logError('Error al invitar', e);
       await this.wp.sendToGroup(`❌ No se pudo registrar al invitado. Intenta de nuevo.`);
     }
   }
@@ -422,7 +451,7 @@ export class MessageHandlerService {
       if (e instanceof NotRegisteredException) {
         await this.wp.sendToGroup(`ℹ️ ${ctx.user!.name}, no estás anotado en esta lista.`);
       } else {
-        this.logger.error('Error al salir:', e);
+        this.logError('Error al salir', e);
         await this.wp.sendToGroup(`❌ No se pudo salir de la lista. Intenta de nuevo.`);
       }
     }
@@ -474,7 +503,7 @@ export class MessageHandlerService {
           await this.wp.sendToGroup(`🚫 *${ctx.user!.name}*, no puedes anotarte porque tienes multas/deudas pendientes. Contacta a un admin para ponerte al día.`);
           return;
         } else {
-          this.logger.error('Error al anotar al remitente:', e);
+          this.logError('Error al anotar al remitente', e);
           await this.wp.sendToGroup(`❌ No se pudo anotarte. Intenta de nuevo.`);
           return;
         }
@@ -520,7 +549,7 @@ export class MessageHandlerService {
         } else if (e instanceof UserHasUnpaidFinesException) {
           msgs.push(`🚫 ${targetUser.name} tiene multas/deudas pendientes y no puede anotarse.`);
         } else {
-          this.logger.error(`Error al anotar a ${targetUser.name}:`, e);
+          this.logError(`Error al anotar a ${targetUser.name}`, e);
           msgs.push(`❌ No se pudo anotar a ${targetUser.name}.`);
         }
       }
