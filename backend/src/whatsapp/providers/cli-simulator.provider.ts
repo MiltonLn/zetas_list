@@ -55,12 +55,14 @@ export class CliSimulatorProvider implements WhatsappProvider, OnModuleInit {
     });
   }
 
-  async sendMessage(to: string, message: string): Promise<void> {
+  async sendMessage(to: string, message: string): Promise<boolean> {
     this.logger.log(`[SALIDA → ${to}]\n${message}`);
+    return true;
   }
 
-  async sendToGroup(message: string): Promise<void> {
+  async sendToGroup(message: string): Promise<boolean> {
     this.logger.log(`[SALIDA → GRUPO]\n${message}`);
+    return true;
   }
 
   isConnected(): boolean {

@@ -5,11 +5,11 @@ import { WhatsappProvider, WHATSAPP_PROVIDER } from './whatsapp.interface';
 export class WhatsappService {
   constructor(@Inject(WHATSAPP_PROVIDER) private provider: WhatsappProvider) {}
 
-  async sendToGroup(message: string) {
+  async sendToGroup(message: string): Promise<boolean> {
     return this.provider.sendToGroup(message);
   }
 
-  async sendMessage(to: string, message: string) {
+  async sendMessage(to: string, message: string): Promise<boolean> {
     return this.provider.sendMessage(to, message);
   }
 

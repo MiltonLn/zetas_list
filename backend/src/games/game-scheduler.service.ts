@@ -28,10 +28,17 @@ export class GameSchedulerService {
 
     for (const game of gamesToOpen) {
       try {
-        await this.games.openRegistration(game.id);
-
+        // Send the announcement first: only flip the game to "open" if it was
+        // delivered. Otherwise the game stays "scheduled" and the next tick
+        // retries, so a transient WhatsApp disconnect can't silently swallow it.
         const message = this.games.buildRegistrationOpenMessage(game);
-        await this.whatsapp.sendToGroup(message);
+        const sent = await this.whatsapp.sendToGroup(message);
+        if (!sent) {
+          this.logger.warn(`No se pudo anunciar apertura de ${game.title}; se reintentará en el próximo ciclo`);
+          continue;
+        }
+
+        await this.games.openRegistration(game.id);
         this.logger.log(`Registro abierto para: ${game.title}`);
       } catch (e) {
         this.logger.error(`Error abriendo registro para ${game.id}:`, e);
@@ -79,15 +86,22 @@ export class GameSchedulerService {
       if (isBefore) continue;
 
       try {
+        // Send first, persist `cutoffNotified` only on success. If the send is
+        // dropped (e.g. WhatsApp reconnecting), the flag stays false and the
+        // next tick retries instead of marking it notified forever.
+        const sent = await this.whatsapp.sendToGroup(
+          `⏰ *Hora de corte alcanzada* para *${game.title}*\n` +
+          `A partir de ahora, invitados y miembros en lista de espera tienen la misma prioridad para cupos libres.`,
+        );
+        if (!sent) {
+          this.logger.warn(`No se pudo notificar el corte de ${game.title}; se reintentará en el próximo ciclo`);
+          continue;
+        }
+
         await this.prisma.game.update({
           where: { id: game.id },
           data: { cutoffNotified: true },
         });
-
-        await this.whatsapp.sendToGroup(
-          `⏰ *Hora de corte alcanzada* para *${game.title}*\n` +
-          `A partir de ahora, invitados y miembros en lista de espera tienen la misma prioridad para cupos libres.`,
-        );
         this.logger.log(`Cutoff notificado para: ${game.title}`);
 
         // After cutoff, fill any open spots from the waitlist (guests now have equal priority).

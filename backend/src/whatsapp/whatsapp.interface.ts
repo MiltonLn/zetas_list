@@ -1,6 +1,8 @@
 export interface WhatsappProvider {
-  sendMessage(to: string, message: string): Promise<void>;
-  sendToGroup(message: string): Promise<void>;
+  /** Resolves to true if the message was actually sent, false if it was dropped. */
+  sendMessage(to: string, message: string): Promise<boolean>;
+  /** Resolves to true if the message was actually sent, false if it was dropped. */
+  sendToGroup(message: string): Promise<boolean>;
   isConnected(): boolean;
 }
 
