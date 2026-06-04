@@ -21,6 +21,11 @@ type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnect
 
 const MAX_BACKOFF_MS = 60_000;
 const INITIAL_BACKOFF_MS = 5_000;
+// When a send arrives while the socket is down, wait up to this long for the
+// automatic reconnection (backoff starts at 5s) before giving up. Avoids
+// dropping messages during the brief reconnect window after a routine close.
+const SEND_WAIT_MS = 12_000;
+const SEND_WAIT_POLL_MS = 250;
 
 @Injectable()
 export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModuleDestroy {
@@ -290,10 +295,32 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
     return this.lidToPhone.get(lidNumber) ?? this.lidToPhone.get(participant) ?? null;
   }
 
-  async sendMessage(to: string, message: string, options?: SendOptions): Promise<void> {
-    if (!this.sock || !this.connected) {
-      this.logger.warn(`No conectado. Mensaje perdido para ${to}`);
-      return;
+  /**
+   * Waits up to `timeoutMs` for the socket to (re)connect. Returns true as soon
+   * as the connection is up, false if the timeout elapses or we're shutting down.
+   */
+  private async waitForConnection(timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (!this.connected && !this.shuttingDown && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, SEND_WAIT_POLL_MS));
+    }
+    return this.connected;
+  }
+
+  async sendMessage(to: string, message: string, options?: SendOptions): Promise<boolean> {
+    if (!this.connected) {
+      // Routine WebSocket drops trigger an automatic reconnect; give it a short
+      // window instead of dropping the message immediately.
+      this.logger.warn(`No conectado. Esperando reconexión para enviar a ${to}...`);
+      const reconnected = await this.waitForConnection(SEND_WAIT_MS);
+      if (!reconnected) {
+        this.logger.error(`No se pudo reconectar a tiempo. Mensaje NO enviado para ${to}`);
+        return false;
+      }
+    }
+    if (!this.sock) {
+      this.logger.error(`Socket no disponible. Mensaje NO enviado para ${to}`);
+      return false;
     }
     try {
       const jid = phoneToJid(to);
@@ -302,17 +329,19 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
         text: message,
         ...(mentions && mentions.length > 0 ? { mentions } : {}),
       });
+      return true;
     } catch (e) {
       this.logger.error(`Error enviando mensaje a ${to}:`, e);
+      return false;
     }
   }
 
-  async sendToGroup(message: string, options?: SendOptions): Promise<void> {
+  async sendToGroup(message: string, options?: SendOptions): Promise<boolean> {
     if (!this.groupId) {
       this.logger.warn('WHATSAPP_GROUP_ID no configurado');
-      return;
+      return false;
     }
-    await this.sendMessage(this.groupId, message, options);
+    return this.sendMessage(this.groupId, message, options);
   }
 
   isConnected(): boolean {

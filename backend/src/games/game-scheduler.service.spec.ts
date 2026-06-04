@@ -24,7 +24,7 @@ const mockGames = {
 };
 
 const mockWhatsapp = {
-  sendToGroup: jest.fn().mockResolvedValue(undefined),
+  sendToGroup: jest.fn().mockResolvedValue(true),
 };
 
 function makeGame(overrides: Partial<any> = {}) {
@@ -56,6 +56,9 @@ describe('GameSchedulerService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // clearAllMocks doesn't reset implementations, so re-assert the default
+    // "delivered" result for every test (some tests override it).
+    mockWhatsapp.sendToGroup.mockResolvedValue(true);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -108,6 +111,15 @@ describe('GameSchedulerService', () => {
 
       await expect(scheduler.checkRegistrationOpening()).resolves.not.toThrow();
       expect(mockGames.openRegistration).toHaveBeenCalledTimes(2);
+    });
+
+    it('NO abre el registro si el anuncio de WhatsApp no se entregó (reintenta luego)', async () => {
+      mockPrisma.game.findMany.mockResolvedValue([makeGame()]);
+      mockWhatsapp.sendToGroup.mockResolvedValue(false);
+
+      await scheduler.checkRegistrationOpening();
+
+      expect(mockGames.openRegistration).not.toHaveBeenCalled();
     });
   });
 
@@ -208,7 +220,7 @@ describe('GameSchedulerService', () => {
       const callOrder: string[] = [];
       mockWhatsapp.sendToGroup.mockImplementation(() => {
         callOrder.push('announce');
-        return Promise.resolve();
+        return Promise.resolve(true);
       });
       mockGames.autoPromoteIfNeeded.mockImplementation(() => {
         callOrder.push('autopromote');
@@ -230,6 +242,17 @@ describe('GameSchedulerService', () => {
       mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
 
       await expect(scheduler.checkGuestCutoff()).resolves.not.toThrow();
+    });
+
+    it('NO marca cutoffNotified ni auto-promueve si el anuncio no se entregó', async () => {
+      mockPrisma.game.findMany.mockResolvedValue([makeGame()]);
+      mockGames.isBeforeCutoff.mockReturnValue(false);
+      mockWhatsapp.sendToGroup.mockResolvedValue(false);
+
+      await scheduler.checkGuestCutoff();
+
+      expect(mockPrisma.game.update).not.toHaveBeenCalled();
+      expect(mockGames.autoPromoteIfNeeded).not.toHaveBeenCalled();
     });
 
     it('llama autoPromoteIfNeeded al llegar el cutoff para llenar cupos con la waitlist', async () => {

@@ -8,8 +8,10 @@ export interface SendOptions {
 }
 
 export interface WhatsappProvider {
-  sendMessage(to: string, message: string, options?: SendOptions): Promise<void>;
-  sendToGroup(message: string, options?: SendOptions): Promise<void>;
+  /** Resolves to true if the message was actually sent, false if it was dropped. */
+  sendMessage(to: string, message: string, options?: SendOptions): Promise<boolean>;
+  /** Resolves to true if the message was actually sent, false if it was dropped. */
+  sendToGroup(message: string, options?: SendOptions): Promise<boolean>;
   isConnected(): boolean;
 }
 
