@@ -1022,6 +1022,11 @@ export class GamesService {
       return;
     }
 
+    // Antes del corte los invitados no son elegibles para tomar un cupo: la
+    // promoción en cascada debe saltarlos y subir al siguiente miembro (o a
+    // nadie), igual que autoPromoteIfNeeded.
+    const beforeCutoff = isBeforeCutoff(game.guestCutoffTime, game.gameDate);
+
     // Demotion and next-promote in a single serializable transaction
     const result = await this.prisma.$transaction(
       async (tx) => {
@@ -1061,9 +1066,16 @@ export class GamesService {
           },
         });
 
-        // Find and promote next waiter within the same transaction
+        // Find and promote next waiter within the same transaction. Before the
+        // cutoff, guests are skipped (members have priority for freed spots).
         const nextInWait = await tx.gameRegistration.findFirst({
-          where: { gameId: reg.gameId, isWaitingList: true, confirmationDeclined: false, id: { not: regId } },
+          where: {
+            gameId: reg.gameId,
+            isWaitingList: true,
+            confirmationDeclined: false,
+            id: { not: regId },
+            ...(beforeCutoff ? { isGuest: false } : {}),
+          },
           orderBy: { position: 'asc' },
           include: REGISTRATION_INCLUDE,
         });
