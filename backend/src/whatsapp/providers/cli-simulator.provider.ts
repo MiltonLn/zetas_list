@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as readline from 'readline';
-import { WhatsappProvider } from '../whatsapp.interface';
+import { WhatsappProvider, SendOptions } from '../whatsapp.interface';
 import { MessageHandlerService } from '../message-handler.service';
 
 @Injectable()
@@ -55,13 +55,15 @@ export class CliSimulatorProvider implements WhatsappProvider, OnModuleInit {
     });
   }
 
-  async sendMessage(to: string, message: string): Promise<boolean> {
-    this.logger.log(`[SALIDA → ${to}]\n${message}`);
+  async sendMessage(to: string, message: string, options?: SendOptions): Promise<boolean> {
+    const mentions = options?.mentions?.length ? ` (menciona: ${options.mentions.join(', ')})` : '';
+    this.logger.log(`[SALIDA → ${to}]${mentions}\n${message}`);
     return true;
   }
 
-  async sendToGroup(message: string): Promise<boolean> {
-    this.logger.log(`[SALIDA → GRUPO]\n${message}`);
+  async sendToGroup(message: string, options?: SendOptions): Promise<boolean> {
+    const mentions = options?.mentions?.length ? ` (menciona: ${options.mentions.join(', ')})` : '';
+    this.logger.log(`[SALIDA → GRUPO]${mentions}\n${message}`);
     return true;
   }
 

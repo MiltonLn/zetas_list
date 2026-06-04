@@ -702,4 +702,77 @@ describe('GamesService — escenarios reales (stateful)', () => {
       expect(windowB).toBeLessThan(15 * MIN + 5000);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('Escenario N: timeout antes del corte NO promueve invitados (regresión)', () => {
+    it('al vencer la confirmación sube al siguiente MIEMBRO y salta a los invitados', async () => {
+      const { service, prisma, members, gameId } = await setup({ members: 6, maxMainSpots: 4 });
+
+      // 4 miembros llenan la principal (members[0..3]).
+      for (const m of members.slice(0, 4)) {
+        await service.register(gameId, m.id, m.id, { silent: true });
+      }
+
+      // Lista de espera (antes del corte): invitado (pos 1) + 2 miembros (pos 2 y 3).
+      // El invitado lo trae members[0] (en principal) para que no quede huérfano.
+      await service.registerGuest(gameId, 'Invitado Espera', members[0].id, { silent: true });
+      await service.register(gameId, members[4].id, members[4].id, { silent: true });
+      await service.register(gameId, members[5].id, members[5].id, { silent: true });
+
+      // Sanity: antes del corte el invitado es el primero en espera.
+      const game = prisma.getGame(gameId)!;
+      expect(service.isBeforeCutoff(game.guestCutoffTime as string, game.gameDate as Date)).toBe(true);
+      expect(lists(prisma, gameId).wait[0].isGuest).toBe(true);
+
+      // Se libera un cupo (sale members[1], que no invitó a nadie) -> auto-promueve
+      // al PRIMER MIEMBRO de la espera (members[4]), saltando al invitado.
+      await service.removeRegistration(gameId, members[1].id, members[1].id, Role.member, { silent: true });
+
+      const firstPending = lists(prisma, gameId).main.find((r) => r.pendingConfirmation)!;
+      expect(firstPending.userId).toBe(members[4].id);
+
+      // members[4] no confirma -> timeout. El siguiente elegible es members[5]
+      // (miembro), NO el invitado, porque seguimos antes del corte.
+      await service.handleConfirmationTimeout(firstPending.id as string);
+
+      const guest = prisma.getRegistrations(gameId).find((r) => r.isGuest)!;
+      expect(guest.isWaitingList).toBe(true);
+      expect(guest.pendingConfirmation).toBe(false);
+
+      const newPending = lists(prisma, gameId).main.find(
+        (r) => r.pendingConfirmation && r.id !== firstPending.id,
+      )!;
+      expect(newPending).toBeDefined();
+      expect(newPending.userId).toBe(members[5].id);
+      expect(newPending.isGuest).toBeFalsy();
+    });
+
+    it('si no quedan miembros elegibles, deja el cupo libre en vez de subir al invitado', async () => {
+      const { service, prisma, members, gameId, whatsapp } = await setup({ members: 5, maxMainSpots: 4 });
+
+      for (const m of members.slice(0, 4)) {
+        await service.register(gameId, m.id, m.id, { silent: true });
+      }
+      // Espera: invitado (pos 1) + 1 miembro (pos 2).
+      await service.registerGuest(gameId, 'Invitado Espera', members[0].id, { silent: true });
+      await service.register(gameId, members[4].id, members[4].id, { silent: true });
+
+      // Cupo libre -> sube el miembro (salta invitado).
+      await service.removeRegistration(gameId, members[1].id, members[1].id, Role.member, { silent: true });
+      const pending = lists(prisma, gameId).main.find((r) => r.pendingConfirmation)!;
+      expect(pending.userId).toBe(members[4].id);
+
+      // El miembro no confirma -> no hay más miembros; el invitado NO debe subir.
+      await service.handleConfirmationTimeout(pending.id as string);
+
+      const guest = prisma.getRegistrations(gameId).find((r) => r.isGuest)!;
+      expect(guest.isWaitingList).toBe(true);
+      expect(guest.pendingConfirmation).toBe(false);
+      // El cupo queda libre (3/4) y se anuncia que nadie confirmó.
+      expect(lists(prisma, gameId).main).toHaveLength(3);
+      expect(whatsapp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('Nadie en lista de espera confirmó'),
+      );
+    });
+  });
 });

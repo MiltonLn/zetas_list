@@ -4,7 +4,7 @@ import {
   OnModuleInit,
   OnModuleDestroy,
 } from '@nestjs/common';
-import { WhatsappProvider } from '../whatsapp.interface';
+import { WhatsappProvider, SendOptions } from '../whatsapp.interface';
 import { MessageHandlerService } from '../message-handler.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { usePrismaAuthState } from './prisma-auth-state';
@@ -297,7 +297,7 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
     return this.connected;
   }
 
-  async sendMessage(to: string, message: string): Promise<boolean> {
+  async sendMessage(to: string, message: string, options?: SendOptions): Promise<boolean> {
     if (!this.connected) {
       // Routine WebSocket drops trigger an automatic reconnect; give it a short
       // window instead of dropping the message immediately.
@@ -314,7 +314,11 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
     }
     try {
       const jid = phoneToJid(to);
-      await this.sock.sendMessage(jid, { text: message });
+      const mentions = options?.mentions?.map((p) => phoneToJid(p));
+      await this.sock.sendMessage(jid, {
+        text: message,
+        ...(mentions && mentions.length > 0 ? { mentions } : {}),
+      });
       return true;
     } catch (e) {
       this.logger.error(`Error enviando mensaje a ${to}:`, e);
@@ -322,12 +326,12 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
     }
   }
 
-  async sendToGroup(message: string): Promise<boolean> {
+  async sendToGroup(message: string, options?: SendOptions): Promise<boolean> {
     if (!this.groupId) {
       this.logger.warn('WHATSAPP_GROUP_ID no configurado');
       return false;
     }
-    return this.sendMessage(this.groupId, message);
+    return this.sendMessage(this.groupId, message, options);
   }
 
   isConnected(): boolean {

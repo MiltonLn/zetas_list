@@ -113,6 +113,37 @@ describe('SortableRegistrationRow', () => {
     expect(screen.getByText('Salirme')).toBeInTheDocument();
   });
 
+  it('muestra botón "Sacar" para el dueño de un invitado (isOwnGuest)', () => {
+    const guestReg = makeReg({ isGuest: true, guestName: 'Topota' });
+    render(
+      <SortableRegistrationRow
+        {...baseProps}
+        reg={guestReg}
+        isAdmin={false}
+        isSelf={false}
+        allowSelfRemove={true}
+        isOwnGuest={true}
+      />,
+    );
+    expect(screen.getByText('Sacar')).toBeInTheDocument();
+  });
+
+  it('NO muestra botón para un invitado ajeno (no isOwnGuest)', () => {
+    const guestReg = makeReg({ isGuest: true, guestName: 'Topota' });
+    render(
+      <SortableRegistrationRow
+        {...baseProps}
+        reg={guestReg}
+        isAdmin={false}
+        isSelf={false}
+        allowSelfRemove={true}
+        isOwnGuest={false}
+      />,
+    );
+    expect(screen.queryByText('Sacar')).not.toBeInTheDocument();
+    expect(screen.queryByText('Salirme')).not.toBeInTheDocument();
+  });
+
   it('muestra botón Promover para jugadores en lista de espera', () => {
     const waitReg = makeReg({ isWaitingList: true });
     render(<SortableRegistrationRow {...baseProps} reg={waitReg} />);
