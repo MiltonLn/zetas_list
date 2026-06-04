@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GamesService } from './games.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { GameStatus } from '@prisma/client';
+import { runWithLogContext, newReqId } from '../common/logging/log-context';
 
 @Injectable()
 export class GameSchedulerService {
@@ -56,12 +57,16 @@ export class GameSchedulerService {
     for (const reg of expired) {
       if (reg.game.status !== 'registration_open' && reg.game.status !== 'in_progress') continue;
 
-      try {
-        await this.games.handleConfirmationTimeout(reg.id);
-        this.logger.log(`Confirmación expirada para registro ${reg.id}`);
-      } catch (e) {
-        this.logger.error(`Error procesando timeout de confirmación ${reg.id}:`, e);
-      }
+      await runWithLogContext(
+        { reqId: newReqId(), source: 'cron', gameId: reg.gameId },
+        async () => {
+          try {
+            await this.games.handleConfirmationTimeout(reg.id);
+          } catch (e) {
+            this.logger.error(`Error procesando timeout de confirmación ${reg.id}:`, e);
+          }
+        },
+      );
     }
   }
 

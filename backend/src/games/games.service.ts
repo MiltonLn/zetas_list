@@ -534,6 +534,10 @@ export class GamesService {
       details: { confirmedOwn: confirmed.confirmedOwn, confirmedGuests: confirmed.confirmedGuests, onBehalf: actorId !== userId },
     });
 
+    this.logger.log(
+      `[CONFIRM] game=${gameId} | user=${userId} | own=${confirmed.confirmedOwn} | guests=${confirmed.confirmedGuests.length} | onBehalf=${actorId !== userId}`,
+    );
+
     const updated = await this.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
     return { game: updated, ...confirmed };
@@ -577,6 +581,8 @@ export class GamesService {
     });
 
     const actor = await this.prisma.user.findUnique({ where: { id: actorId }, select: { name: true } });
+
+    this.logger.log(`[CONFIRM] game=${gameId} | reg=${regId} | confirmed=${confirmed.name} | by=${actor?.name || actorId} | onBehalf=true`);
 
     const updated = await this.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
@@ -720,6 +726,10 @@ export class GamesService {
         removedGuests: orphanedGuests.map((g) => g.guestName),
       },
     });
+
+    this.logger.log(
+      `[REMOVE] game=${gameId} | player=${userName} | wasWaiting=${reg.isWaitingList} | byAdmin=${actorId !== (reg.userId ?? reg.registeredById)} | removedGuests=${orphanedGuests.length}`,
+    );
 
     const updated = await this.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
@@ -998,6 +1008,10 @@ export class GamesService {
         ? `*${promoted.reg.registeredBy?.name || 'Responsable'}*`
         : `*${promoted.reg.user?.name || 'Alguien'}*`;
 
+    this.logger.log(
+      `[AUTO_PROMOTE] game=${gameId} | promoted=${name} | isGuest=${promoted.reg.isGuest} | fromWaitPos=${promoted.originalPos} | beforeCutoff=${beforeCutoff} | confirmWindow=15min`,
+    );
+
     this.whatsapp
       .sendToGroup(
         `⬆️ *${name}* fue promovido a la *lista principal* 🏐\n${confirmTarget}, confirma con *@Z confirmar* en los próximos 15 min.\n${buildCounts(updated)}${buildGameLink(gameId)}`,
@@ -1128,11 +1142,16 @@ export class GamesService {
     const updated = await this.findOne(reg.gameId);
     this.events.emit({ gameId: reg.gameId, type: 'update', data: updated });
 
+    this.logger.log(
+      `[CONFIRM_TIMEOUT] game=${reg.gameId} | reg=${regId} | player=${name} | isGuest=${reg.isGuest} | returnedToPos=${result.returnPos}`,
+    );
+
     this.whatsapp
       .sendToGroup(`⏰ *${name}* no confirmó a tiempo y volvió a la lista de espera (puesto ${result.returnPos}).\n${buildCounts(updated)}${buildGameLink(reg.gameId)}`)
       .catch((e) => this.logger.warn('WhatsApp send failed', e));
 
     if (!result.nextInWait) {
+      this.logger.log(`[CONFIRM_TIMEOUT] game=${reg.gameId} | no eligible waiter -> spot left free`);
       this.whatsapp
         .sendToGroup(`ℹ️ Nadie en lista de espera confirmó. El cupo queda disponible para quien se anote.`)
         .catch((e) => this.logger.warn('WhatsApp send failed', e));
@@ -1157,6 +1176,10 @@ export class GamesService {
 
     const finalUpdated = await this.findOne(reg.gameId);
     this.events.emit({ gameId: reg.gameId, type: 'update', data: finalUpdated });
+
+    this.logger.log(
+      `[CONFIRM_TIMEOUT] game=${reg.gameId} | cascade promoted=${nextName} | isGuest=${result.nextInWait.isGuest} | fromWaitPos=${result.nextOriginalPos} | confirmWindow=5min`,
+    );
 
     this.whatsapp
       .sendToGroup(

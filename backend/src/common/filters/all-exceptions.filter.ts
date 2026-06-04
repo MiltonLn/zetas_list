@@ -37,7 +37,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     if (status >= 500) {
-      this.logger.error(exception);
+      // Unexpected failure: log full stack with request context for diagnosis.
+      // TODO: forward to Sentry once @sentry/node is wired into the backend.
+      this.logger.error(
+        `${request.method} ${request.url} -> ${status}`,
+        exception instanceof Error ? exception.stack : String(exception),
+      );
+    } else {
+      // Expected business rejection (4xx): keep it at debug to avoid noise.
+      this.logger.debug(`${request.method} ${request.url} -> ${status}: ${JSON.stringify(message)}`);
     }
 
     response.status(status).json({
