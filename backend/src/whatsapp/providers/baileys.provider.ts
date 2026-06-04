@@ -125,9 +125,14 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
         auth: state,
         printQRInTerminal: process.env.NODE_ENV !== 'production',
         // Baileys' default logger dumps Signal session internals (including
-        // private keys) and a "url generation failed" line on every send. We
-        // pin it to warn to keep our logs clean and avoid leaking key material.
+        // private keys). We pin it to warn to keep our logs clean and avoid
+        // leaking key material.
         logger: this.baileysLogger,
+        // Don't generate link previews: it dynamically imports the optional
+        // 'link-preview-js' package (not installed), which fails on every
+        // message containing a URL with "url generation failed"
+        // (ERR_MODULE_NOT_FOUND). We don't need previews; this removes the noise.
+        generateHighQualityLinkPreview: false,
       });
 
       this.sock.ev.on('creds.update', () => {
@@ -158,9 +163,22 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
               return;
             }
             const code = lastDisconnect?.error?.output?.statusCode;
-            const shouldReconnect = code !== DisconnectReason.loggedOut;
+            // Code 440 (connectionReplaced): another connection took over this
+            // WhatsApp session. Reconnecting would just kick the other one off
+            // and trigger an endless replace ping-pong, so we stay down and ask
+            // the operator to remove the duplicate before restarting.
+            const replaced = code === DisconnectReason.connectionReplaced;
+            const shouldReconnect = code !== DisconnectReason.loggedOut && !replaced;
             this.logger.warn(`Conexión cerrada (código ${code}). Reconectando: ${shouldReconnect}`);
-            if (shouldReconnect) {
+            if (replaced) {
+              this.connectionStatus = 'disconnected';
+              this.logger.error(
+                'Sesión de WhatsApp reemplazada por otra conexión (código 440). NO se reconectará ' +
+                  'para evitar un ciclo de reemplazos. Verifica que solo UNA instancia del backend use ' +
+                  'esta sesión (la sesión vive en Postgres) y que el número no esté vinculado en otro ' +
+                  'dispositivo/WhatsApp Web. Reinicia el backend tras eliminar el duplicado.',
+              );
+            } else if (shouldReconnect) {
               this.scheduleReconnect();
             } else {
               this.connectionStatus = 'disconnected';
