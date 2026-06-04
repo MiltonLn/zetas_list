@@ -5,7 +5,7 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import pino from 'pino';
-import { WhatsappProvider } from '../whatsapp.interface';
+import { WhatsappProvider, SendOptions } from '../whatsapp.interface';
 import { MessageHandlerService } from '../message-handler.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { usePrismaAuthState } from './prisma-auth-state';
@@ -290,25 +290,29 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
     return this.lidToPhone.get(lidNumber) ?? this.lidToPhone.get(participant) ?? null;
   }
 
-  async sendMessage(to: string, message: string): Promise<void> {
+  async sendMessage(to: string, message: string, options?: SendOptions): Promise<void> {
     if (!this.sock || !this.connected) {
       this.logger.warn(`No conectado. Mensaje perdido para ${to}`);
       return;
     }
     try {
       const jid = phoneToJid(to);
-      await this.sock.sendMessage(jid, { text: message });
+      const mentions = options?.mentions?.map((p) => phoneToJid(p));
+      await this.sock.sendMessage(jid, {
+        text: message,
+        ...(mentions && mentions.length > 0 ? { mentions } : {}),
+      });
     } catch (e) {
       this.logger.error(`Error enviando mensaje a ${to}:`, e);
     }
   }
 
-  async sendToGroup(message: string): Promise<void> {
+  async sendToGroup(message: string, options?: SendOptions): Promise<void> {
     if (!this.groupId) {
       this.logger.warn('WHATSAPP_GROUP_ID no configurado');
       return;
     }
-    await this.sendMessage(this.groupId, message);
+    await this.sendMessage(this.groupId, message, options);
   }
 
   isConnected(): boolean {

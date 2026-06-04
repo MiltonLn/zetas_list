@@ -40,6 +40,7 @@ import {
   shouldGoToWaitingList,
   isBeforeCutoff,
   REGISTRATION_INCLUDE,
+  buildMention,
   DEFAULT_SPOTS,
   CONFIRMATION_TIMEOUT_MS,
   NEXT_CONFIRM_TIMEOUT_MS,
@@ -389,7 +390,14 @@ export class GamesService {
       ? `en la *lista de espera* (puesto ${registration.position})`
       : `en la *lista principal*`;
     if (!options?.silent) {
-      const msg = `✅ *${userName}* se anotó ${spot}! 🏐\n${buildCounts(updated)}${buildGameLink(gameId)}`;
+      // When someone registers on behalf of another player (e.g. an admin from
+      // the app), the message must make the actor explicit instead of implying
+      // the target registered themselves.
+      const onBehalf = registration.registeredById !== registration.userId;
+      const actorName = registration.registeredBy?.name;
+      const msg = onBehalf && actorName
+        ? `✅ *${actorName}* anotó a *${userName}* ${spot} 🏐\n${buildCounts(updated)}${buildGameLink(gameId)}`
+        : `✅ *${userName}* se anotó ${spot}! 🏐\n${buildCounts(updated)}${buildGameLink(gameId)}`;
       this.whatsapp.sendToGroup(msg).catch((e) => this.logger.warn('WhatsApp send failed', e));
     }
 
@@ -478,8 +486,10 @@ export class GamesService {
       ? `en la *lista de espera* (puesto ${registration.position})`
       : `en la *lista principal*`;
     if (!options?.silent) {
+      const inviterName = registration.registeredBy?.name;
+      const byInviter = inviterName ? ` por *${inviterName}*` : '';
       this.whatsapp
-        .sendToGroup(`✅ Invitado *${guestName}* fue anotado ${spot} 🏐\n${buildCounts(updated)}${buildGameLink(gameId)}`)
+        .sendToGroup(`✅ Invitado *${guestName}* fue anotado ${spot}${byInviter} 🏐\n${buildCounts(updated)}${buildGameLink(gameId)}`)
         .catch((e) => this.logger.warn('WhatsApp send failed', e));
     }
 
@@ -734,7 +744,10 @@ export class GamesService {
         msg += `\n🚫 ${orphanedGuests.length === 1 ? 'Su invitado también fue removido' : 'Sus invitados también fueron removidos'}: ${guestNames}`;
       }
       msg += `\n${buildCounts(updated)}${buildGameLink(gameId)}`;
-      this.whatsapp
+      // Await the removal message so it lands in the chat BEFORE any
+      // auto-promotion notification. Otherwise "X fue promovido" can arrive
+      // before "Y salió/fue sacado", which reads out of order.
+      await this.whatsapp
         .sendToGroup(msg)
         .catch((e) => this.logger.warn('WhatsApp send failed', e));
     }
@@ -986,16 +999,24 @@ export class GamesService {
     this.events.emit({ gameId, type: 'update', data: updated });
 
     const name = displayName(promoted.reg);
-    const confirmTarget = promoted.reg.isGuest
-      ? `*${promoted.reg.registeredBy?.name || 'Responsable'}*`
-      : `*${promoted.reg.user?.name || 'Alguien'}*`;
+    // @mention the person who must confirm so they get a WhatsApp notification.
+    // For guests it's the responsible member who invited them.
+    const mention = buildMention(promoted.reg.isGuest ? promoted.reg.registeredBy : promoted.reg.user);
+    const confirmTarget = mention
+      ? mention.tag
+      : promoted.reg.isGuest
+        ? `*${promoted.reg.registeredBy?.name || 'Responsable'}*`
+        : `*${promoted.reg.user?.name || 'Alguien'}*`;
 
     this.logger.log(
       `[AUTO_PROMOTE] game=${gameId} | promoted=${name} | isGuest=${promoted.reg.isGuest} | fromWaitPos=${promoted.originalPos} | beforeCutoff=${beforeCutoff} | confirmWindow=15min`,
     );
 
     this.whatsapp
-      .sendToGroup(`⬆️ *${name}* fue promovido a la *lista principal* 🏐\n${confirmTarget}, confirma con *@Z confirmar* en los próximos 15 min.\n${buildCounts(updated)}${buildGameLink(gameId)}`)
+      .sendToGroup(
+        `⬆️ *${name}* fue promovido a la *lista principal* 🏐\n${confirmTarget}, confirma con *@Z confirmar* en los próximos 15 min.\n${buildCounts(updated)}${buildGameLink(gameId)}`,
+        mention ? { mentions: [mention.jid] } : undefined,
+      )
       .catch((e) => this.logger.warn('WhatsApp send failed', e));
   }
 
@@ -1014,6 +1035,11 @@ export class GamesService {
       });
       return;
     }
+
+    // Antes del corte los invitados no son elegibles para tomar un cupo: la
+    // promoción en cascada debe saltarlos y subir al siguiente miembro (o a
+    // nadie), igual que autoPromoteIfNeeded.
+    const beforeCutoff = isBeforeCutoff(game.guestCutoffTime, game.gameDate);
 
     // Demotion and next-promote in a single serializable transaction
     const result = await this.prisma.$transaction(
@@ -1054,9 +1080,16 @@ export class GamesService {
           },
         });
 
-        // Find and promote next waiter within the same transaction
+        // Find and promote next waiter within the same transaction. Before the
+        // cutoff, guests are skipped (members have priority for freed spots).
         const nextInWait = await tx.gameRegistration.findFirst({
-          where: { gameId: reg.gameId, isWaitingList: true, confirmationDeclined: false, id: { not: regId } },
+          where: {
+            gameId: reg.gameId,
+            isWaitingList: true,
+            confirmationDeclined: false,
+            id: { not: regId },
+            ...(beforeCutoff ? { isGuest: false } : {}),
+          },
           orderBy: { position: 'asc' },
           include: REGISTRATION_INCLUDE,
         });
@@ -1134,9 +1167,12 @@ export class GamesService {
     });
 
     const nextName = displayName(result.nextInWait);
-    const nextConfirmTarget = result.nextInWait.isGuest
-      ? `*${result.nextInWait.registeredBy?.name || 'Responsable'}*`
-      : `*${result.nextInWait.user?.name || 'Alguien'}*`;
+    const nextMention = buildMention(result.nextInWait.isGuest ? result.nextInWait.registeredBy : result.nextInWait.user);
+    const nextConfirmTarget = nextMention
+      ? nextMention.tag
+      : result.nextInWait.isGuest
+        ? `*${result.nextInWait.registeredBy?.name || 'Responsable'}*`
+        : `*${result.nextInWait.user?.name || 'Alguien'}*`;
 
     const finalUpdated = await this.findOne(reg.gameId);
     this.events.emit({ gameId: reg.gameId, type: 'update', data: finalUpdated });
@@ -1146,7 +1182,10 @@ export class GamesService {
     );
 
     this.whatsapp
-      .sendToGroup(`⬆️ *${nextName}* fue promovido a la *lista principal* 🏐\n${nextConfirmTarget}, confirma con *@Z confirmar* en los próximos 5 min.\n${buildCounts(finalUpdated)}${buildGameLink(reg.gameId)}`)
+      .sendToGroup(
+        `⬆️ *${nextName}* fue promovido a la *lista principal* 🏐\n${nextConfirmTarget}, confirma con *@Z confirmar* en los próximos 5 min.\n${buildCounts(finalUpdated)}${buildGameLink(reg.gameId)}`,
+        nextMention ? { mentions: [nextMention.jid] } : undefined,
+      )
       .catch((e) => this.logger.warn('WhatsApp send failed', e));
   }
 
