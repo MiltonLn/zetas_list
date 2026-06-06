@@ -33,7 +33,10 @@ const isProduction = process.env.NODE_ENV === 'production';
       ? [
           ServeStaticModule.forRoot({
             rootPath: join(__dirname, '..', '..', 'public'),
-            exclude: ['/api*'],
+            // Let the API and the dedicated /uploads static handler (see
+            // main.ts useStaticAssets) own those paths; otherwise the SPA
+            // fallback would serve index.html for avatar image requests.
+            exclude: ['/api*', '/uploads*'],
           }),
         ]
       : []),

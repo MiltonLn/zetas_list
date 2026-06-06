@@ -11,6 +11,7 @@ import { Avatar } from '../components/Avatar';
 import { ImageCropModal } from '../components/ImageCropModal';
 import { Spinner } from '../components/Spinner';
 import { getApiError } from '../services/api';
+import { prepareImageForCrop } from '../utils/image';
 
 export default function ProfilePage() {
   const { user: authUser } = useAuth();
@@ -34,6 +35,7 @@ export default function ProfilePage() {
   const [pwSaving, setPwSaving] = useState(false);
 
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoPreparing, setPhotoPreparing] = useState(false);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -93,10 +95,18 @@ export default function ProfilePage() {
     }
   }
 
-  function handleFileSelect(file: File) {
-    const reader = new FileReader();
-    reader.onload = () => setCropImageSrc(reader.result as string);
-    reader.readAsDataURL(file);
+  async function handleFileSelect(file: File) {
+    setError('');
+    setSuccess('');
+    setPhotoPreparing(true);
+    try {
+      const src = await prepareImageForCrop(file);
+      setCropImageSrc(src);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo leer la imagen.');
+    } finally {
+      setPhotoPreparing(false);
+    }
   }
 
   async function handleCroppedPhoto(blob: Blob) {
@@ -137,7 +147,7 @@ export default function ProfilePage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
             <div style={{ position: 'relative' }}>
               <Avatar name={profile?.name || ''} photoUrl={profile?.photoUrl} size={72} />
-              {photoUploading && (
+              {(photoUploading || photoPreparing) && (
                 <div style={{
                   position: 'absolute', inset: 0, borderRadius: '50%',
                   background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -152,9 +162,9 @@ export default function ProfilePage() {
                 className="btn btn-primary"
                 style={{ fontSize: 12, padding: '6px 14px', minHeight: 32 }}
                 onClick={() => fileInputRef.current?.click()}
-                disabled={photoUploading}
+                disabled={photoUploading || photoPreparing}
               >
-                Cambiar foto
+                {photoPreparing ? 'Procesando...' : 'Cambiar foto'}
               </button>
               <input
                 ref={fileInputRef}

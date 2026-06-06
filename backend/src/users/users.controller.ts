@@ -29,7 +29,9 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtUser } from '../auth/jwt-user.interface';
 
-const UPLOADS_DIR = join(__dirname, '..', '..', 'uploads', 'avatars');
+// process.cwd() is the project root (/app in the container) regardless of
+// where the compiled file lives — avoids __dirname depth counting errors.
+const UPLOADS_DIR = join(process.cwd(), 'uploads', 'avatars');
 if (!existsSync(UPLOADS_DIR)) mkdirSync(UPLOADS_DIR, { recursive: true });
 
 @ApiTags('users')
