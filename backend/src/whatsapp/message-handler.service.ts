@@ -25,18 +25,38 @@ import {
 } from '../common/logging/log-context';
 
 const BOT_MENTION = '@Z';
-const CMD_REGISTER = /^@z\s+(an[oó]tame|m[eé]teme|ap[uú]ntame|juego|voy|entro|anotar|an[oó]ta|apuntar|ap[uú]nta)\b/i;
-const CMD_UNREGISTER = /^@z\s+(salirme|s[aá]came|qu[ií]tame|no\s+voy|no\s+juego|salgo|salir)\b/i;
-const CMD_LIST = /^@z\s+(lista|cupos|qui[eé]nes?\s+van|cu[aá]ntos)\b/i;
+
+/** Strip diacritics so all commands match with or without accents. */
+function stripAccents(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
+ * Extracts inline guest names from a combined register+invite command.
+ * Supports: "@Z anotame + Carlos, María" and "@Z anotame invitar Carlos, María".
+ * Returns an empty array if no inline guests are detected.
+ */
+function extractInlineGuests(text: string): string[] {
+  const afterKeyword = text.match(/^@z\s+\S+\s+(.*)/i)?.[1]?.trim() ?? '';
+  const guestPart = afterKeyword.match(/^(?:\+|invitar?|traer?)\s+(.+)/i)?.[1];
+  if (!guestPart) return [];
+  return guestPart.split(',').map((n) => n.trim()).filter(Boolean);
+}
+
+// All regexes use plain ASCII — input is pre-normalized in dispatch().
+const CMD_REGISTER = /^@z\s+(anotame|anotarme|meteme|meterme|apuntame|apuntarme|inscribeme|inscribirme|juego|voy|entro|anotar|anota|apuntar|apunta)\b/i;
+const CMD_UNREGISTER = /^@z\s+(salirme|sacame|sacarme|quitame|quitarme|borrame|borrarme|retirame|retirarme|no\s+voy|no\s+juego|no\s+puedo|salgo|salir)\b/i;
+const CMD_LIST = /^@z\s+(lista|cupos|quienes?\s+van|cuantos|como\s+vamos)\b/i;
 const CMD_FINISH = /^@z\s+(terminar|cerrar|finalizar|completar)\b/i;
 const CMD_PROMOTE = /^@z\s+(promover|subir|jalar|meter)\b/i;
 const CMD_REMOVE_OTHER = /^@z\s+(sacar|quitar|remover|eliminar)\b/i;
-const CMD_INVITE = /^@z\s+invitar\s+(.+)/i;
-const CMD_CONFIRM = /^@z\s+(confirmar|confirmo|listo|lista)\b/i;
+const CMD_INVITE = /^@z\s+(?:invitar?|traer?)\s+(.+)/i;
+const CMD_CONFIRM = /^@z\s+(confirmar|confirmo|confirma|listo|acepto)\b/i;
 const CMD_HELP = /^@z\s+(ayuda|help|comandos|info)\b/i;
 const CMD_RULES = /^@z\s+(reglas|reglamento|normas)\b/i;
-const CMD_FINANCES = /^@z\s+(finanzas|presupuesto|plata|dinero)\b/i;
-const CMD_FINED = /^@z\s+(multados|deudores|morosos)\b/i;
+const CMD_FINANCES = /^@z\s+(finanzas|presupuesto|plata|dinero|caja|lucas|fondos)\b/i;
+const CMD_FINED = /^@z\s+(multados|deudores|morosos|multas|deudas)\b/i;
+const CMD_ALIASES = /^@z\s+(alias|variantes|sinonimos|alternativas)\b/i;
 const CMD_IS_BOT_MENTION = /^@z\b/i;
 
 const MSG_NO_ACTIVE_GAME = 'No hay ninguna lista abierta en el momento 🤷';
@@ -71,18 +91,19 @@ export class MessageHandlerService {
     private finances: FinancesService,
   ) {
     this.commands = [
-      { regex: CMD_LIST, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: (ctx) => this.handleList(ctx) },
-      { regex: CMD_HELP, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleHelp() },
-      { regex: CMD_RULES, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleRules() },
-      { regex: CMD_FINANCES, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFinances() },
-      { regex: CMD_FINED, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFined() },
-      { regex: CMD_FINISH, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handleFinish(ctx) },
+      { regex: CMD_LIST,    requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: (ctx) => this.handleList(ctx) },
+      { regex: CMD_HELP,    requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleHelp() },
+      { regex: CMD_ALIASES, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleAliases() },
+      { regex: CMD_RULES,   requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleRules() },
+      { regex: CMD_FINANCES,requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFinances() },
+      { regex: CMD_FINED,   requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFined() },
+      { regex: CMD_FINISH,  requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  handler: (ctx) => this.handleFinish(ctx) },
       { regex: CMD_REMOVE_OTHER, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handleRemoveOther(ctx) },
-      { regex: CMD_CONFIRM, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handleConfirm(ctx) },
-      { regex: CMD_PROMOTE, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handlePromote(ctx) },
-      { regex: CMD_INVITE, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx, m) => this.handleInvite(ctx, m) },
+      { regex: CMD_CONFIRM, requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  handler: (ctx) => this.handleConfirm(ctx) },
+      { regex: CMD_PROMOTE, requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  handler: (ctx) => this.handlePromote(ctx) },
+      { regex: CMD_INVITE,  requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  handler: (ctx, m) => this.handleInvite(ctx, m) },
       { regex: CMD_UNREGISTER, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handleUnregister(ctx) },
-      { regex: CMD_REGISTER, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handleRegister(ctx) },
+      { regex: CMD_REGISTER,requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  handler: (ctx) => this.handleRegister(ctx) },
     ];
   }
 
@@ -110,7 +131,9 @@ export class MessageHandlerService {
   }
 
   private async dispatch(phone: string, normalized: string, mentionedJids?: string[]): Promise<void> {
-    const matchedCommand = this.commands.find((cmd) => cmd.regex.test(normalized));
+    // Normalize accents so commands match regardless of whether the user typed tildes.
+    const forMatching = stripAccents(normalized).toLowerCase();
+    const matchedCommand = this.commands.find((cmd) => cmd.regex.test(forMatching));
 
     if (!matchedCommand) {
       await this.wp.sendToGroup(
@@ -163,13 +186,13 @@ export class MessageHandlerService {
 
     const ctx: CommandContext = {
       phone,
-      text: normalized,
+      text: normalized,        // original text (accents preserved for display/names)
       mentionedJids: mentionedJids || [],
       user,
       activeGame,
     };
 
-    const match = normalized.match(matchedCommand.regex);
+    const match = forMatching.match(matchedCommand.regex);
     try {
       await matchedCommand.handler(ctx, match);
     } catch (e: unknown) {
@@ -196,8 +219,9 @@ export class MessageHandlerService {
       `📝 *Registro:*\n` +
       `• *${BOT_MENTION} anótame* — Anotarte en la lista\n` +
       `• *${BOT_MENTION} anótame @persona* — Anotarte y anotar a otro miembro\n` +
+      `• *${BOT_MENTION} anótame + Nombre, Nombre2* — Anotarte y traer invitados externos\n` +
       `• *${BOT_MENTION} sácame* — Salir de la lista\n` +
-      `• *${BOT_MENTION} invitar NombreInvitado* — Anotar un invitado externo\n\n` +
+      `• *${BOT_MENTION} invitar Nombre, Nombre2* — Anotar uno o varios invitados externos\n\n` +
       `📋 *Consulta:*\n` +
       `• *${BOT_MENTION} lista* — Ver la lista actual y cupos\n` +
       `• *${BOT_MENTION} reglas* — Ver las reglas del grupo\n` +
@@ -211,7 +235,36 @@ export class MessageHandlerService {
       `• *${BOT_MENTION} sacar @persona* — Sacar a alguien de la lista\n` +
       `• *${BOT_MENTION} confirmar @persona* — Confirmar por otro jugador\n` +
       `• *${BOT_MENTION} terminar* — Cerrar el partido y generar reporte\n\n` +
-      `💡 _Sinónimos: anótame/méteme/voy/juego/entro/anotar, sácame/no voy/salgo, etc._`,
+      `💡 _Todos los comandos funcionan con o sin tildes._\n` +
+      `📖 _Escribe *${BOT_MENTION} alias* para ver todos los alias disponibles._`,
+    );
+  }
+
+  private async handleAliases(): Promise<void> {
+    await this.wp.sendToGroup(
+      `📖 *Alias del Bot Zetas*\n` +
+      `_Todos funcionan con o sin tildes._\n\n` +
+      `📝 *Anotarse:*\n` +
+      `anótame · anotarme · méteme · meterme · apúntame · apuntarme · inscríbeme · inscribirme · voy · juego · entro · anotar · anota · apuntar · apunta\n\n` +
+      `🚪 *Salirse:*\n` +
+      `salirme · sácame · sacarme · quítame · quitarme · bórrame · borrarme · retírame · retirarme · no voy · no juego · no puedo · salgo · salir\n\n` +
+      `✅ *Confirmar:*\n` +
+      `confirmar · confirmo · confirma · listo · acepto\n\n` +
+      `📋 *Ver lista:*\n` +
+      `lista · cupos · quiénes van · cuántos · cómo vamos\n\n` +
+      `⬆️ *Promover de espera:*\n` +
+      `promover · subir · jalar · meter\n\n` +
+      `🎟️ *Invitar externos (uno o varios, separados por coma):*\n` +
+      `invitar · invita · traer · trae\n` +
+      `_Ejemplo: *${BOT_MENTION} invitar Carlos, María*_\n` +
+      `_O al anotarse: *${BOT_MENTION} anotame + Carlos, María*_\n\n` +
+      `💰 *Finanzas:*\n` +
+      `finanzas · presupuesto · plata · dinero · caja · lucas · fondos\n\n` +
+      `🚫 *Multados/Deudas:*\n` +
+      `multados · deudores · morosos · multas · deudas\n\n` +
+      `📜 *Reglas:* reglas · reglamento · normas\n` +
+      `❓ *Ayuda:* ayuda · help · comandos · info\n` +
+      `📖 *Alias:* alias · variantes · sinónimos · alternativas`,
     );
   }
 
@@ -399,31 +452,40 @@ export class MessageHandlerService {
     }
   }
 
-  private async handleInvite(ctx: CommandContext, match: RegExpMatchArray | null): Promise<void> {
+  private async handleInvite(ctx: CommandContext, _match: RegExpMatchArray | null): Promise<void> {
     const isRegistered = ctx.activeGame.registrations.some((r: any) => r.user?.id === ctx.user!.id);
     if (!isRegistered) {
       await this.wp.sendToGroup(`⚠️ ${ctx.user!.name}, debes estar anotado en la lista antes de invitar a alguien.`);
       return;
     }
 
-    const guestName = match?.[1]?.trim();
-    if (!guestName) {
-      await this.wp.sendToGroup(`ℹ️ Debes indicar el nombre del invitado.\nEjemplo: *${BOT_MENTION} invitar Juan Pérez*`);
+    // Extract from the original text so guest names keep their accents.
+    const rawNames = ctx.text.match(/^@z\s+\S+\s+(.+)/i)?.[1]?.trim();
+    if (!rawNames) {
+      await this.wp.sendToGroup(`ℹ️ Debes indicar el nombre del invitado.\nEjemplo: *${BOT_MENTION} invitar Juan Pérez, Ana López*`);
       return;
     }
 
-    try {
-      const reg = await this.games.registerGuest(ctx.activeGame.id, guestName, ctx.user!.id, { silent: true });
-      const updated = await this.games.findOne(ctx.activeGame.id);
-      const counts = this.games.buildCounts(updated);
-      const spot = reg.isWaitingList
-        ? `en la *lista de espera* (puesto ${reg.position})`
-        : `en la *lista principal*`;
-      await this.wp.sendToGroup(`✅ Invitado *${guestName}* fue anotado ${spot} por *${ctx.user!.name}* 🏐\n${counts}${this.games.buildGameLink(ctx.activeGame.id)}`);
-    } catch (e: unknown) {
-      this.logError('Error al invitar', e);
-      await this.wp.sendToGroup(`❌ No se pudo registrar al invitado. Intenta de nuevo.`);
+    const guestNames = rawNames.split(',').map((n) => n.trim()).filter(Boolean);
+    const msgs: string[] = [];
+
+    for (const guestName of guestNames) {
+      try {
+        const reg = await this.games.registerGuest(ctx.activeGame.id, guestName, ctx.user!.id, { silent: true });
+        const spot = reg.isWaitingList
+          ? `en la *lista de espera* (puesto ${reg.position})`
+          : `en la *lista principal*`;
+        msgs.push(`✅ Invitado *${guestName}* fue anotado ${spot} por *${ctx.user!.name}* 🏐`);
+      } catch (e: unknown) {
+        this.logError(`Error al invitar a ${guestName}`, e);
+        msgs.push(`❌ No se pudo anotar a *${guestName}*. Intenta de nuevo.`);
+      }
     }
+
+    const updated = await this.games.findOne(ctx.activeGame.id);
+    const counts = this.games.buildCounts(updated);
+    msgs.push(counts + this.games.buildGameLink(ctx.activeGame.id));
+    await this.wp.sendToGroup(msgs.join('\n'));
   }
 
   private async handleUnregister(ctx: CommandContext): Promise<void> {
@@ -456,6 +518,8 @@ export class MessageHandlerService {
       : otherMentions.slice(1);
 
     const hasTargetMention = allowedMentions.length > 0;
+    const inlineGuests = extractInlineGuests(ctx.text);
+    const hasInlineGuests = inlineGuests.length > 0;
 
     let senderRegistered = false;
     let senderAlreadyRegistered = false;
@@ -472,7 +536,7 @@ export class MessageHandlerService {
         const retry = await this.games.retryFromWaitingList(ctx.activeGame.id, ctx.user!.id);
         if (retry.game) {
           senderRegistered = true;
-          if (!retry.promoted && !hasTargetMention) {
+          if (!retry.promoted && !hasTargetMention && !hasInlineGuests) {
             const counts = this.games.buildCounts(retry.game);
             await this.wp.sendToGroup(`⚠️ *${ctx.user!.name}*, no hay cupos disponibles en este momento. Si se libera un cupo serás promovido automáticamente.\n${counts}${this.games.buildGameLink(ctx.activeGame.id)}`);
             return;
@@ -495,7 +559,8 @@ export class MessageHandlerService {
       }
     }
 
-    if (!hasTargetMention) {
+    // Solo el emisor, sin invitados → mensaje simple y salir.
+    if (!hasTargetMention && !hasInlineGuests) {
       if (senderAlreadyRegistered) {
         await this.wp.sendToGroup(`ℹ️ ${ctx.user!.name}, ya estás anotado en esta lista.`);
       } else {
@@ -510,9 +575,11 @@ export class MessageHandlerService {
       return;
     }
 
+    // Hay menciones de miembros o invitados externos → acumular mensajes.
     const msgs: string[] = [];
     if (senderRegistered) msgs.push(`✅ *${ctx.user!.name}* se anotó en la lista.`);
 
+    // ── Miembros mencionados con @mention ────────────────────────────────────
     for (const mentionJid of allowedMentions) {
       const mPhone = extractPhoneFromJid(mentionJid);
       const targetUser = await this.users.findByPhone(mPhone);
@@ -548,6 +615,27 @@ export class MessageHandlerService {
 
     if (rejectedMentions.length > 0) {
       msgs.push(`⚠️ Solo puedes anotar a una persona adicional. ${rejectedMentions.length === 1 ? 'Una mención fue ignorada' : `${rejectedMentions.length} menciones fueron ignoradas`}.`);
+    }
+
+    // ── Invitados externos en línea ("+ Nombre" / "invitar Nombre") ──────────
+    if (hasInlineGuests) {
+      const canInvite = senderRegistered || senderAlreadyRegistered;
+      if (!canInvite) {
+        msgs.push(`⚠️ ${ctx.user!.name}, debes estar anotado en la lista para poder traer invitados.`);
+      } else {
+        for (const guestName of inlineGuests) {
+          try {
+            const reg = await this.games.registerGuest(ctx.activeGame.id, guestName, ctx.user!.id, { silent: true });
+            const spot = reg.isWaitingList
+              ? `en la *lista de espera* (puesto ${reg.position})`
+              : `en la *lista principal*`;
+            msgs.push(`✅ Invitado *${guestName}* fue anotado ${spot} por *${ctx.user!.name}* 🏐`);
+          } catch (e: unknown) {
+            this.logError(`Error al invitar inline a ${guestName}`, e);
+            msgs.push(`❌ No se pudo anotar al invitado *${guestName}*. Intenta de nuevo.`);
+          }
+        }
+      }
     }
 
     const updated = await this.games.findOne(ctx.activeGame.id);
