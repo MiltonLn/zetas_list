@@ -410,13 +410,20 @@ describe('MessageHandlerService — handleMessage', () => {
       expect(mockGames.removeRegistration).toHaveBeenCalled();
     });
 
-    it('funciona también con el sinónimo "salir"', async () => {
+    it.each([
+      ['@Z salir'],
+      ['@Z borrame'],
+      ['@Z borrarme'],
+      ['@Z retirame'],
+      ['@Z retirarme'],
+      ['@Z no puedo'],
+    ])('alias "%s" también desanota', async (cmd) => {
       mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.removeRegistration.mockResolvedValue({});
       mockGames.findOne.mockResolvedValue(makeActiveGame());
 
-      await service.handleMessage('111', '@Z salir', 'group-1');
+      await service.handleMessage('111', cmd, 'group-1');
       expect(mockGames.removeRegistration).toHaveBeenCalled();
     });
 
@@ -490,6 +497,23 @@ describe('MessageHandlerService — handleMessage', () => {
       mockGames.findOne.mockResolvedValue(game);
 
       await service.handleMessage('111', '@Z invitar Carlos', 'group-1');
+      expect(mockGames.registerGuest).toHaveBeenCalledWith('game-1', 'Carlos', 'user-1', { silent: true });
+    });
+
+    it.each([
+      ['@Z invita Carlos'],
+      ['@Z trae Carlos'],
+      ['@Z traer Carlos'],
+    ])('alias "%s" también activa CMD_INVITE', async (cmd) => {
+      const game = makeActiveGame([
+        { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
+      ]);
+      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 2 });
+      mockGames.findOne.mockResolvedValue(game);
+
+      await service.handleMessage('111', cmd, 'group-1');
       expect(mockGames.registerGuest).toHaveBeenCalledWith('game-1', 'Carlos', 'user-1', { silent: true });
     });
   });
@@ -806,12 +830,17 @@ describe('MessageHandlerService — handleMessage', () => {
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('confirmación pendiente'));
     });
 
-    it('sinónimo "confirmo" también funciona', async () => {
+    it.each([
+      ['@Z confirmo'],
+      ['@Z confirma'],
+      ['@Z listo'],
+      ['@Z acepto'],
+    ])('alias "%s" también confirma', async (cmd) => {
       mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
-      mockGames.confirmRegistration.mockResolvedValue(makeActiveGame());
+      mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: true, confirmedGuests: [] });
 
-      await service.handleMessage('111', '@Z confirmo', 'group-1');
+      await service.handleMessage('111', cmd, 'group-1');
       expect(mockGames.confirmRegistration).toHaveBeenCalled();
     });
 
@@ -1005,12 +1034,23 @@ describe('MessageHandlerService — handleMessage', () => {
   // ─── ayuda ─────────────────────────────────────────────────────────────────
 
   describe('comando ayuda', () => {
-    it('muestra el texto de ayuda con todos los comandos', async () => {
+    it('muestra el texto de ayuda con todos los comandos principales', async () => {
       await service.handleMessage('111', '@Z ayuda', 'group-1');
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Comandos del Bot Zetas'));
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('anótame'));
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('sacar'));
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('confirmar'));
+    });
+
+    it('menciona la sintaxis de invitados inline', async () => {
+      await service.handleMessage('111', '@Z ayuda', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('+ Nombre'));
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('invitar'));
+    });
+
+    it('indica que existe el comando alias', async () => {
+      await service.handleMessage('111', '@Z ayuda', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('alias'));
     });
 
     it('no requiere juego activo', async () => {
@@ -1023,11 +1063,29 @@ describe('MessageHandlerService — handleMessage', () => {
   // ─── alias ────────────────────────────────────────────────────────────────
 
   describe('comando alias', () => {
-    it('muestra todos los alias disponibles', async () => {
+    it('muestra todos los alias disponibles incluyendo los nuevos', async () => {
       await service.handleMessage('111', '@Z alias', 'group-1');
-      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Alias del Bot Zetas'));
-      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('anotarme'));
-      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('borrarme'));
+      const msg = mockWp.sendToGroup.mock.calls[0][0] as string;
+      expect(msg).toContain('Alias del Bot Zetas');
+      // Registro
+      expect(msg).toContain('anotarme');
+      expect(msg).toContain('meterme');
+      expect(msg).toContain('inscribirme');
+      // Salir (el texto muestra formas con tilde para legibilidad)
+      expect(msg).toContain('bórrame');
+      expect(msg).toContain('borrarme');
+      expect(msg).toContain('retírame');
+      expect(msg).toContain('no puedo');
+      // Invitados
+      expect(msg).toContain('invita');
+      expect(msg).toContain('trae');
+      // Listas / finanzas
+      expect(msg).toContain('cómo vamos');
+      expect(msg).toContain('caja');
+      expect(msg).toContain('lucas');
+      expect(msg).toContain('multas');
+      // Ejemplo inline
+      expect(msg).toContain('+ Carlos');
     });
 
     it('también funciona con "variantes" y "sinónimos" (con tilde)', async () => {
