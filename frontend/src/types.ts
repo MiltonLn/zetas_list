@@ -2,6 +2,8 @@ export type Role = 'admin' | 'member';
 export type UserStatus = 'active' | 'inactive' | 'banned';
 export type Position = 'auxiliar' | 'libero' | 'armador' | 'central' | 'opuesto';
 export type Gender = 'masculino' | 'femenino' | 'otro';
+export type ShirtSize = 'XS' | 'S' | 'M' | 'L' | 'XL' | 'XXL';
+export type OrderStatus = 'pending' | 'deposit_paid' | 'paid' | 'delivered' | 'cancelled';
 export type Modalidad = 'seis_x_seis' | 'cuatro_x_cuatro';
 export type GameStatus =
   | 'scheduled'
@@ -22,6 +24,8 @@ export interface User {
   birthDate?: string;
   photoUrl?: string;
   bio?: string;
+  shirtSize?: ShirtSize;
+  shirtNumber?: number;
   status: UserStatus;
   banReason?: string;
   createdAt: string;
@@ -129,6 +133,77 @@ export const GENDER_LABELS: Record<Gender, string> = {
   otro: 'Otro',
 };
 
+export const SHIRT_SIZES: ShirtSize[] = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+
+export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+  pending: 'Pendiente',
+  deposit_paid: 'Abono recibido',
+  paid: 'Pagado',
+  delivered: 'Entregado',
+  cancelled: 'Cancelado',
+};
+
+export const ORDER_STATUS_COLORS: Record<OrderStatus, string> = {
+  pending: '#f59f00',
+  deposit_paid: '#a78bfa',
+  paid: '#6e8efb',
+  delivered: '#2da44e',
+  cancelled: '#e03131',
+};
+
+// ─── Shirt catalog & orders ───────────────────────────────────────────────────
+
+export interface CatalogVariant {
+  id: string;
+  name: string;
+  imageUrl: string;
+  price?: number;
+}
+
+export interface CatalogProduct {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  requiresNumber: boolean;
+  allowsCustomName: boolean;
+  sizes: ShirtSize[];
+  variants: CatalogVariant[];
+}
+
+export interface OrderItem {
+  id: string;
+  orderId: string;
+  productId: string;
+  productName: string;
+  variantId: string;
+  variantName: string;
+  size?: ShirtSize | null;
+  quantity: number;
+  customName?: string | null;
+  customNumber?: number | null;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+export interface Order {
+  id: string;
+  userId: string;
+  status: OrderStatus;
+  totalAmount: number;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: OrderItem[];
+  user?: {
+    id: string;
+    name: string;
+    username: string;
+    phone: string;
+    gender?: Gender | null;
+  };
+}
+
 export const USER_STATUS_LABELS: Record<UserStatus, string> = {
   active: 'Activo',
   inactive: 'Inactivo',
@@ -211,4 +286,6 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   user_created: 'Usuario creado',
   user_updated: 'Usuario actualizado',
   user_status_changed: 'Estado de usuario cambiado',
+  order_created: 'Pedido creado',
+  order_status_changed: 'Estado de pedido cambiado',
 };

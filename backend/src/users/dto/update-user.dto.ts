@@ -9,7 +9,7 @@ import {
   IsUrl,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Position, Gender } from '@prisma/client';
+import { Position, Gender, ShirtSize } from '@prisma/client';
 
 export class UpdateUserDto {
   @ApiPropertyOptional({ example: 'Juan Pérez' })
@@ -48,4 +48,16 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   bio?: string;
+
+  @ApiPropertyOptional({ enum: ShirtSize })
+  @IsOptional()
+  @IsEnum(ShirtSize)
+  shirtSize?: ShirtSize;
+
+  @ApiPropertyOptional({ example: 7 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(99)
+  shirtNumber?: number;
 }

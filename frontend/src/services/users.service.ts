@@ -1,5 +1,5 @@
 import { api } from './api';
-import type { User, Role, Position, Gender, UserStatus } from '../types';
+import type { User, Role, Position, Gender, UserStatus, ShirtSize } from '../types';
 
 export interface CreateUserPayload {
   username?: string;
@@ -22,6 +22,8 @@ export interface UpdateUserPayload {
   birthDate?: string;
   photoUrl?: string;
   bio?: string;
+  shirtSize?: ShirtSize;
+  shirtNumber?: number;
 }
 
 export const usersService = {

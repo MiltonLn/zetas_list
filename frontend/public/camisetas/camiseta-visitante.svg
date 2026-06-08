@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320">
+  <rect width="320" height="320" fill="#1a1c2e"/>
+  <path d="M110 70 L80 95 L100 120 L120 105 L120 250 L200 250 L200 105 L220 120 L240 95 L210 70 L185 70 Q160 95 135 70 Z"
+        fill="#e8eaf6" stroke="#7c8db5" stroke-width="3" stroke-linejoin="round"/>
+  <text x="160" y="180" text-anchor="middle" fill="#1a1c2e" font-family="Arial, sans-serif" font-size="40" font-weight="700">7</text>
+  <text x="160" y="295" text-anchor="middle" fill="#7c8db5" font-family="Arial, sans-serif" font-size="16">Camiseta Visitante</text>
+</svg>

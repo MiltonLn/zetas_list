@@ -12,6 +12,7 @@ import { AuditService } from '../audit/audit.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
+import { assertShirtNumberAvailable } from './shirt-number.util';
 
 const USER_PUBLIC_SELECT = {
   id: true,
@@ -25,6 +26,8 @@ const USER_PUBLIC_SELECT = {
   birthDate: true,
   photoUrl: true,
   bio: true,
+  shirtSize: true,
+  shirtNumber: true,
   status: true,
   banReason: true,
   createdAt: true,
@@ -140,10 +143,18 @@ export class UsersService {
     actorId: string,
     actorRole: Role,
   ) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
 
     if (actorRole !== Role.admin && actorId !== id) {
       throw new ForbiddenException('Solo puedes editar tu propio perfil');
+    }
+
+    if (typeof dto.shirtNumber === 'number') {
+      await assertShirtNumberAvailable(this.prisma, {
+        number: dto.shirtNumber,
+        gender: dto.gender ?? existing.gender,
+        excludeUserId: id,
+      });
     }
 
     const updated = await this.prisma.user.update({
@@ -156,6 +167,8 @@ export class UsersService {
         birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
         photoUrl: dto.photoUrl,
         bio: dto.bio,
+        shirtSize: dto.shirtSize,
+        shirtNumber: dto.shirtNumber,
       },
       select: USER_PUBLIC_SELECT,
     });

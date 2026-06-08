@@ -93,6 +93,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 label="Gestionar Finanzas"
                 onClose={onClose}
               />
+              <NavItem
+                to="/admin/camisetas"
+                icon={<IconShirt />}
+                label="Pedidos Camisetas"
+                onClose={onClose}
+              />
             </>
           )}
         </nav>
@@ -189,6 +195,14 @@ function IconFinances() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="1" x2="12" y2="23" />
       <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </svg>
+  );
+}
+
+function IconShirt() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 6l4-3 4 2 4-2 4 3-3 3-1-1v11H8V8L7 9z" />
     </svg>
   );
 }
