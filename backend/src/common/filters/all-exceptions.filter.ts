@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import * as Sentry from '@sentry/nestjs';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -37,8 +38,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     if (status >= 500) {
-      // Unexpected failure: log full stack with request context for diagnosis.
-      // TODO: forward to Sentry once @sentry/node is wired into the backend.
+      // Unexpected failure: log full stack and forward to Sentry.
+      Sentry.captureException(exception);
       this.logger.error(
         `${request.method} ${request.url} -> ${status}`,
         exception instanceof Error ? exception.stack : String(exception),
