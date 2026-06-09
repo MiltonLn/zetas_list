@@ -21,9 +21,15 @@ function hashColor(name: string): string {
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function resolvePhotoUrl(url: string): string {
+  // Already an absolute URL (e.g. future CDN/GCS migration).
   if (url.startsWith('http')) return url;
+  // Relative paths (/uploads/...) need the backend origin prepended.
+  // In Docker dev, VITE_API_URL=http://localhost:3000/api so base becomes
+  // http://localhost:3000 and the browser hits the backend directly (port
+  // is mapped). In prod, VITE_API_URL points to the same domain that serves
+  // the SPA, so the absolute URL is also correct.
   const base = BASE_URL.replace(/\/api\/?$/, '');
-  return `${base}${url}`;
+  return base ? `${base}${url}` : url;
 }
 
 export function Avatar({ name, photoUrl, size = 32 }: { name: string; photoUrl?: string | null; size?: number }) {

@@ -17,6 +17,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@sentry/react": "^8.55.0",
     "axios": "^1.9.0",
+    "heic-to": "^1.5.2",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-easy-crop": "^5.5.7",

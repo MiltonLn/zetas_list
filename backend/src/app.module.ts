@@ -3,6 +3,7 @@ import {
   MiddlewareConsumer,
   NestModule,
 } from '@nestjs/common';
+import { SentryModule } from '@sentry/nestjs/setup';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
@@ -26,6 +27,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 @Module({
   imports: [
+    SentryModule.forRoot(),
     ConfigModule.forRoot({ isGlobal: true }),
     LoggerModule.forRoot(buildLoggerConfig()),
     ScheduleModule.forRoot(),
@@ -34,7 +36,10 @@ const isProduction = process.env.NODE_ENV === 'production';
       ? [
           ServeStaticModule.forRoot({
             rootPath: join(__dirname, '..', '..', 'public'),
-            exclude: ['/api*'],
+            // Let the API and the dedicated /uploads static handler (see
+            // main.ts useStaticAssets) own those paths; otherwise the SPA
+            // fallback would serve index.html for avatar image requests.
+            exclude: ['/api*', '/uploads*'],
           }),
         ]
       : []),

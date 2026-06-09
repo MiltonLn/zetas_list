@@ -44,28 +44,43 @@ function makeUser(overrides: Partial<any> = {}) {
 }
 
 describe('MessageHandlerService — regex', () => {
-  // Tests the regex patterns in isolation (they are module-level constants)
-  // We import the patterns indirectly by testing handleMessage behavior
+  // The service strips accents before matching, so all regexes use plain ASCII.
+  // Tests that use accented input call norm() to simulate what dispatch() does.
+  function norm(s: string): string {
+    return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  }
 
-  const CMD_REGISTER = /^@z\s+(an[oó]tame|m[eé]teme|ap[uú]ntame|juego|voy|entro|anotar|an[oó]ta|apuntar|ap[uú]nta)\b/i;
-  const CMD_UNREGISTER = /^@z\s+(salirme|s[aá]came|qu[ií]tame|no\s+voy|no\s+juego|salgo|salir)\b/i;
-  const CMD_LIST = /^@z\s+(lista|cupos|qui[eé]nes?\s+van|cu[aá]ntos)\b/i;
+  const CMD_REGISTER = /^@z\s+(anotame|anotarme|meteme|meterme|apuntame|apuntarme|inscribeme|inscribirme|juego|voy|entro|anotar|anota|apuntar|apunta)\b/i;
+  const CMD_UNREGISTER = /^@z\s+(salirme|sacame|sacarme|quitame|quitarme|borrame|borrarme|retirame|retirarme|no\s+voy|no\s+juego|no\s+puedo|salgo|salir)\b/i;
+  const CMD_LIST = /^@z\s+(lista|cupos|quienes?\s+van|cuantos|como\s+vamos)\b/i;
   const CMD_FINISH = /^@z\s+(terminar|cerrar|finalizar|completar)\b/i;
+  const CMD_ALIASES = /^@z\s+(alias|variantes|sinonimos|alternativas)\b/i;
 
   describe('CMD_REGISTER', () => {
     it.each([
       ['@Z anotame'],
       ['@z anotame'],
-      ['@Z anótame'],
+      ['@Z anotarme'],
       ['@Z meteme'],
-      ['@Z méteme'],
+      ['@Z meterme'],
       ['@Z apuntame'],
-      ['@Z apúntame'],
+      ['@Z apuntarme'],
+      ['@Z inscribeme'],
+      ['@Z inscribirme'],
       ['@Z juego'],
       ['@Z voy'],
       ['@Z entro'],
-    ])('reconoce "%s"', (cmd) => {
+    ])('reconoce "%s" (plain)', (cmd) => {
       expect(CMD_REGISTER.test(cmd)).toBe(true);
+    });
+
+    it.each([
+      ['@Z anótame'],
+      ['@Z méteme'],
+      ['@Z apúntame'],
+      ['@Z inscríbeme'],
+    ])('reconoce "%s" vía normalización', (cmd) => {
+      expect(CMD_REGISTER.test(norm(cmd))).toBe(true);
     });
 
     it.each([
@@ -83,16 +98,30 @@ describe('MessageHandlerService — regex', () => {
       ['@Z salirme'],
       ['@z salirme'],
       ['@Z sacame'],
-      ['@Z sácame'],
+      ['@Z sacarme'],
       ['@Z quitame'],
-      ['@Z quítame'],
+      ['@Z quitarme'],
+      ['@Z borrame'],
+      ['@Z borrarme'],
+      ['@Z retirame'],
+      ['@Z retirarme'],
       ['@Z no voy'],
       ['@Z no juego'],
+      ['@Z no puedo'],
       ['@Z salgo'],
       ['@Z salir'],
       ['@z salir'],
-    ])('reconoce "%s"', (cmd) => {
+    ])('reconoce "%s" (plain)', (cmd) => {
       expect(CMD_UNREGISTER.test(cmd)).toBe(true);
+    });
+
+    it.each([
+      ['@Z sácame'],
+      ['@Z quítame'],
+      ['@Z bórrame'],
+      ['@Z retírame'],
+    ])('reconoce "%s" vía normalización', (cmd) => {
+      expect(CMD_UNREGISTER.test(norm(cmd))).toBe(true);
     });
 
     it('NO reconoce texto sin @Z', () => {
@@ -105,11 +134,23 @@ describe('MessageHandlerService — regex', () => {
       ['@Z lista'],
       ['@Z cupos'],
       ['@Z quienes van'],
-      ['@Z quiénes van'],
       ['@Z cuantos'],
-      ['@Z cuántos'],
-    ])('reconoce "%s"', (cmd) => {
+      ['@Z como vamos'],
+    ])('reconoce "%s" (plain)', (cmd) => {
       expect(CMD_LIST.test(cmd)).toBe(true);
+    });
+
+    it.each([
+      ['@Z quiénes van'],
+      ['@Z cuántos'],
+      ['@Z cómo vamos'],
+    ])('reconoce "%s" vía normalización', (cmd) => {
+      expect(CMD_LIST.test(norm(cmd))).toBe(true);
+    });
+
+    it('lista NO activa CMD_CONFIRM (era un bug previo)', () => {
+      const CMD_CONFIRM = /^@z\s+(confirmar|confirmo|confirma|listo|acepto)\b/i;
+      expect(CMD_CONFIRM.test('@z lista')).toBe(false);
     });
   });
 
@@ -143,6 +184,21 @@ describe('MessageHandlerService — regex', () => {
 
     it('NO reconoce sin @Z', () => {
       expect(CMD_PROMOTE.test('promover')).toBe(false);
+    });
+  });
+
+  describe('CMD_ALIASES', () => {
+    it.each([
+      ['@Z alias'],
+      ['@Z variantes'],
+      ['@Z sinonimos'],
+      ['@Z alternativas'],
+    ])('reconoce "%s" (plain)', (cmd) => {
+      expect(CMD_ALIASES.test(cmd)).toBe(true);
+    });
+
+    it('reconoce "@Z sinónimos" vía normalización', () => {
+      expect(CMD_ALIASES.test(norm('@Z sinónimos'))).toBe(true);
     });
   });
 });
@@ -354,13 +410,20 @@ describe('MessageHandlerService — handleMessage', () => {
       expect(mockGames.removeRegistration).toHaveBeenCalled();
     });
 
-    it('funciona también con el sinónimo "salir"', async () => {
+    it.each([
+      ['@Z salir'],
+      ['@Z borrame'],
+      ['@Z borrarme'],
+      ['@Z retirame'],
+      ['@Z retirarme'],
+      ['@Z no puedo'],
+    ])('alias "%s" también desanota', async (cmd) => {
       mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.removeRegistration.mockResolvedValue({});
       mockGames.findOne.mockResolvedValue(makeActiveGame());
 
-      await service.handleMessage('111', '@Z salir', 'group-1');
+      await service.handleMessage('111', cmd, 'group-1');
       expect(mockGames.removeRegistration).toHaveBeenCalled();
     });
 
@@ -434,6 +497,23 @@ describe('MessageHandlerService — handleMessage', () => {
       mockGames.findOne.mockResolvedValue(game);
 
       await service.handleMessage('111', '@Z invitar Carlos', 'group-1');
+      expect(mockGames.registerGuest).toHaveBeenCalledWith('game-1', 'Carlos', 'user-1', { silent: true });
+    });
+
+    it.each([
+      ['@Z invita Carlos'],
+      ['@Z trae Carlos'],
+      ['@Z traer Carlos'],
+    ])('alias "%s" también activa CMD_INVITE', async (cmd) => {
+      const game = makeActiveGame([
+        { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
+      ]);
+      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 2 });
+      mockGames.findOne.mockResolvedValue(game);
+
+      await service.handleMessage('111', cmd, 'group-1');
       expect(mockGames.registerGuest).toHaveBeenCalledWith('game-1', 'Carlos', 'user-1', { silent: true });
     });
   });
@@ -750,12 +830,17 @@ describe('MessageHandlerService — handleMessage', () => {
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('confirmación pendiente'));
     });
 
-    it('sinónimo "confirmo" también funciona', async () => {
+    it.each([
+      ['@Z confirmo'],
+      ['@Z confirma'],
+      ['@Z listo'],
+      ['@Z acepto'],
+    ])('alias "%s" también confirma', async (cmd) => {
       mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
-      mockGames.confirmRegistration.mockResolvedValue(makeActiveGame());
+      mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: true, confirmedGuests: [] });
 
-      await service.handleMessage('111', '@Z confirmo', 'group-1');
+      await service.handleMessage('111', cmd, 'group-1');
       expect(mockGames.confirmRegistration).toHaveBeenCalled();
     });
 
@@ -804,10 +889,152 @@ describe('MessageHandlerService — handleMessage', () => {
     });
   });
 
+  // ─── invitar múltiples (opción B) ─────────────────────────────────────────
+
+  describe('invitar múltiples invitados separados por coma', () => {
+    function makeGameWithSender() {
+      return makeActiveGame([
+        { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
+      ]);
+    }
+
+    it('registra dos invitados externos en un solo comando', async () => {
+      const game = makeGameWithSender();
+      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 2 });
+      mockGames.findOne.mockResolvedValue(game);
+
+      await service.handleMessage('111', '@Z invitar Carlos, María', 'group-1');
+
+      expect(mockGames.registerGuest).toHaveBeenCalledTimes(2);
+      expect(mockGames.registerGuest).toHaveBeenCalledWith('game-1', 'Carlos', 'user-1', { silent: true });
+      expect(mockGames.registerGuest).toHaveBeenCalledWith('game-1', 'María', 'user-1', { silent: true });
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Carlos'));
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('María'));
+    });
+
+    it('informa individualmente si uno de los invitados falla', async () => {
+      const game = makeGameWithSender();
+      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.registerGuest
+        .mockResolvedValueOnce({ isWaitingList: false, position: 2 })
+        .mockRejectedValueOnce(new Error('fallo'));
+      mockGames.findOne.mockResolvedValue(game);
+
+      await service.handleMessage('111', '@Z invitar Carlos, Pedro', 'group-1');
+
+      expect(mockGames.registerGuest).toHaveBeenCalledTimes(2);
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Carlos'));
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Pedro'));
+    });
+
+    it('un solo nombre sin coma sigue funcionando', async () => {
+      const game = makeGameWithSender();
+      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 2 });
+      mockGames.findOne.mockResolvedValue(game);
+
+      await service.handleMessage('111', '@Z invitar Juan Pérez', 'group-1');
+
+      expect(mockGames.registerGuest).toHaveBeenCalledTimes(1);
+      expect(mockGames.registerGuest).toHaveBeenCalledWith('game-1', 'Juan Pérez', 'user-1', { silent: true });
+    });
+  });
+
+  // ─── anotame + invitados inline (opción C) ────────────────────────────────
+
+  describe('anotame con invitados externos inline', () => {
+    it('@Z anotame + Carlos, María registra al emisor y a ambos invitados', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.retryFromWaitingList.mockResolvedValue({ promoted: false, game: null });
+      mockGames.register.mockResolvedValue({ isWaitingList: false, position: 1 });
+      mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 2 });
+      mockGames.findOne.mockResolvedValue(makeActiveGame());
+
+      await service.handleMessage('111', '@Z anotame + Carlos, María', 'group-1');
+
+      expect(mockGames.register).toHaveBeenCalledWith('game-1', 'user-1', 'user-1', { silent: true });
+      expect(mockGames.registerGuest).toHaveBeenCalledTimes(2);
+      expect(mockGames.registerGuest).toHaveBeenCalledWith('game-1', 'Carlos', 'user-1', { silent: true });
+      expect(mockGames.registerGuest).toHaveBeenCalledWith('game-1', 'María', 'user-1', { silent: true });
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Test User'));
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Carlos'));
+    });
+
+    it('@Z anotame invitar Carlos, María funciona igual que con +', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.retryFromWaitingList.mockResolvedValue({ promoted: false, game: null });
+      mockGames.register.mockResolvedValue({ isWaitingList: false, position: 1 });
+      mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 2 });
+      mockGames.findOne.mockResolvedValue(makeActiveGame());
+
+      await service.handleMessage('111', '@Z anotame invitar Carlos, María', 'group-1');
+
+      expect(mockGames.register).toHaveBeenCalledWith('game-1', 'user-1', 'user-1', { silent: true });
+      expect(mockGames.registerGuest).toHaveBeenCalledTimes(2);
+    });
+
+    it('si el emisor ya estaba anotado, igual puede traer invitados', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(
+        makeActiveGame([{ user: { id: 'user-1' }, isWaitingList: false, confirmationDeclined: false }]),
+      );
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 3 });
+      mockGames.findOne.mockResolvedValue(makeActiveGame());
+
+      await service.handleMessage('111', '@Z anotame + Pepito', 'group-1');
+
+      expect(mockGames.register).not.toHaveBeenCalled();
+      expect(mockGames.registerGuest).toHaveBeenCalledWith('game-1', 'Pepito', 'user-1', { silent: true });
+    });
+
+    it('nombres con tilde se preservan en el registro del invitado', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.retryFromWaitingList.mockResolvedValue({ promoted: false, game: null });
+      mockGames.register.mockResolvedValue({ isWaitingList: false, position: 1 });
+      mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 2 });
+      mockGames.findOne.mockResolvedValue(makeActiveGame());
+
+      await service.handleMessage('111', '@Z anótame + José, Ángela', 'group-1');
+
+      expect(mockGames.registerGuest).toHaveBeenCalledWith('game-1', 'José', 'user-1', { silent: true });
+      expect(mockGames.registerGuest).toHaveBeenCalledWith('game-1', 'Ángela', 'user-1', { silent: true });
+    });
+  });
+
+  // ─── tildes / normalización ───────────────────────────────────────────────
+
+  describe('normalización de tildes', () => {
+    it('@Z anótame (con tilde) activa el comando de registro', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.register.mockResolvedValue({ position: 1, isWaitingList: false });
+      mockGames.findOne.mockResolvedValue(makeActiveGame());
+
+      await service.handleMessage('111', '@Z anótame', 'group-1');
+      expect(mockGames.register).toHaveBeenCalled();
+    });
+
+    it('@Z sácame (con tilde) activa el comando de salirse', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser());
+      mockGames.removeRegistration.mockResolvedValue({});
+
+      await service.handleMessage('111', '@Z sácame', 'group-1');
+      expect(mockGames.removeRegistration).toHaveBeenCalled();
+    });
+  });
+
   // ─── ayuda ─────────────────────────────────────────────────────────────────
 
   describe('comando ayuda', () => {
-    it('muestra el texto de ayuda con todos los comandos', async () => {
+    it('muestra el texto de ayuda con todos los comandos principales', async () => {
       await service.handleMessage('111', '@Z ayuda', 'group-1');
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Comandos del Bot Zetas'));
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('anótame'));
@@ -815,10 +1042,61 @@ describe('MessageHandlerService — handleMessage', () => {
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('confirmar'));
     });
 
+    it('menciona la sintaxis de invitados inline', async () => {
+      await service.handleMessage('111', '@Z ayuda', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('+ Nombre'));
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('invitar'));
+    });
+
+    it('indica que existe el comando alias', async () => {
+      await service.handleMessage('111', '@Z ayuda', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('alias'));
+    });
+
     it('no requiere juego activo', async () => {
       mockPrisma.game.findFirst.mockResolvedValue(null);
       await service.handleMessage('111', '@Z help', 'group-1');
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Comandos'));
+    });
+  });
+
+  // ─── alias ────────────────────────────────────────────────────────────────
+
+  describe('comando alias', () => {
+    it('muestra todos los alias disponibles incluyendo los nuevos', async () => {
+      await service.handleMessage('111', '@Z alias', 'group-1');
+      const msg = mockWp.sendToGroup.mock.calls[0][0] as string;
+      expect(msg).toContain('Alias del Bot Zetas');
+      // Registro
+      expect(msg).toContain('anotarme');
+      expect(msg).toContain('meterme');
+      expect(msg).toContain('inscribirme');
+      // Salir (el texto muestra formas con tilde para legibilidad)
+      expect(msg).toContain('bórrame');
+      expect(msg).toContain('borrarme');
+      expect(msg).toContain('retírame');
+      expect(msg).toContain('no puedo');
+      // Invitados
+      expect(msg).toContain('invita');
+      expect(msg).toContain('trae');
+      // Listas / finanzas
+      expect(msg).toContain('cómo vamos');
+      expect(msg).toContain('caja');
+      expect(msg).toContain('lucas');
+      expect(msg).toContain('multas');
+      // Ejemplo inline
+      expect(msg).toContain('+ Carlos');
+    });
+
+    it('también funciona con "variantes" y "sinónimos" (con tilde)', async () => {
+      await service.handleMessage('111', '@Z variantes', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Alias del Bot Zetas'));
+    });
+
+    it('no requiere juego activo', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(null);
+      await service.handleMessage('111', '@Z alternativas', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Alias del Bot'));
     });
   });
 

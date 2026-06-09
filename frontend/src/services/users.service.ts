@@ -51,8 +51,8 @@ export const usersService = {
   uploadPhoto: (id: string, file: File) => {
     const form = new FormData();
     form.append('file', file);
-    return api.post<User>(`/users/${id}/photo`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    // Do NOT set Content-Type manually — the browser must set it so it
+    // includes the multipart boundary; without it multer can't parse the body.
+    return api.post<User>(`/users/${id}/photo`, form);
   },
 };

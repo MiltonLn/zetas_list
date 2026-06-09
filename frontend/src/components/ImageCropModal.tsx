@@ -37,6 +37,7 @@ export function ImageCropModal({ imageSrc, onCrop, onCancel }: ImageCropModalPro
   const [zoom, setZoom] = useState(1);
   const [croppedArea, setCroppedArea] = useState<Area | null>(null);
   const [saving, setSaving] = useState(false);
+  const [ready, setReady] = useState(false);
 
   const onCropComplete = useCallback((_: Area, pixels: Area) => {
     setCroppedArea(pixels);
@@ -72,7 +73,19 @@ export function ImageCropModal({ imageSrc, onCrop, onCancel }: ImageCropModalPro
           onCropChange={setCrop}
           onZoomChange={setZoom}
           onCropComplete={onCropComplete}
+          onMediaLoaded={() => setReady(true)}
         />
+        {!ready && (
+          <div
+            style={{
+              position: 'absolute', inset: 0, display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              color: '#7c8db5', fontSize: 14, pointerEvents: 'none',
+            }}
+          >
+            Cargando imagen...
+          </div>
+        )}
       </div>
 
       <div style={{ padding: '12px 24px', background: '#1a1d38' }}>
@@ -100,11 +113,11 @@ export function ImageCropModal({ imageSrc, onCrop, onCancel }: ImageCropModalPro
         </button>
         <button
           onClick={handleConfirm}
-          disabled={saving}
+          disabled={saving || !ready || !croppedArea}
           className="btn btn-primary"
           style={{ flex: 1, padding: '12px 0', borderRadius: 10, fontSize: 14 }}
         >
-          {saving ? 'Guardando...' : 'Guardar foto'}
+          {!ready ? 'Cargando...' : saving ? 'Guardando...' : 'Guardar foto'}
         </button>
       </div>
     </div>

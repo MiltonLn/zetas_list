@@ -11,6 +11,11 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
+      // Avatar images are served by the backend at /uploads (outside /api).
+      '/uploads': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
   build: {

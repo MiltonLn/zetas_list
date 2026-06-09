@@ -1,3 +1,5 @@
+// Sentry must be initialized before any other import.
+import './instrument';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
@@ -29,7 +31,7 @@ async function bootstrap() {
 
   app.use(cookieParser());
 
-  app.useStaticAssets(join(__dirname, '..', '..', 'uploads'), {
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads/',
   });
 
