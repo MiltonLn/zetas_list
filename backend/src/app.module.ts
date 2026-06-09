@@ -3,6 +3,7 @@ import {
   MiddlewareConsumer,
   NestModule,
 } from '@nestjs/common';
+import { SentryModule } from '@sentry/nestjs/setup';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
@@ -25,6 +26,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 @Module({
   imports: [
+    SentryModule.forRoot(),
     ConfigModule.forRoot({ isGlobal: true }),
     LoggerModule.forRoot(buildLoggerConfig()),
     ScheduleModule.forRoot(),
