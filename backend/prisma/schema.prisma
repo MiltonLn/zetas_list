@@ -33,6 +33,23 @@ enum Gender {
   otro
 }
 
+enum ShirtSize {
+  XS
+  S
+  M
+  L
+  XL
+  XXL
+}
+
+enum OrderStatus {
+  pending
+  deposit_paid
+  paid
+  delivered
+  cancelled
+}
+
 enum Modalidad {
   seis_x_seis
   cuatro_x_cuatro
@@ -69,6 +86,9 @@ enum AuditAction {
   confirmation_requested
   confirmation_received
   confirmation_expired
+  order_created
+  order_updated
+  order_status_changed
 }
 
 enum TransactionType {
@@ -95,6 +115,8 @@ model User {
   birthDate    DateTime?
   photoUrl     String?
   bio          String?
+  shirtSize    ShirtSize?
+  shirtNumber  Int?
   mustChangePassword Boolean @default(true)
   status       UserStatus @default(active)
   banReason    String?
@@ -109,6 +131,7 @@ model User {
   fines              Fine[]               @relation("FinedUser")
   createdFines       Fine[]               @relation("FineCreator")
   transactions       FinanceTransaction[] @relation("TransactionCreator")
+  orders             Order[]              @relation("OrderUser")
 
   @@map("users")
 }
@@ -240,4 +263,41 @@ model Fine {
   @@map("fines")
   @@index([userId, status])
   @@index([date])
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  userId      String
+  status      OrderStatus @default(pending)
+  totalAmount Int
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user  User        @relation("OrderUser", fields: [userId], references: [id])
+  items OrderItem[]
+
+  @@map("orders")
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+}
+
+model OrderItem {
+  id           String     @id @default(uuid())
+  orderId      String
+  productId    String
+  productName  String
+  variantId    String
+  variantName  String
+  size         ShirtSize?
+  quantity     Int
+  customName   String?
+  customNumber Int?
+  unitPrice    Int
+  lineTotal    Int
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
+  @@index([orderId])
 }

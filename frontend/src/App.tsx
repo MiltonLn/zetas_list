@@ -15,6 +15,8 @@ import RulesPage from './pages/RulesPage';
 import GuidePage from './pages/GuidePage';
 import { FinancesDashboardPage } from './pages/FinancesDashboardPage';
 import { AdminFinancesPage } from './pages/AdminFinancesPage';
+import CamisetasPage from './pages/CamisetasPage';
+import { AdminOrdersPage } from './pages/AdminOrdersPage';
 
 function AuthenticatedApp({ children }: { children: React.ReactNode }) {
   return (
@@ -108,6 +110,22 @@ export default function App() {
               <AuthenticatedApp>
                 <FinancesDashboardPage />
               </AuthenticatedApp>
+            }
+          />
+          <Route
+            path="/camisetas"
+            element={
+              <AuthenticatedApp>
+                <CamisetasPage />
+              </AuthenticatedApp>
+            }
+          />
+          <Route
+            path="/admin/camisetas"
+            element={
+              <AdminApp>
+                <AdminOrdersPage />
+              </AdminApp>
             }
           />
           <Route path="*" element={<Navigate to="/" replace />} />

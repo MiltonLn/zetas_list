@@ -31,6 +31,8 @@ function makeCreatedUser(overrides: Partial<any> = {}) {
     birthDate: null,
     photoUrl: null,
     bio: null,
+    shirtSize: null,
+    shirtNumber: null,
     status: 'active',
     banReason: null,
     createdAt: new Date(),
@@ -241,6 +243,29 @@ describe('UsersService', () => {
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'user_updated' }),
       );
+    });
+
+    it('guarda talla y número de camiseta', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(makeCreatedUser({ id: 'user-1', gender: 'masculino' }));
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockPrisma.user.update.mockResolvedValue(makeCreatedUser({ shirtSize: 'L', shirtNumber: 7 }));
+
+      await service.update('user-1', { shirtSize: 'L', shirtNumber: 7 } as any, 'user-1', Role.member);
+
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ shirtSize: 'L', shirtNumber: 7 }),
+        }),
+      );
+    });
+
+    it('lanza ConflictException si el número ya está tomado en su categoría', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(makeCreatedUser({ id: 'user-1', gender: 'masculino' }));
+      mockPrisma.user.findFirst.mockResolvedValue({ id: 'otro', name: 'Pedro' });
+
+      await expect(
+        service.update('user-1', { shirtNumber: 7 } as any, 'user-1', Role.member),
+      ).rejects.toThrow(ConflictException);
     });
   });
 

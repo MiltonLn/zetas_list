@@ -4,8 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { usersService } from '../services/users.service';
 import type { UpdateUserPayload } from '../services/users.service';
 import { authService } from '../services/auth.service';
-import type { User, Position, Gender } from '../types';
-import { POSITION_LABELS, GENDER_LABELS } from '../types';
+import type { User, Position, Gender, ShirtSize } from '../types';
+import { POSITION_LABELS, GENDER_LABELS, SHIRT_SIZES } from '../types';
 import { PageHeader } from '../components/PageHeader';
 import { Avatar } from '../components/Avatar';
 import { ImageCropModal } from '../components/ImageCropModal';
@@ -27,6 +27,8 @@ export default function ProfilePage() {
   const [gender, setGender] = useState<Gender | ''>('');
   const [heightCm, setHeightCm] = useState('');
   const [birthDate, setBirthDate] = useState('');
+  const [shirtSize, setShirtSize] = useState<ShirtSize | ''>('');
+  const [shirtNumber, setShirtNumber] = useState('');
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -50,6 +52,12 @@ export default function ProfilePage() {
         setGender((data.gender as Gender) || '');
         setHeightCm(data.heightCm?.toString() || '');
         setBirthDate(data.birthDate ? data.birthDate.slice(0, 10) : '');
+        setShirtSize((data.shirtSize as ShirtSize) || '');
+        setShirtNumber(
+          data.shirtNumber !== undefined && data.shirtNumber !== null
+            ? String(data.shirtNumber)
+            : '',
+        );
       })
       .catch((e) => setError(getApiError(e)))
       .finally(() => setLoading(false));
@@ -68,6 +76,8 @@ export default function ProfilePage() {
         gender: (gender as Gender) || undefined,
         heightCm: heightCm ? parseInt(heightCm) : undefined,
         birthDate: birthDate || undefined,
+        shirtSize: (shirtSize as ShirtSize) || undefined,
+        shirtNumber: shirtNumber !== '' ? parseInt(shirtNumber) : undefined,
       };
       await usersService.update(authUser!.id, payload);
       setSuccess('Perfil actualizado correctamente');
@@ -270,6 +280,40 @@ export default function ProfilePage() {
                   type="date"
                   value={birthDate}
                   onChange={(e) => setBirthDate(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>
+                  Talla de camiseta
+                </label>
+                <select
+                  className="zetas-input"
+                  value={shirtSize}
+                  onChange={(e) => setShirtSize(e.target.value as ShirtSize | '')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <option value="">Sin especificar</option>
+                  {SHIRT_SIZES.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>
+                  Número de camiseta
+                </label>
+                <input
+                  className="zetas-input"
+                  type="number"
+                  min={0}
+                  max={99}
+                  value={shirtNumber}
+                  onChange={(e) => setShirtNumber(e.target.value)}
+                  placeholder="0-99"
                 />
               </div>
             </div>
