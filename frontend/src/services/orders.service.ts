@@ -27,4 +27,10 @@ export const ordersService = {
 
   updateStatus: (id: string, status: OrderStatus) =>
     api.patch<Order>(`/orders/${id}/status`, { status }),
+
+  adminCreate: (targetUserId: string, payload: CreateOrderPayload) =>
+    api.post<Order>(`/orders/admin/${targetUserId}`, payload),
+
+  update: (id: string, payload: CreateOrderPayload) =>
+    api.patch<Order>(`/orders/${id}`, payload),
 };

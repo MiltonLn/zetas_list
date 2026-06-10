@@ -49,6 +49,26 @@ export class OrdersController {
   }
 
   @Roles(Role.admin)
+  @Post('admin/:userId')
+  adminCreate(
+    @Param('userId') userId: string,
+    @Body() dto: CreateOrderDto,
+    @CurrentUser() actor: JwtUser,
+  ) {
+    return this.ordersService.adminCreate(actor.id, userId, dto);
+  }
+
+  @Roles(Role.admin)
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body() dto: CreateOrderDto,
+    @CurrentUser() actor: JwtUser,
+  ) {
+    return this.ordersService.update(id, dto, actor.id);
+  }
+
+  @Roles(Role.admin)
   @Patch(':id/status')
   updateStatus(
     @Param('id') id: string,

@@ -109,7 +109,7 @@ describe('OrdersService', () => {
       expect(mockPrisma.order.create.mock.calls[0][0].data.totalAmount).toBe(135000);
     });
 
-    it('snapshotea el número solo en items de camiseta', async () => {
+    it('snapshotea el número en todos los items que lo requieren', async () => {
       await service.create('u1', {
         shirtNumber: 7,
         items: [camisetaItem(), pantalonetaItem()],
@@ -118,7 +118,7 @@ describe('OrdersService', () => {
       const camiseta = items.find((i: { productId: string }) => i.productId === 'camiseta');
       const pantaloneta = items.find((i: { productId: string }) => i.productId === 'pantaloneta');
       expect(camiseta.customNumber).toBe(7);
-      expect(pantaloneta.customNumber).toBeNull();
+      expect(pantaloneta.customNumber).toBe(7);
     });
 
     it('usa el nombre del usuario como nombre impreso por defecto', async () => {
@@ -140,9 +140,17 @@ describe('OrdersService', () => {
       );
     });
 
-    it('no actualiza el perfil si solo pide pantaloneta', async () => {
-      await service.create('u1', { items: [pantalonetaItem()] });
-      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    it('lanza BadRequestException si pide pantaloneta sin número', async () => {
+      await expect(
+        service.create('u1', { items: [pantalonetaItem()] }),
+      ).rejects.toThrow('número de camiseta');
+    });
+
+    it('actualiza el número en el perfil al pedir pantaloneta', async () => {
+      await service.create('u1', { shirtNumber: 5, items: [pantalonetaItem({ size: 'L' })] });
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ shirtNumber: 5 }) }),
+      );
     });
 
     it('llama a audit.log con "order_created"', async () => {

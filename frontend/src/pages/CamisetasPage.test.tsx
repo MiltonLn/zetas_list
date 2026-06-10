@@ -84,18 +84,50 @@ describe('CamisetasPage', () => {
     expect(numberInput.value).toBe('5');
   });
 
-  it('agrega un artículo, calcula el total y envía el pedido', async () => {
+  it('abre el modal de configuración al tocar un producto', async () => {
     const user = userEvent.setup();
     mockOrders.catalog.mockResolvedValue({ data: [camiseta] } as never);
     renderPage();
 
     await screen.findByText('Camiseta');
+    // Antes de abrir el modal no hay selects de configuración.
+    expect(screen.queryByRole('button', { name: 'Agregar al pedido' })).not.toBeInTheDocument();
 
-    // comboboxes: [0] variante, [1] talla
+    await user.click(screen.getByRole('button', { name: 'Camiseta' }));
+
+    expect(screen.getByRole('button', { name: 'Agregar al pedido' })).toBeInTheDocument();
+    expect(screen.getByText('Camiseta oficial')).toBeInTheDocument();
+  });
+
+  it('cierra el modal con el botón Cancelar sin agregar nada', async () => {
+    const user = userEvent.setup();
+    mockOrders.catalog.mockResolvedValue({ data: [camiseta] } as never);
+    renderPage();
+
+    await screen.findByText('Camiseta');
+    await user.click(screen.getByRole('button', { name: 'Camiseta' }));
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(screen.queryByRole('button', { name: 'Agregar al pedido' })).not.toBeInTheDocument();
+    expect(screen.getByText('Aún no has agregado artículos.')).toBeInTheDocument();
+  });
+
+  it('agrega un artículo desde el modal, calcula el total y envía el pedido', async () => {
+    const user = userEvent.setup();
+    mockOrders.catalog.mockResolvedValue({ data: [camiseta] } as never);
+    renderPage();
+
+    await screen.findByText('Camiseta');
+    await user.click(screen.getByRole('button', { name: 'Camiseta' }));
+
+    // comboboxes del modal: [0] variante, [1] talla
     const combos = screen.getAllByRole('combobox');
     await user.selectOptions(combos[1], 'M');
 
     await user.click(screen.getByRole('button', { name: 'Agregar al pedido' }));
+
+    // El modal se cierra al agregar.
+    expect(screen.queryByRole('button', { name: 'Agregar al pedido' })).not.toBeInTheDocument();
 
     // total = 55000 (aparece en la línea y en el total)
     expect((await screen.findAllByText('$55.000')).length).toBeGreaterThan(0);
@@ -110,12 +142,27 @@ describe('CamisetasPage', () => {
     ]);
   });
 
+  it('exige talla dentro del modal antes de agregar', async () => {
+    const user = userEvent.setup();
+    mockOrders.catalog.mockResolvedValue({ data: [camiseta] } as never);
+    renderPage();
+
+    await screen.findByText('Camiseta');
+    await user.click(screen.getByRole('button', { name: 'Camiseta' }));
+    await user.click(screen.getByRole('button', { name: 'Agregar al pedido' }));
+
+    expect(await screen.findByText('Selecciona una talla')).toBeInTheDocument();
+    // El modal sigue abierto y no se agregó nada.
+    expect(screen.getByRole('button', { name: 'Agregar al pedido' })).toBeInTheDocument();
+  });
+
   it('muestra el abono del 50% y la llave Bre-b al agregar un artículo', async () => {
     const user = userEvent.setup();
     mockOrders.catalog.mockResolvedValue({ data: [camiseta] } as never);
     renderPage();
 
     await screen.findByText('Camiseta');
+    await user.click(screen.getByRole('button', { name: 'Camiseta' }));
     const combos = screen.getAllByRole('combobox');
     await user.selectOptions(combos[1], 'M');
     await user.click(screen.getByRole('button', { name: 'Agregar al pedido' }));
@@ -134,6 +181,7 @@ describe('CamisetasPage', () => {
     renderPage();
 
     await screen.findByText('Camiseta');
+    await user.click(screen.getByRole('button', { name: 'Camiseta' }));
     const combos = screen.getAllByRole('combobox');
     await user.selectOptions(combos[1], 'M');
     await user.click(screen.getByRole('button', { name: 'Agregar al pedido' }));

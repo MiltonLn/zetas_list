@@ -87,6 +87,7 @@ enum AuditAction {
   confirmation_received
   confirmation_expired
   order_created
+  order_updated
   order_status_changed
 }
 

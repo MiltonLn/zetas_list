@@ -5,10 +5,88 @@ import { ORDER_STATUS_COLORS, ORDER_STATUS_LABELS } from '../types';
 import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
 import { getApiError } from '../services/api';
+import { AdminOrderFormModal } from '../components/AdminOrderFormModal';
 
 const money = (n: number) => `$${n.toLocaleString('es-CO')}`;
 
 const STATUSES: OrderStatus[] = ['pending', 'deposit_paid', 'paid', 'delivered', 'cancelled'];
+
+function buildProveedorCsv(orders: Order[]): string {
+  type ProveedorRow = {
+    producto: string;
+    nombre: string;
+    numero: string;
+    talla: string;
+    genero: string;
+    observacion: string;
+  };
+
+  const masc: ProveedorRow[] = [];
+  const fem: ProveedorRow[] = [];
+
+  for (const order of orders) {
+    const isFem = order.user?.gender === 'femenino';
+    const genLabel = isFem ? 'F' : 'M';
+    const list = isFem ? fem : masc;
+
+    for (const item of order.items) {
+      const count = item.quantity ?? 1;
+      for (let u = 0; u < count; u++) {
+        list.push({
+          producto: [item.productName, item.variantName].filter(Boolean).join(' '),
+          nombre: item.customName ?? order.user?.name ?? '',
+          numero: item.customNumber != null ? String(item.customNumber) : '',
+          talla: item.size ?? '',
+          genero: genLabel,
+          observacion: order.notes ?? '',
+        });
+      }
+    }
+  }
+
+  const escape = (v: string | number | null | undefined) => {
+    const s = v == null ? '' : String(v);
+    return `"${s.replace(/"/g, '""')}"`;
+  };
+
+  const rows: string[] = [
+    ['masculino', '', '', '', '', '', '', 'femenino', '', '', '', '', '', ''].map(escape).join(','),
+    [
+      'CONSECUTIVO N°', 'PRODUCTO', 'NOMBRE', 'NUMERO', 'TALLA', 'GENERO F/M', 'OBSERVACIÓN',
+      'CONSECUTIVO N°', 'PRODUCTO', 'NOMBRE', 'NUMERO', 'TALLA', 'GENERO F/M', 'OBSERVACIÓN',
+    ]
+      .map(escape)
+      .join(','),
+  ];
+
+  const total = Math.max(masc.length, fem.length);
+  for (let i = 0; i < total; i++) {
+    const m = masc[i];
+    const f = fem[i];
+    rows.push(
+      [
+        m ? i + 1 : '',
+        m?.producto ?? '',
+        m?.nombre ?? '',
+        m?.numero ?? '',
+        m?.talla ?? '',
+        m?.genero ?? '',
+        m?.observacion ?? '',
+        f ? i + 1 : '',
+        f?.producto ?? '',
+        f?.nombre ?? '',
+        f?.numero ?? '',
+        f?.talla ?? '',
+        f?.genero ?? '',
+        f?.observacion ?? '',
+      ]
+        .map(escape)
+        .join(','),
+    );
+  }
+
+  return rows.join('\n');
+}
 
 function buildCsv(orders: Order[]): string {
   const header = [
@@ -65,6 +143,7 @@ export function AdminOrdersPage() {
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<OrderStatus | ''>('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [formModal, setFormModal] = useState<{ open: boolean; order?: Order }>({ open: false });
 
   useEffect(() => {
     setLoading(true);
@@ -88,15 +167,38 @@ export function AdminOrdersPage() {
     }
   }
 
-  function exportCsv() {
-    const csv = buildCsv(orders);
-    const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8;' });
+  function downloadCsv(content: string, filename: string) {
+    const blob = new Blob([`\ufeff${content}`], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `pedidos-camisetas-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function exportCsv() {
+    downloadCsv(buildCsv(orders), `pedidos-camisetas-${new Date().toISOString().slice(0, 10)}.csv`);
+  }
+
+  function handleSaved(saved: Order) {
+    setOrders((prev) => {
+      const idx = prev.findIndex((o) => o.id === saved.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = saved;
+        return next;
+      }
+      return [saved, ...prev];
+    });
+    setFormModal({ open: false });
+  }
+
+  function exportProveedorCsv() {
+    downloadCsv(
+      buildProveedorCsv(orders),
+      `pedido-proveedor-${new Date().toISOString().slice(0, 10)}.csv`,
+    );
   }
 
   const totalAmount = orders.reduce((sum, o) => sum + o.totalAmount, 0);
@@ -130,15 +232,34 @@ export function AdminOrdersPage() {
               ))}
             </select>
           </div>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={exportCsv}
-            disabled={orders.length === 0}
-            style={{ fontSize: 13, padding: '8px 16px', minHeight: 36 }}
-          >
-            Exportar CSV
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setFormModal({ open: true })}
+              style={{ fontSize: 13, padding: '8px 16px', minHeight: 36 }}
+            >
+              + Nuevo pedido
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={exportCsv}
+              disabled={orders.length === 0}
+              style={{ fontSize: 13, padding: '8px 16px', minHeight: 36 }}
+            >
+              Exportar CSV
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={exportProveedorCsv}
+              disabled={orders.length === 0}
+              style={{ fontSize: 13, padding: '8px 16px', minHeight: 36 }}
+            >
+              Formato proveedor
+            </button>
+          </div>
         </div>
 
         {error && <p style={{ color: '#ff6b6b', fontSize: 13 }}>{error}</p>}
@@ -177,7 +298,7 @@ export function AdminOrdersPage() {
                         {order.user?.phone ?? ''} · {new Date(order.createdAt).toLocaleDateString('es-CO')}
                       </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <span
                         style={{
                           fontSize: 11,
@@ -201,6 +322,14 @@ export function AdminOrdersPage() {
                           <option key={s} value={s}>{ORDER_STATUS_LABELS[s]}</option>
                         ))}
                       </select>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setFormModal({ open: true, order })}
+                        style={{ fontSize: 12, padding: '5px 12px', minHeight: 32 }}
+                      >
+                        Editar
+                      </button>
                     </div>
                   </div>
 
@@ -249,6 +378,14 @@ export function AdminOrdersPage() {
           </>
         )}
       </div>
+
+      {formModal.open && (
+        <AdminOrderFormModal
+          order={formModal.order}
+          onClose={() => setFormModal({ open: false })}
+          onSaved={handleSaved}
+        />
+      )}
     </>
   );
 }

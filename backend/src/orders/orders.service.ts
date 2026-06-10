@@ -139,6 +139,156 @@ export class OrdersService {
     });
   }
 
+  async adminCreate(actorId: string, targetUserId: string, dto: CreateOrderDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, name: true, gender: true },
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const lineItems = dto.items.map((item) => this.buildLineItem(item, user.name));
+
+    const requiresNumber = lineItems.some((li) => li.requiresNumber);
+    if (requiresNumber && (dto.shirtNumber === undefined || dto.shirtNumber === null)) {
+      throw new BadRequestException('Debes indicar el número de camiseta');
+    }
+
+    const hasNumber = dto.shirtNumber !== undefined && dto.shirtNumber !== null;
+    if (hasNumber) {
+      await assertShirtNumberAvailable(this.prisma, {
+        number: dto.shirtNumber as number,
+        gender: user.gender,
+        excludeUserId: user.id,
+      });
+    }
+
+    const firstShirt = lineItems.find((li) => li.requiresNumber);
+    const profileData: { shirtSize?: ShirtSize; shirtNumber?: number } = {};
+    if (firstShirt?.size) profileData.shirtSize = firstShirt.size;
+    if (hasNumber) profileData.shirtNumber = dto.shirtNumber as number;
+
+    const totalAmount = lineItems.reduce((sum, li) => sum + li.lineTotal, 0);
+
+    const order = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.order.create({
+        data: {
+          userId: targetUserId,
+          totalAmount,
+          notes: dto.notes,
+          items: {
+            create: lineItems.map((li) => ({
+              productId: li.productId,
+              productName: li.productName,
+              variantId: li.variantId,
+              variantName: li.variantName,
+              size: li.size,
+              quantity: li.quantity,
+              customName: li.customName,
+              customNumber: li.requiresNumber ? (dto.shirtNumber as number) : null,
+              unitPrice: li.unitPrice,
+              lineTotal: li.lineTotal,
+            })),
+          },
+        },
+        include: ORDER_INCLUDE,
+      });
+
+      if (Object.keys(profileData).length > 0) {
+        await tx.user.update({ where: { id: targetUserId }, data: profileData });
+      }
+
+      return created;
+    });
+
+    await this.audit.log({
+      actorId,
+      targetUserId,
+      action: 'order_created',
+      details: { orderId: order.id, totalAmount, itemCount: lineItems.length, adminCreated: true },
+    });
+
+    return order;
+  }
+
+  async update(id: string, dto: CreateOrderDto, actorId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+      select: { id: true, userId: true },
+    });
+    if (!order) throw new NotFoundException('Pedido no encontrado');
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: order.userId },
+      select: { id: true, name: true, gender: true },
+    });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const lineItems = dto.items.map((item) => this.buildLineItem(item, user.name));
+
+    const requiresNumber = lineItems.some((li) => li.requiresNumber);
+    if (requiresNumber && (dto.shirtNumber === undefined || dto.shirtNumber === null)) {
+      throw new BadRequestException('Debes indicar el número de camiseta');
+    }
+
+    const hasNumber = dto.shirtNumber !== undefined && dto.shirtNumber !== null;
+    if (hasNumber) {
+      await assertShirtNumberAvailable(this.prisma, {
+        number: dto.shirtNumber as number,
+        gender: user.gender,
+        excludeUserId: user.id,
+      });
+    }
+
+    const profileData: { shirtSize?: ShirtSize; shirtNumber?: number } = {};
+    const firstShirt = lineItems.find((li) => li.requiresNumber);
+    if (firstShirt?.size) profileData.shirtSize = firstShirt.size;
+    if (hasNumber) profileData.shirtNumber = dto.shirtNumber as number;
+
+    const totalAmount = lineItems.reduce((sum, li) => sum + li.lineTotal, 0);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.orderItem.deleteMany({ where: { orderId: id } });
+
+      const result = await tx.order.update({
+        where: { id },
+        data: {
+          totalAmount,
+          notes: dto.notes ?? null,
+          items: {
+            create: lineItems.map((li) => ({
+              productId: li.productId,
+              productName: li.productName,
+              variantId: li.variantId,
+              variantName: li.variantName,
+              size: li.size,
+              quantity: li.quantity,
+              customName: li.customName,
+              customNumber: li.requiresNumber ? (dto.shirtNumber as number) : null,
+              unitPrice: li.unitPrice,
+              lineTotal: li.lineTotal,
+            })),
+          },
+        },
+        include: ORDER_INCLUDE,
+      });
+
+      if (Object.keys(profileData).length > 0) {
+        await tx.user.update({ where: { id: user.id }, data: profileData });
+      }
+
+      return result;
+    });
+
+    await this.audit.log({
+      actorId,
+      targetUserId: user.id,
+      action: 'order_updated',
+      details: { orderId: id, totalAmount, itemCount: lineItems.length },
+    });
+
+    return updated;
+  }
+
   async updateStatus(id: string, dto: UpdateOrderStatusDto, actorId: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
     if (!order) throw new NotFoundException('Pedido no encontrado');

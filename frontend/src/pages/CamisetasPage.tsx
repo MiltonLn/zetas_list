@@ -6,7 +6,6 @@ import type { CreateOrderPayload } from '../services/orders.service';
 import { usersService } from '../services/users.service';
 import type { CatalogProduct, CatalogVariant, Order, ShirtSize } from '../types';
 import { ORDER_STATUS_COLORS, ORDER_STATUS_LABELS } from '../types';
-import { resolvePhotoUrl } from '../components/Avatar';
 import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
 import { getApiError } from '../services/api';
@@ -63,26 +62,88 @@ function PaymentInfo({ deposit, pending }: { deposit: number; pending: number })
         Para confirmar tu pedido abona el 50% (<strong style={{ color: '#c5cae9' }}>{money(deposit)}</strong>)
         a la llave Bre-b <strong style={{ color: '#6e8efb' }}>{BRE_B_KEY}</strong> y envía el
         comprobante por WhatsApp al <strong style={{ color: '#c5cae9' }}>{PAYMENT_CONTACT}</strong>.
-        El saldo restante se cancela en la entrega.
+        El saldo restante se cancela en la entrega. Plazo para abonos: 1 de Julio de 2026
       </p>
     </div>
   );
 }
 
-function ProductCard({
+function ProductTile({
+  product,
+  onClick,
+}: {
+  product: CatalogProduct;
+  onClick: () => void;
+}) {
+  const variant = product.variants[0];
+  return (
+    <div
+      className="card"
+      role="button"
+      tabIndex={0}
+      aria-label={product.name}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      style={{ padding: 0, overflow: 'hidden', cursor: 'pointer' }}
+    >
+      <div
+        style={{
+          height: 130,
+          background: '#0f1020',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+        }}
+      >
+        {variant && (
+          <img
+            src={variant.imageUrl}
+            alt={product.name}
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
+            }}
+          />
+        )}
+      </div>
+      <div style={{ padding: '10px 12px' }}>
+        <div style={{ color: '#e8eaf6', fontSize: 13, fontWeight: 600, lineHeight: 1.3 }}>
+          {product.name}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+          <span style={{ color: '#6e8efb', fontSize: 14, fontWeight: 700 }}>
+            {money(product.price)}
+          </span>
+          <span style={{ color: '#7c8db5', fontSize: 18, lineHeight: 1 }}>+</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductConfigModal({
   product,
   defaultName,
   onAdd,
+  onClose,
 }: {
   product: CatalogProduct;
   defaultName?: string;
   onAdd: (item: CartItem) => void;
+  onClose: () => void;
 }) {
   const [variantId, setVariantId] = useState(product.variants[0]?.id ?? '');
   const [size, setSize] = useState<ShirtSize | ''>('');
   const [quantity, setQuantity] = useState(1);
   const [customName, setCustomName] = useState('');
   const [cardError, setCardError] = useState('');
+  const [fullPhoto, setFullPhoto] = useState<string | null>(null);
 
   const variant: CatalogVariant | undefined = product.variants.find((v) => v.id === variantId);
   const unitPrice = variant?.price ?? product.price;
@@ -110,37 +171,56 @@ function ProductCard({
       lineTotal: unitPrice * quantity,
       requiresNumber: product.requiresNumber,
     });
-    setQuantity(1);
-    setCustomName('');
+    onClose();
   }
 
   return (
-    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', gap: 0, flexWrap: 'wrap' }}>
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 900, padding: 16,
+      }}
+    >
+      <div
+        className="card"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          padding: 0, overflow: 'hidden', width: '100%', maxWidth: 440,
+          maxHeight: '90vh', overflowY: 'auto',
+        }}
+      >
         {variant && (
-          <img
-            src={resolvePhotoUrl(variant.imageUrl)}
-            alt={`${product.name} ${variant.name}`}
+          <div
+            onClick={() => setFullPhoto(variant.imageUrl)}
             style={{
-              width: 160,
-              height: 160,
-              objectFit: 'cover',
+              height: 200,
               background: '#0f1020',
-              flexShrink: 0,
+              cursor: 'zoom-in',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              overflow: 'hidden',
             }}
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
-            }}
-          />
+          >
+            <img
+              src={variant.imageUrl}
+              alt={`${product.name} ${variant.name}`}
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
+              }}
+            />
+          </div>
         )}
-        <div style={{ flex: 1, minWidth: 240, padding: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <h3 style={{ color: '#e8eaf6', fontSize: 15, fontWeight: 700, margin: 0 }}>
+
+        <div style={{ padding: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+            <h3 style={{ color: '#e8eaf6', fontSize: 16, fontWeight: 700, margin: 0 }}>
               {product.name}
             </h3>
-            <span style={{ color: '#6e8efb', fontWeight: 700 }}>{money(unitPrice)}</span>
+            <span style={{ color: '#6e8efb', fontWeight: 700, whiteSpace: 'nowrap' }}>{money(unitPrice)}</span>
           </div>
-          <p style={{ color: '#7c8db5', fontSize: 13, margin: '6px 0 12px' }}>
+          <p style={{ color: '#7c8db5', fontSize: 13, margin: '6px 0 14px' }}>
             {product.description}
           </p>
 
@@ -208,16 +288,46 @@ function ProductCard({
             <p style={{ color: '#ff6b6b', fontSize: 12, margin: '8px 0 0' }}>{cardError}</p>
           )}
 
-          <button
-            type="button"
-            className="btn btn-primary"
-            style={{ marginTop: 12, fontSize: 13, padding: '8px 16px', minHeight: 36 }}
-            onClick={handleAdd}
-          >
-            Agregar al pedido
-          </button>
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <button
+              type="button"
+              className="btn"
+              style={{ flex: 1, fontSize: 13, padding: '8px 16px', minHeight: 36 }}
+              onClick={onClose}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ flex: 2, fontSize: 13, padding: '8px 16px', minHeight: 36 }}
+              onClick={handleAdd}
+            >
+              Agregar al pedido
+            </button>
+          </div>
         </div>
       </div>
+
+      {fullPhoto && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            setFullPhoto(null);
+          }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000, cursor: 'zoom-out',
+          }}
+        >
+          <img
+            src={fullPhoto}
+            alt={product.name}
+            style={{ maxWidth: '92vw', maxHeight: '88vh', borderRadius: 12, objectFit: 'contain' }}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -235,6 +345,7 @@ export default function CamisetasPage() {
   const [notes, setNotes] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showGuide, setShowGuide] = useState(false);
+  const [configProduct, setConfigProduct] = useState<CatalogProduct | null>(null);
 
   useEffect(() => {
     Promise.all([ordersService.catalog(), usersService.me(), ordersService.myOrders()])
@@ -378,19 +489,37 @@ export default function CamisetasPage() {
         </div>
 
         {/* Catálogo */}
-        <h2 style={{ color: '#e8eaf6', fontSize: 16, fontWeight: 700, marginBottom: 12 }}>
+        <h2 style={{ color: '#e8eaf6', fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
           Productos
         </h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 20 }}>
+        <p style={{ color: '#7c8db5', fontSize: 13, marginTop: 0, marginBottom: 12 }}>
+          Toca un producto para elegir talla y agregarlo a tu pedido.
+        </p>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+            gap: 12,
+            marginBottom: 20,
+          }}
+        >
           {catalog.map((product) => (
-            <ProductCard
+            <ProductTile
               key={product.id}
               product={product}
-              defaultName={authUser?.name}
-              onAdd={addToCart}
+              onClick={() => setConfigProduct(product)}
             />
           ))}
         </div>
+
+        {configProduct && (
+          <ProductConfigModal
+            product={configProduct}
+            defaultName={authUser?.name}
+            onAdd={addToCart}
+            onClose={() => setConfigProduct(null)}
+          />
+        )}
 
         {/* Carrito */}
         <form onSubmit={handleSubmit}>
