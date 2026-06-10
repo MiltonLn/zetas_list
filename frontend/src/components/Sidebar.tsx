@@ -61,6 +61,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           <div className="sidebar-section-label">Principal</div>
           <NavItem to="/" icon={<IconGames />} label="Partidos" onClose={onClose} />
           <NavItem to="/finances" icon={<IconFinances />} label="Finanzas" onClose={onClose} />
+          <NavItem to="/camisetas" icon={<IconShirt />} label="Camisetas" onClose={onClose} />
           <NavItem to="/reglas" icon={<IconRules />} label="Reglas" onClose={onClose} />
           <NavItem to="/profile" icon={<IconUser />} label="Mi Perfil" onClose={onClose} />
 
