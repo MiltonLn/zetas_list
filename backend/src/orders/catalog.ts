@@ -33,9 +33,9 @@ const ALL_SIZES: ShirtSize[] = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 export const CATALOG: CatalogProduct[] = [
   {
     id: 'camiseta',
-    name: 'Camiseta',
+    name: 'Camiseta Azul/Blanca Normal',
     description: 'Camiseta oficial del equipo con tu número y nombre.',
-    price: 55000,
+    price: 45000,
     requiresNumber: true,
     allowsCustomName: true,
     sizes: ALL_SIZES,
@@ -43,28 +43,87 @@ export const CATALOG: CatalogProduct[] = [
       {
         id: 'local',
         name: 'Local',
-        imageUrl: '/camisetas/camiseta-local.svg',
-      },
+        imageUrl: '/camisetas/camiseta-normal.png',
+      }
+    ],
+  },
+  {
+    id: 'camiseta-2',
+    name: 'Camiseta Azul/Blanca Manga Sisa',
+    description: 'Camiseta oficial del equipo con tu número y nombre con manga sisa.',
+    price: 40000,
+    requiresNumber: true,
+    allowsCustomName: true,
+    sizes: ALL_SIZES,
+    variants: [
       {
-        id: 'visitante',
-        name: 'Visitante',
-        imageUrl: '/camisetas/camiseta-visitante.svg',
-      },
+        id: 'local',
+        name: 'Local',
+        imageUrl: '/camisetas/camiseta-sisa-azul.png',
+      }
     ],
   },
   {
     id: 'pantaloneta',
-    name: 'Pantaloneta',
+    name: 'Pantaloneta Azul/Blanca',
     description: 'Pantaloneta deportiva a juego con el uniforme.',
-    price: 40000,
-    requiresNumber: false,
+    price: 45000,
+    requiresNumber: true,
     allowsCustomName: false,
     sizes: ALL_SIZES,
     variants: [
       {
         id: 'estandar',
         name: 'Estándar',
-        imageUrl: '/camisetas/pantaloneta.svg',
+        imageUrl: '/camisetas/pantaloneta-normal.png',
+      },
+    ],
+  },
+  {
+    id: 'camiseta-3',
+    name: 'Camiseta Rosa/Blanca Normal',
+    description: 'Camiseta oficial del equipo con tu número y nombre.',
+    price: 45000,
+    requiresNumber: true,
+    allowsCustomName: true,
+    sizes: ALL_SIZES,
+    variants: [
+      {
+        id: 'local',
+        name: 'Local',
+        imageUrl: '/camisetas/camiseta-normal-rosa.png',
+      }
+    ],
+  },
+  {
+    id: 'camiseta-4',
+    name: 'Camiseta Rosa/Blanca Manga Sisa',
+    description: 'Camiseta oficial del equipo con tu número y nombre con manga sisa.',
+    price: 40000,
+    requiresNumber: true,
+    allowsCustomName: true,
+    sizes: ALL_SIZES,
+    variants: [
+      {
+        id: 'local',
+        name: 'Local',
+        imageUrl: '/camisetas/camiseta-sisa-rosa.png',
+      }
+    ],
+  },
+  {
+    id: 'pantaloneta-2',
+    name: 'Pantaloneta Rosa/Blanca',
+    description: 'Pantaloneta deportiva a juego con el uniforme rosa.',
+    price: 45000,
+    requiresNumber: true,
+    allowsCustomName: false,
+    sizes: ALL_SIZES,
+    variants: [
+      {
+        id: 'estandar',
+        name: 'Estándar',
+        imageUrl: '/camisetas/pantaloneta-rosa.png',
       },
     ],
   },
