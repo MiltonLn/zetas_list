@@ -127,6 +127,38 @@ export const CATALOG: CatalogProduct[] = [
       },
     ],
   },
+  {
+    id: 'short-rosa',
+    name: 'Short Atletico Rosa/Blanco',
+    description: 'Short deportivo a juego con el uniforme rosa.',
+    price: 40000,
+    requiresNumber: true,
+    allowsCustomName: false,
+    sizes: ALL_SIZES,
+    variants: [
+      {
+        id: 'estandar',
+        name: 'Estándar',
+        imageUrl: '/camisetas/short-rosa.png',
+      },
+    ],
+  },
+  {
+    id: 'short-azul',
+    name: 'Short Atletico Azul/Blanco',
+    description: 'Short deportivo a juego con el uniforme azul.',
+    price: 40000,
+    requiresNumber: true,
+    allowsCustomName: false,
+    sizes: ALL_SIZES,
+    variants: [
+      {
+        id: 'estandar',
+        name: 'Estándar',
+        imageUrl: '/camisetas/short-azul.png',
+      },
+    ],
+  },
 ];
 
 export function getProduct(productId: string): CatalogProduct | undefined {
