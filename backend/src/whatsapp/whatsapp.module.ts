@@ -17,7 +17,7 @@ const providerClass = isBaileys ? BaileysProvider : CliSimulatorProvider;
 @Module({
   imports: [
     forwardRef(() => GamesModule),
-    UsersModule,
+    forwardRef(() => UsersModule),
     PrismaModule,
     FinancesModule,
     JwtModule.register({ secret: process.env.JWT_SECRET }),
