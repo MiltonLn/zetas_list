@@ -516,6 +516,60 @@ describe('MessageHandlerService — handleMessage', () => {
       await service.handleMessage('111', cmd, 'group-1');
       expect(mockGames.registerGuest).toHaveBeenCalledWith('game-1', 'Carlos', 'user-1', { silent: true });
     });
+
+    it('registra por proxy al miembro @mencionado en vez de como invitado', async () => {
+      const game = makeActiveGame([
+        { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
+      ]);
+      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockUsers.findByPhone.mockImplementation((phone: string) => {
+        if (phone === '111') return Promise.resolve(makeUser());
+        if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Lu', role: Role.member, status: 'active' });
+        return Promise.resolve(null);
+      });
+      mockGames.register.mockResolvedValue({ isWaitingList: false, position: 2 });
+      mockGames.findOne.mockResolvedValue(game);
+
+      await service.handleMessage('111', '@Z invitar @Lu Zetas', 'group-1', ['222@s.whatsapp.net']);
+      expect(mockGames.register).toHaveBeenCalledWith('game-1', 'user-2', 'user-1', { silent: true });
+      expect(mockGames.registerGuest).not.toHaveBeenCalled();
+    });
+
+    it('informa si el @mencionado no está registrado en el sistema', async () => {
+      const game = makeActiveGame([
+        { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
+      ]);
+      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockUsers.findByPhone.mockImplementation((phone: string) => {
+        if (phone === '111') return Promise.resolve(makeUser());
+        return Promise.resolve(null);
+      });
+      mockGames.findOne.mockResolvedValue(game);
+
+      await service.handleMessage('111', '@Z invitar @Desconocido', 'group-1', ['999@s.whatsapp.net']);
+      expect(mockGames.registerGuest).not.toHaveBeenCalled();
+      expect(mockGames.register).not.toHaveBeenCalled();
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('no está registrado'));
+    });
+
+    it('registra por proxy al miembro y como invitado al nombre en texto plano en el mismo comando', async () => {
+      const game = makeActiveGame([
+        { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
+      ]);
+      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockUsers.findByPhone.mockImplementation((phone: string) => {
+        if (phone === '111') return Promise.resolve(makeUser());
+        if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Lu', role: Role.member, status: 'active' });
+        return Promise.resolve(null);
+      });
+      mockGames.register.mockResolvedValue({ isWaitingList: false, position: 2 });
+      mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 3 });
+      mockGames.findOne.mockResolvedValue(game);
+
+      await service.handleMessage('111', '@Z invitar @Lu Zetas, Pedro', 'group-1', ['222@s.whatsapp.net']);
+      expect(mockGames.register).toHaveBeenCalledWith('game-1', 'user-2', 'user-1', { silent: true });
+      expect(mockGames.registerGuest).toHaveBeenCalledWith('game-1', 'Pedro', 'user-1', { silent: true });
+    });
   });
 
   // ─── anotar (register other) ──────────────────────────────────────────────

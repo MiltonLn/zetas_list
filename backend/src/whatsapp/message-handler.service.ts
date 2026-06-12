@@ -461,15 +461,50 @@ export class MessageHandlerService {
 
     // Extract from the original text so guest names keep their accents.
     const rawNames = ctx.text.match(/^@z\s+\S+\s+(.+)/i)?.[1]?.trim();
-    if (!rawNames) {
+    if (!rawNames && ctx.mentionedJids.length === 0) {
       await this.wp.sendToGroup(`ℹ️ Debes indicar el nombre del invitado.\nEjemplo: *${BOT_MENTION} invitar Juan Pérez, Ana López*`);
       return;
     }
 
-    const guestNames = rawNames.split(',').map((n) => n.trim()).filter(Boolean);
     const msgs: string[] = [];
 
-    for (const guestName of guestNames) {
+    // ── WhatsApp @mentions: register members by proxy, flag unknown phones ──
+    const nonSelfJids = ctx.mentionedJids.filter(
+      (jid) => extractPhoneFromJid(jid) !== ctx.phone,
+    );
+
+    for (const jid of nonSelfJids) {
+      const phone = extractPhoneFromJid(jid);
+      const targetUser = await this.users.findByPhone(phone);
+
+      if (!targetUser) {
+        msgs.push(`❌ El usuario @${phone} no está registrado en el sistema. Usa su nombre para anotarlo como invitado.`);
+        continue;
+      }
+
+      try {
+        const reg = await this.games.register(ctx.activeGame.id, targetUser.id, ctx.user!.id, { silent: true });
+        const spot = reg.isWaitingList
+          ? `en la *lista de espera* (puesto ${reg.position})`
+          : `en la *lista principal*`;
+        msgs.push(`✅ *${targetUser.name}* fue anotado ${spot} por *${ctx.user!.name}* 🏐`);
+      } catch (e: unknown) {
+        if (e instanceof AlreadyRegisteredException) {
+          msgs.push(`ℹ️ ${targetUser.name} ya está anotado en esta lista.`);
+        } else {
+          this.logError(`Error al anotar al miembro ${targetUser.name} via invitar`, e);
+          msgs.push(`❌ No se pudo anotar a *${targetUser.name}*. Intenta de nuevo.`);
+        }
+      }
+    }
+
+    // ── Plain-text names: skip @-prefixed tokens (those were JID mentions) ──
+    const textNames = (rawNames ?? '')
+      .split(',')
+      .map((n) => n.trim())
+      .filter((n) => n && !n.startsWith('@'));
+
+    for (const guestName of textNames) {
       try {
         const reg = await this.games.registerGuest(ctx.activeGame.id, guestName, ctx.user!.id, { silent: true });
         const spot = reg.isWaitingList
@@ -480,6 +515,11 @@ export class MessageHandlerService {
         this.logError(`Error al invitar a ${guestName}`, e);
         msgs.push(`❌ No se pudo anotar a *${guestName}*. Intenta de nuevo.`);
       }
+    }
+
+    if (msgs.length === 0) {
+      await this.wp.sendToGroup(`ℹ️ Debes indicar el nombre del invitado.\nEjemplo: *${BOT_MENTION} invitar Juan Pérez, Ana López*`);
+      return;
     }
 
     const updated = await this.games.findOne(ctx.activeGame.id);

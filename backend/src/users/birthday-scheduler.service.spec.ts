@@ -3,7 +3,13 @@ import { BirthdaySchedulerService, pickTemplate } from './birthday-scheduler.ser
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 
-const mockPrisma = { $queryRaw: jest.fn() };
+const TODAY = new Date();
+
+function makeBirthdayUser(overrides: { id: string; name: string; phone: string }) {
+  return { ...overrides, birthDate: TODAY };
+}
+
+const mockPrisma = { user: { findMany: jest.fn() } };
 const mockWhatsapp = { sendToGroup: jest.fn() };
 
 describe('BirthdaySchedulerService', () => {
@@ -26,14 +32,24 @@ describe('BirthdaySchedulerService', () => {
 
   describe('sendBirthdayGreetings', () => {
     it('no envía nada si no hay cumpleañeros hoy', async () => {
-      mockPrisma.$queryRaw.mockResolvedValue([]);
+      mockPrisma.user.findMany.mockResolvedValue([]);
+      await service.sendBirthdayGreetings();
+      expect(mockWhatsapp.sendToGroup).not.toHaveBeenCalled();
+    });
+
+    it('no envía si hay usuarios activos pero con cumpleaños en otra fecha', async () => {
+      const otherDate = new Date(TODAY);
+      otherDate.setDate(TODAY.getDate() + 1);
+      mockPrisma.user.findMany.mockResolvedValue([
+        { id: 'u1', name: 'Ana', phone: '573001111111', birthDate: otherDate },
+      ]);
       await service.sendBirthdayGreetings();
       expect(mockWhatsapp.sendToGroup).not.toHaveBeenCalled();
     });
 
     it('envía mensaje al grupo con la mención del cumpleañero', async () => {
-      mockPrisma.$queryRaw.mockResolvedValue([
-        { id: 'u1', name: 'Ana', phone: '573001111111' },
+      mockPrisma.user.findMany.mockResolvedValue([
+        makeBirthdayUser({ id: 'u1', name: 'Ana', phone: '573001111111' }),
       ]);
       await service.sendBirthdayGreetings();
       expect(mockWhatsapp.sendToGroup).toHaveBeenCalledTimes(1);
@@ -43,9 +59,9 @@ describe('BirthdaySchedulerService', () => {
     });
 
     it('menciona a todos cuando hay varios cumpleañeros el mismo día', async () => {
-      mockPrisma.$queryRaw.mockResolvedValue([
-        { id: 'u1', name: 'Ana', phone: '573001111111' },
-        { id: 'u2', name: 'Luis', phone: '573002222222' },
+      mockPrisma.user.findMany.mockResolvedValue([
+        makeBirthdayUser({ id: 'u1', name: 'Ana', phone: '573001111111' }),
+        makeBirthdayUser({ id: 'u2', name: 'Luis', phone: '573002222222' }),
       ]);
       await service.sendBirthdayGreetings();
       expect(mockWhatsapp.sendToGroup).toHaveBeenCalledTimes(1);
@@ -56,8 +72,8 @@ describe('BirthdaySchedulerService', () => {
     });
 
     it('no lanza si sendToGroup falla', async () => {
-      mockPrisma.$queryRaw.mockResolvedValue([
-        { id: 'u1', name: 'Ana', phone: '573001111111' },
+      mockPrisma.user.findMany.mockResolvedValue([
+        makeBirthdayUser({ id: 'u1', name: 'Ana', phone: '573001111111' }),
       ]);
       mockWhatsapp.sendToGroup.mockRejectedValue(new Error('WhatsApp down'));
       await expect(service.sendBirthdayGreetings()).resolves.not.toThrow();

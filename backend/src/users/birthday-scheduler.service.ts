@@ -1,13 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
-
-interface BirthdayUser {
-  id: string;
-  name: string;
-  phone: string;
-}
 
 /** Each template receives the mention string (e.g. "@573001234567" or "@573001234567, @573009876543"). */
 const TEMPLATES: Array<(mentions: string) => string> = [
@@ -39,16 +34,16 @@ export class BirthdaySchedulerService {
   @Cron('0 9 * * *', { timeZone: 'America/Bogota' })
   async sendBirthdayGreetings() {
     const now = new Date();
-    const month = now.getMonth() + 1;
-    const day = now.getDate();
 
-    const users = await this.prisma.$queryRaw<BirthdayUser[]>`
-      SELECT id, name, phone FROM "User"
-      WHERE status = 'active'
-        AND "birthDate" IS NOT NULL
-        AND EXTRACT(MONTH FROM "birthDate") = ${month}
-        AND EXTRACT(DAY FROM "birthDate") = ${day}
-    `;
+    const candidates = await this.prisma.user.findMany({
+      where: { status: UserStatus.active, birthDate: { not: null } },
+      select: { id: true, name: true, phone: true, birthDate: true },
+    });
+
+    const users = candidates.filter((u) => {
+      const bd = new Date(u.birthDate!);
+      return bd.getMonth() === now.getMonth() && bd.getDate() === now.getDate();
+    });
 
     if (users.length === 0) return;
 
