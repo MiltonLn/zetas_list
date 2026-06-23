@@ -77,12 +77,12 @@ export default function CreateGamePage() {
       <PageHeader title="Crear Nuevo Partido" backTo="/" />
 
       <div className="page-wrapper" style={{ maxWidth: 560 }}>
-        <div className="card" style={{ padding: 24 }}>
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div className="card create-game-card">
+          <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
+
+            {/* Modalidad */}
             <div>
-              <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
-                Modalidad
-              </label>
+              <label className="field-label">Modalidad</label>
               <div style={{ display: 'flex', gap: 8 }}>
                 {(Object.keys(MODALIDAD_LABELS) as Modalidad[]).map((m) => (
                   <button
@@ -91,14 +91,14 @@ export default function CreateGamePage() {
                     onClick={() => setModalidad(m)}
                     style={{
                       flex: 1,
-                      padding: '10px 4px',
+                      padding: '12px 4px',
                       borderRadius: 10,
                       border: modalidad === m ? '2px solid #3b5bdb' : '2px solid #2a2f5a',
                       background: modalidad === m ? '#3b5bdb22' : '#1a1d38',
                       color: modalidad === m ? '#6e8efb' : '#7c8db5',
                       cursor: 'pointer',
                       fontWeight: 600,
-                      fontSize: 14,
+                      fontSize: 15,
                       transition: 'all 0.15s',
                     }}
                   >
@@ -108,11 +108,10 @@ export default function CreateGamePage() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            {/* Fecha + Hora inicio */}
+            <div className="form-grid-2">
               <div>
-                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
-                  Fecha del partido
-                </label>
+                <label className="field-label">Fecha del partido</label>
                 <input
                   className="zetas-input"
                   type="date"
@@ -123,9 +122,7 @@ export default function CreateGamePage() {
                 />
               </div>
               <div>
-                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
-                  Hora de inicio
-                </label>
+                <label className="field-label">Hora de inicio</label>
                 <input
                   className="zetas-input"
                   type="time"
@@ -136,10 +133,9 @@ export default function CreateGamePage() {
               </div>
             </div>
 
+            {/* Apertura del registro */}
             <div>
-              <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
-                Hora de apertura del registro
-              </label>
+              <label className="field-label">Hora de apertura del registro</label>
               <input
                 className="zetas-input"
                 type="time"
@@ -147,17 +143,16 @@ export default function CreateGamePage() {
                 onChange={(e) => setRegistrationOpenTime(e.target.value)}
                 required
               />
-              <p style={{ color: '#7c8db5', fontSize: 12, marginTop: 4 }}>
+              <p className="field-hint">
                 El registro se abre el mismo día del partido a esta hora (Colombia).
                 En este momento se envía automáticamente el mensaje a WhatsApp.
               </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+            {/* Precio · Vigilante · Cupos */}
+            <div className="form-grid-3">
               <div>
-                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
-                  Precio por jugador ($)
-                </label>
+                <label className="field-label">Precio jugador</label>
                 <input
                   className="zetas-input"
                   type="number"
@@ -169,9 +164,7 @@ export default function CreateGamePage() {
                 />
               </div>
               <div>
-                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
-                  Vigilante ($)
-                </label>
+                <label className="field-label">Vigilante</label>
                 <input
                   className="zetas-input"
                   type="number"
@@ -183,9 +176,7 @@ export default function CreateGamePage() {
                 />
               </div>
               <div>
-                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
-                  Cupos (opcional)
-                </label>
+                <label className="field-label">Cupos</label>
                 <input
                   className="zetas-input"
                   type="number"
@@ -197,25 +188,20 @@ export default function CreateGamePage() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            {/* Corte invitados · Máx. anotaciones */}
+            <div className="form-grid-2">
               <div>
-                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
-                  Hora de corte para invitados
-                </label>
+                <label className="field-label">Corte invitados</label>
                 <input
                   className="zetas-input"
                   type="time"
                   value={guestCutoffTime}
                   onChange={(e) => setGuestCutoffTime(e.target.value)}
                 />
-                <p style={{ color: '#7c8db5', fontSize: 12, marginTop: 4 }}>
-                  Antes de esta hora, invitados siempre van a lista de espera.
-                </p>
+                <p className="field-hint">Antes de esta hora, invitados siempre van a lista de espera.</p>
               </div>
               <div>
-                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 6 }}>
-                  Máx. anotaciones por miembro
-                </label>
+                <label className="field-label">Máx. anotaciones</label>
                 <input
                   className="zetas-input"
                   type="number"
@@ -225,23 +211,22 @@ export default function CreateGamePage() {
                   onChange={(e) => setMaxProxyRegistrations(e.target.value)}
                   placeholder="1"
                 />
-                <p style={{ color: '#7c8db5', fontSize: 12, marginTop: 4 }}>
-                  Cuántas personas puede anotar un miembro (sin contarse a sí mismo).
-                </p>
+                <p className="field-hint">Cuántas personas puede anotar un miembro (sin contarse a sí mismo).</p>
               </div>
             </div>
 
+            {/* Título */}
             <div
               style={{
                 background: '#3b5bdb11',
                 border: '1px solid #3b5bdb33',
                 borderRadius: 10,
-                padding: '12px 16px',
+                padding: '12px 14px',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: useCustomTitle ? 10 : 0 }}>
-                <p style={{ color: '#6e8efb', fontSize: 13, margin: 0 }}>
-                  📋 Título: <strong>{useCustomTitle && customTitle.trim() ? customTitle.trim() : autoTitle}</strong>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: useCustomTitle ? 10 : 0 }}>
+                <p style={{ color: '#6e8efb', fontSize: 13, margin: 0, wordBreak: 'break-word', flex: 1 }}>
+                  📋 <strong>{useCustomTitle && customTitle.trim() ? customTitle.trim() : autoTitle}</strong>
                 </p>
                 <button
                   type="button"
@@ -252,7 +237,7 @@ export default function CreateGamePage() {
                   style={{
                     background: 'none', border: 'none', color: '#6e8efb',
                     cursor: 'pointer', fontSize: 12, textDecoration: 'underline',
-                    padding: 0, marginLeft: 8, whiteSpace: 'nowrap',
+                    padding: 0, whiteSpace: 'nowrap', flexShrink: 0,
                   }}
                 >
                   {useCustomTitle ? 'Usar automático' : 'Personalizar'}
@@ -265,7 +250,6 @@ export default function CreateGamePage() {
                   value={customTitle}
                   onChange={(e) => setCustomTitle(e.target.value)}
                   placeholder={autoTitle}
-                  style={{ marginTop: 0 }}
                 />
               )}
             </div>
@@ -274,9 +258,10 @@ export default function CreateGamePage() {
               <p style={{ color: '#ff6b6b', fontSize: 13, margin: 0 }}>{error}</p>
             )}
 
-            <button type="submit" className="btn btn-primary" disabled={loading} style={{ marginTop: 4 }}>
+            <button type="submit" className="btn btn-primary" disabled={loading}>
               {loading ? 'Creando partido...' : 'Crear partido'}
             </button>
+
           </form>
         </div>
       </div>
