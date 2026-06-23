@@ -5,7 +5,7 @@
 .PHONY: help up up-build down restart logs logs-backend logs-frontend logs-db \
         restart-frontend restart-backend \
         shell-backend shell-db \
-        migrate migrate-deploy seed seed-players cleanup-players reset-db generate studio \
+        migrate migrate-deploy seed seed-players cleanup-players seed-tournaments cleanup-tournaments reset-db generate studio \
         build lint test hooks clean nuke
 
 # Colores
@@ -85,6 +85,12 @@ seed-players: ## Crea jugadores de prueba (uso: make seed-players count=20 game=
 
 cleanup-players: ## Elimina todos los jugadores de prueba (testplayer*)
 	docker compose exec backend node -r ts-node/register prisma/seed-test-players.ts --cleanup
+
+seed-tournaments: ## Crea 2 torneos de prueba: 8 equipos (knockout) y 4 equipos (grupos+knockout)
+	docker compose exec backend node -r ts-node/register prisma/seed-tournaments.ts
+
+cleanup-tournaments: ## Elimina los torneos de prueba ([TEST] prefijo)
+	docker compose exec backend node -r ts-node/register prisma/seed-tournaments.ts --cleanup
 
 generate: ## Regenera el cliente de Prisma
 	docker compose exec backend npx prisma generate

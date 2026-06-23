@@ -289,3 +289,137 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   order_created: 'Pedido creado',
   order_status_changed: 'Estado de pedido cambiado',
 };
+
+// ---------------------------------------------------------------------------
+// Tournaments
+// ---------------------------------------------------------------------------
+
+export type TournamentStatus =
+  | 'draft'
+  | 'registration_open'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled';
+
+export type TournamentFormat = 'groups_and_knockout' | 'knockout_only';
+
+export type MatchStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+
+export interface TournamentPlayer {
+  id: string;
+  teamId: string;
+  userId?: string;
+  guestName?: string;
+  isCaptain: boolean;
+  user?: { id: string; name: string; phone: string };
+}
+
+export interface TournamentTeam {
+  id: string;
+  tournamentId: string;
+  name: string;
+  paid: boolean;
+  seed?: number;
+  groupLabel?: string;
+  registeredById: string;
+  createdAt: string;
+  players: TournamentPlayer[];
+  registeredBy: { id: string; name: string };
+}
+
+export interface TournamentSet {
+  id: string;
+  matchId: string;
+  setNumber: number;
+  scoreA: number;
+  scoreB: number;
+}
+
+export interface TournamentMatch {
+  id: string;
+  tournamentId: string;
+  phase: string;
+  groupLabel?: string;
+  roundNumber: number;
+  matchOrder: number;
+  teamAId?: string;
+  teamBId?: string;
+  winnerId?: string;
+  status: MatchStatus;
+  scheduledAt?: string;
+  court?: string;
+  teamA?: { id: string; name: string };
+  teamB?: { id: string; name: string };
+  winner?: { id: string; name: string };
+  sets: TournamentSet[];
+}
+
+export interface Tournament {
+  id: string;
+  name: string;
+  format: TournamentFormat;
+  modalidad: Modalidad;
+  status: TournamentStatus;
+  registrationOpenAt: string;
+  startDate: string;
+  endDate: string;
+  pricePerTeam: number;
+  prizeDescription?: string;
+  maxTeams: number;
+  minPlayersPerTeam: number;
+  maxPlayersPerTeam: number;
+  minZetasMembers: number;
+  allowExternalTeams: boolean;
+  numberOfGroups?: number;
+  rules?: string;
+  rulesFileUrl?: string;
+  flyerUrl?: string;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  teams: TournamentTeam[];
+  matches: TournamentMatch[];
+  createdBy: { id: string; name: string };
+}
+
+export type TournamentSummary = Pick<
+  Tournament,
+  | 'id' | 'name' | 'format' | 'modalidad' | 'status'
+  | 'startDate' | 'endDate' | 'pricePerTeam' | 'prizeDescription'
+  | 'maxTeams' | 'registrationOpenAt' | 'createdAt' | 'updatedAt'
+  | 'createdBy'
+> & { teams: { id: string; paid: boolean }[] };
+
+export const TOURNAMENT_STATUS_LABELS: Record<TournamentStatus, string> = {
+  draft: 'Borrador',
+  registration_open: 'Inscripciones abiertas',
+  in_progress: 'En curso',
+  completed: 'Completado',
+  cancelled: 'Cancelado',
+};
+
+export const TOURNAMENT_STATUS_COLORS: Record<TournamentStatus, string> = {
+  draft: '#7c8db5',
+  registration_open: '#4caf50',
+  in_progress: '#ff9800',
+  completed: '#6e8efb',
+  cancelled: '#e53935',
+};
+
+export const TOURNAMENT_FORMAT_LABELS: Record<TournamentFormat, string> = {
+  groups_and_knockout: 'Fase de grupos + eliminación',
+  knockout_only: 'Solo llaves (eliminación directa)',
+};
+
+export interface TeamStanding {
+  teamId: string;
+  groupLabel: string;
+  wins: number;
+  losses: number;
+  points: number;
+  setsWon: number;
+  setsLost: number;
+  setDiff: number;
+  pointsScored: number;
+  pointsConceded: number;
+}

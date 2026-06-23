@@ -17,6 +17,11 @@ import { FinancesDashboardPage } from './pages/FinancesDashboardPage';
 import { AdminFinancesPage } from './pages/AdminFinancesPage';
 import CamisetasPage from './pages/CamisetasPage';
 import { AdminOrdersPage } from './pages/AdminOrdersPage';
+import TournamentsPage from './pages/TournamentsPage';
+import TournamentDetailPage from './pages/TournamentDetailPage';
+import PublicTournamentPage from './pages/PublicTournamentPage';
+import AdminTournamentsPage from './pages/AdminTournamentsPage';
+import AdminTournamentDetailPage from './pages/AdminTournamentDetailPage';
 
 function AuthenticatedApp({ children }: { children: React.ReactNode }) {
   return (
@@ -125,6 +130,39 @@ export default function App() {
             element={
               <AdminApp>
                 <AdminOrdersPage />
+              </AdminApp>
+            }
+          />
+          <Route
+            path="/torneos"
+            element={
+              <AuthenticatedApp>
+                <TournamentsPage />
+              </AuthenticatedApp>
+            }
+          />
+          <Route
+            path="/torneos/:id"
+            element={
+              <AuthenticatedApp>
+                <TournamentDetailPage />
+              </AuthenticatedApp>
+            }
+          />
+          <Route path="/t/:id" element={<PublicTournamentPage />} />
+          <Route
+            path="/admin/torneos"
+            element={
+              <AdminApp>
+                <AdminTournamentsPage />
+              </AdminApp>
+            }
+          />
+          <Route
+            path="/admin/torneos/:id"
+            element={
+              <AdminApp>
+                <AdminTournamentDetailPage />
               </AdminApp>
             }
           />

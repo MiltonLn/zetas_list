@@ -5,6 +5,7 @@ import { GamesService } from '../games/games.service';
 import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { FinancesService } from '../finances/finances.service';
+import { TournamentsService } from '../tournaments/tournaments.service';
 import { Role } from '@prisma/client';
 import { AlreadyRegisteredException, ProxyLimitExceededException } from '../games/exceptions';
 
@@ -27,6 +28,9 @@ const mockPrisma = { game: { findFirst: jest.fn() } };
 const mockFinances = {
   getPendingFines: jest.fn().mockResolvedValue([]),
   hasUnpaidFines: jest.fn().mockResolvedValue(false),
+};
+const mockTournaments = {
+  findAll: jest.fn().mockResolvedValue([]),
 };
 
 function makeActiveGame(regs: any[] = []) {
@@ -219,6 +223,7 @@ describe('MessageHandlerService — handleMessage', () => {
         { provide: UsersService, useValue: mockUsers },
         { provide: PrismaService, useValue: mockPrisma },
         { provide: FinancesService, useValue: mockFinances },
+        { provide: TournamentsService, useValue: mockTournaments },
       ],
     }).compile();
 

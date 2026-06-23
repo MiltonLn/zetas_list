@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
 import { Modal } from '../components/Modal';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { financesService, type FinanceTransaction, type Fine } from '../services/finances.service';
 
 const PAGE_SIZE = 10;
@@ -36,6 +37,9 @@ export function AdminFinancesPage() {
   const [showFineModal, setShowFineModal] = useState(false);
   const [editingFine, setEditingFine] = useState<Fine | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [confirmDeleteTx, setConfirmDeleteTx] = useState<string | null>(null);
+  const [confirmDeleteFine, setConfirmDeleteFine] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -66,22 +70,32 @@ export function AdminFinancesPage() {
   const formatCurrency = (amount: number) => `$${amount.toLocaleString('es-CO')}`;
   const formatDate = (date: string) => new Date(date).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
 
-  const handleDeleteTx = async (id: string) => {
-    if (!confirm('¿Eliminar esta transacción?')) return;
+  const handleDeleteTx = (id: string) => setConfirmDeleteTx(id);
+
+  const doDeleteTx = async () => {
+    if (!confirmDeleteTx) return;
+    setDeleting(true);
     try {
-      await financesService.deleteTransaction(id);
-      setTransactions((prev) => prev.filter((t) => t.id !== id));
+      await financesService.deleteTransaction(confirmDeleteTx);
+      setTransactions((prev) => prev.filter((t) => t.id !== confirmDeleteTx));
       showToast('Transacción eliminada', 'success');
+      setConfirmDeleteTx(null);
     } catch (e) { showToast(getApiError(e), 'error'); }
+    finally { setDeleting(false); }
   };
 
-  const handleDeleteFine = async (id: string) => {
-    if (!confirm('¿Eliminar esta multa?')) return;
+  const handleDeleteFine = (id: string) => setConfirmDeleteFine(id);
+
+  const doDeleteFine = async () => {
+    if (!confirmDeleteFine) return;
+    setDeleting(true);
     try {
-      await financesService.deleteFine(id);
-      setFines((prev) => prev.filter((f) => f.id !== id));
+      await financesService.deleteFine(confirmDeleteFine);
+      setFines((prev) => prev.filter((f) => f.id !== confirmDeleteFine));
       showToast('Multa eliminada', 'success');
+      setConfirmDeleteFine(null);
     } catch (e) { showToast(getApiError(e), 'error'); }
+    finally { setDeleting(false); }
   };
 
   const handleMarkPaid = async (id: string) => {
@@ -172,6 +186,28 @@ export function AdminFinancesPage() {
           onImported={() => { setShowImportModal(false); loadData(); }}
         />
       )}
+
+      <ConfirmModal
+        open={!!confirmDeleteTx}
+        title="Eliminar transacción"
+        message="¿Eliminar esta transacción? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        danger
+        loading={deleting}
+        onConfirm={doDeleteTx}
+        onClose={() => setConfirmDeleteTx(null)}
+      />
+
+      <ConfirmModal
+        open={!!confirmDeleteFine}
+        title="Eliminar multa"
+        message="¿Eliminar esta multa? Esta acción no se puede deshacer."
+        confirmLabel="Eliminar"
+        danger
+        loading={deleting}
+        onConfirm={doDeleteFine}
+        onClose={() => setConfirmDeleteFine(null)}
+      />
     </>
   );
 }

@@ -4,6 +4,7 @@ import { GamesService } from '../games/games.service';
 import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { FinancesService } from '../finances/finances.service';
+import { TournamentsService } from '../tournaments/tournaments.service';
 import { Role } from '@prisma/client';
 import {
   AlreadyRegisteredException,
@@ -57,6 +58,7 @@ const CMD_RULES = /^@z\s+(reglas|reglamento|normas)\b/i;
 const CMD_FINANCES = /^@z\s+(finanzas|presupuesto|plata|dinero|caja|lucas|fondos)\b/i;
 const CMD_FINED = /^@z\s+(multados|deudores|morosos|multas|deudas)\b/i;
 const CMD_ALIASES = /^@z\s+(alias|variantes|sinonimos|alternativas)\b/i;
+const CMD_TOURNAMENTS = /^@z\s+(torneos?|competencias?)\b/i;
 const CMD_IS_BOT_MENTION = /^@z\b/i;
 
 const MSG_NO_ACTIVE_GAME = 'No hay ninguna lista abierta en el momento 🤷';
@@ -89,14 +91,16 @@ export class MessageHandlerService {
     private users: UsersService,
     private prisma: PrismaService,
     private finances: FinancesService,
+    private tournaments: TournamentsService,
   ) {
     this.commands = [
-      { regex: CMD_LIST,    requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: (ctx) => this.handleList(ctx) },
-      { regex: CMD_HELP,    requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleHelp() },
-      { regex: CMD_ALIASES, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleAliases() },
-      { regex: CMD_RULES,   requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleRules() },
-      { regex: CMD_FINANCES,requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFinances() },
-      { regex: CMD_FINED,   requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFined() },
+      { regex: CMD_LIST,        requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: (ctx) => this.handleList(ctx) },
+      { regex: CMD_HELP,        requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleHelp() },
+      { regex: CMD_ALIASES,     requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleAliases() },
+      { regex: CMD_RULES,       requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleRules() },
+      { regex: CMD_FINANCES,    requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFinances() },
+      { regex: CMD_FINED,       requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFined() },
+      { regex: CMD_TOURNAMENTS, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleTournaments() },
       { regex: CMD_FINISH,  requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  handler: (ctx) => this.handleFinish(ctx) },
       { regex: CMD_REMOVE_OTHER, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handleRemoveOther(ctx) },
       { regex: CMD_CONFIRM, requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  handler: (ctx) => this.handleConfirm(ctx) },
@@ -226,7 +230,8 @@ export class MessageHandlerService {
       `• *${BOT_MENTION} lista* — Ver la lista actual y cupos\n` +
       `• *${BOT_MENTION} reglas* — Ver las reglas del grupo\n` +
       `• *${BOT_MENTION} finanzas* — Ver el presupuesto del grupo\n` +
-      `• *${BOT_MENTION} multados* — Ver personas con multas pendientes\n\n` +
+      `• *${BOT_MENTION} multados* — Ver personas con multas pendientes\n` +
+      `• *${BOT_MENTION} torneos* — Ver torneos con inscripciones abiertas\n\n` +
       `✅ *Confirmación:*\n` +
       `• *${BOT_MENTION} confirmar* — Confirmar asistencia cuando te promueven\n\n` +
       `⬆️ *Gestión de espera:*\n` +
@@ -263,6 +268,7 @@ export class MessageHandlerService {
       `🚫 *Multados/Deudas:*\n` +
       `multados · deudores · morosos · multas · deudas\n\n` +
       `📜 *Reglas:* reglas · reglamento · normas\n` +
+      `🏆 *Torneos:* torneos · torneo · competencias · competencia\n` +
       `❓ *Ayuda:* ayuda · help · comandos · info\n` +
       `📖 *Alias:* alias · variantes · sinónimos · alternativas`,
     );
@@ -274,6 +280,41 @@ export class MessageHandlerService {
       `Consulta el reglamento completo aquí:\n` +
       `🔗 https://zetas.club/reglas`,
     );
+  }
+
+  private async handleTournaments(): Promise<void> {
+    try {
+      const open = await this.tournaments.findAll('registration_open' as any);
+      if (open.length === 0) {
+        await this.wp.sendToGroup(`🏐 No hay torneos con inscripciones abiertas en este momento.`);
+        return;
+      }
+
+      const lines: string[] = [`🏆 *Torneos con inscripciones abiertas:*\n`];
+      for (const t of open) {
+        const date = new Date(t.startDate).toLocaleDateString('es-CO', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        });
+        const slots = t.maxTeams - (t.teams?.length ?? 0);
+        const price = t.pricePerTeam > 0
+          ? `$${t.pricePerTeam.toLocaleString('es-CO')} por equipo`
+          : 'Gratis';
+
+        lines.push(
+          `📌 *${t.name}*\n` +
+          `📅 ${date}\n` +
+          `💰 ${price}\n` +
+          `👥 ${slots} cupo${slots !== 1 ? 's' : ''} disponible${slots !== 1 ? 's' : ''}\n` +
+          `🔗 https://zetas.club/torneos/${t.id}`,
+        );
+      }
+
+      await this.wp.sendToGroup(lines.join('\n\n'));
+    } catch (e) {
+      this.logError('Error al consultar torneos', e);
+    }
   }
 
   private async handleFinances(): Promise<void> {
