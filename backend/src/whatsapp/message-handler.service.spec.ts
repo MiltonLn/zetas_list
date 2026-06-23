@@ -50,8 +50,8 @@ describe('MessageHandlerService — regex', () => {
     return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   }
 
-  const CMD_REGISTER = /^@z\s+(anotame|anotarme|meteme|meterme|apuntame|apuntarme|inscribeme|inscribirme|juego|voy|entro|anotar|anota|apuntar|apunta)\b/i;
-  const CMD_UNREGISTER = /^@z\s+(salirme|sacame|sacarme|quitame|quitarme|borrame|borrarme|retirame|retirarme|no\s+voy|no\s+juego|no\s+puedo|salgo|salir)\b/i;
+  const CMD_REGISTER = /^@z\s+(anotame|anotarme|meteme|meterme|meto|apuntame|apuntarme|inscribeme|inscribirme|juego|voy|entro|anotar|anota|apuntar|apunta)\b/i;
+  const CMD_UNREGISTER = /^@z\s+(salirme|sacame|sacarme|quitame|quitarme|borrame|borrarme|retirame|retirarme|safo|no\s+voy|no\s+juego|no\s+puedo|salgo|salir)\b/i;
   const CMD_LIST = /^@z\s+(lista|cupos|quienes?\s+van|cuantos|como\s+vamos)\b/i;
   const CMD_FINISH = /^@z\s+(terminar|cerrar|finalizar|completar)\b/i;
   const CMD_ALIASES = /^@z\s+(alias|variantes|sinonimos|alternativas)\b/i;
@@ -63,6 +63,8 @@ describe('MessageHandlerService — regex', () => {
       ['@Z anotarme'],
       ['@Z meteme'],
       ['@Z meterme'],
+      ['@Z meto'],
+      ['@z meto'],
       ['@Z apuntame'],
       ['@Z apuntarme'],
       ['@Z inscribeme'],
@@ -105,6 +107,8 @@ describe('MessageHandlerService — regex', () => {
       ['@Z borrarme'],
       ['@Z retirame'],
       ['@Z retirarme'],
+      ['@Z safo'],
+      ['@z safo'],
       ['@Z no voy'],
       ['@Z no juego'],
       ['@Z no puedo'],

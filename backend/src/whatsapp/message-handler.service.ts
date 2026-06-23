@@ -44,8 +44,8 @@ function extractInlineGuests(text: string): string[] {
 }
 
 // All regexes use plain ASCII — input is pre-normalized in dispatch().
-const CMD_REGISTER = /^@z\s+(anotame|anotarme|meteme|meterme|apuntame|apuntarme|inscribeme|inscribirme|juego|voy|entro|anotar|anota|apuntar|apunta)\b/i;
-const CMD_UNREGISTER = /^@z\s+(salirme|sacame|sacarme|quitame|quitarme|borrame|borrarme|retirame|retirarme|no\s+voy|no\s+juego|no\s+puedo|salgo|salir)\b/i;
+const CMD_REGISTER = /^@z\s+(anotame|anotarme|meteme|meterme|meto|apuntame|apuntarme|inscribeme|inscribirme|juego|voy|entro|anotar|anota|apuntar|apunta)\b/i;
+const CMD_UNREGISTER = /^@z\s+(salirme|sacame|sacarme|quitame|quitarme|borrame|borrarme|retirame|retirarme|safo|no\s+voy|no\s+juego|no\s+puedo|salgo|salir)\b/i;
 const CMD_LIST = /^@z\s+(lista|cupos|quienes?\s+van|cuantos|como\s+vamos)\b/i;
 const CMD_FINISH = /^@z\s+(terminar|cerrar|finalizar|completar)\b/i;
 const CMD_PROMOTE = /^@z\s+(promover|subir|jalar|meter)\b/i;
@@ -245,9 +245,9 @@ export class MessageHandlerService {
       `📖 *Alias del Bot Zetas*\n` +
       `_Todos funcionan con o sin tildes._\n\n` +
       `📝 *Anotarse:*\n` +
-      `anótame · anotarme · méteme · meterme · apúntame · apuntarme · inscríbeme · inscribirme · voy · juego · entro · anotar · anota · apuntar · apunta\n\n` +
+      `anótame · anotarme · méteme · meterme · meto · apúntame · apuntarme · inscríbeme · inscribirme · voy · juego · entro · anotar · anota · apuntar · apunta\n\n` +
       `🚪 *Salirse:*\n` +
-      `salirme · sácame · sacarme · quítame · quitarme · bórrame · borrarme · retírame · retirarme · no voy · no juego · no puedo · salgo · salir\n\n` +
+      `salirme · sácame · sacarme · quítame · quitarme · bórrame · borrarme · retírame · retirarme · safo · no voy · no juego · no puedo · salgo · salir\n\n` +
       `✅ *Confirmar:*\n` +
       `confirmar · confirmo · confirma · listo · acepto\n\n` +
       `📋 *Ver lista:*\n` +
