@@ -56,6 +56,7 @@ const CMD_HELP = /^@z\s+(ayuda|help|comandos|info)\b/i;
 const CMD_RULES = /^@z\s+(reglas|reglamento|normas)\b/i;
 const CMD_FINANCES = /^@z\s+(finanzas|presupuesto|plata|dinero|caja|lucas|fondos)\b/i;
 const CMD_FINED = /^@z\s+(multados|deudores|morosos|multas|deudas)\b/i;
+const CMD_PAYMENT = /^@z\s+(llave|pago|pagos|transferencia|nequi)\b/i;
 const CMD_ALIASES = /^@z\s+(alias|variantes|sinonimos|alternativas)\b/i;
 const CMD_IS_BOT_MENTION = /^@z\b/i;
 
@@ -97,6 +98,7 @@ export class MessageHandlerService {
       { regex: CMD_RULES,   requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleRules() },
       { regex: CMD_FINANCES,requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFinances() },
       { regex: CMD_FINED,   requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFined() },
+      { regex: CMD_PAYMENT, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handlePayment() },
       { regex: CMD_FINISH,  requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  handler: (ctx) => this.handleFinish(ctx) },
       { regex: CMD_REMOVE_OTHER, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handleRemoveOther(ctx) },
       { regex: CMD_CONFIRM, requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  handler: (ctx) => this.handleConfirm(ctx) },
@@ -262,6 +264,8 @@ export class MessageHandlerService {
       `finanzas · presupuesto · plata · dinero · caja · lucas · fondos\n\n` +
       `🚫 *Multados/Deudas:*\n` +
       `multados · deudores · morosos · multas · deudas\n\n` +
+      `💳 *Medio de pago:*\n` +
+      `llave · pago · pagos · transferencia · nequi\n\n` +
       `📜 *Reglas:* reglas · reglamento · normas\n` +
       `❓ *Ayuda:* ayuda · help · comandos · info\n` +
       `📖 *Alias:* alias · variantes · sinónimos · alternativas`,
@@ -310,6 +314,14 @@ export class MessageHandlerService {
       this.logError('Error al consultar multados', e);
       await this.wp.sendToGroup(`❌ No se pudo consultar los multados. Intenta de nuevo.`);
     }
+  }
+
+  private async handlePayment(): Promise<void> {
+    const brebKey = process.env.BREB_KEY ?? '@MLR608';
+    await this.wp.sendToGroup(
+      `💳 *Medio de pago*\n\n` +
+      `Bre-B: *${brebKey}*`,
+    );
   }
 
   private async handleFinish(ctx: CommandContext): Promise<void> {

@@ -54,7 +54,25 @@ describe('MessageHandlerService — regex', () => {
   const CMD_UNREGISTER = /^@z\s+(salirme|sacame|sacarme|quitame|quitarme|borrame|borrarme|retirame|retirarme|safo|no\s+voy|no\s+juego|no\s+puedo|salgo|salir)\b/i;
   const CMD_LIST = /^@z\s+(lista|cupos|quienes?\s+van|cuantos|como\s+vamos)\b/i;
   const CMD_FINISH = /^@z\s+(terminar|cerrar|finalizar|completar)\b/i;
+  const CMD_PAYMENT = /^@z\s+(llave|pago|pagos|transferencia|nequi)\b/i;
   const CMD_ALIASES = /^@z\s+(alias|variantes|sinonimos|alternativas)\b/i;
+
+  describe('CMD_PAYMENT', () => {
+    it.each([
+      ['@Z llave'],
+      ['@z llave'],
+      ['@Z pago'],
+      ['@Z pagos'],
+      ['@Z transferencia'],
+      ['@Z nequi'],
+    ])('reconoce "%s"', (cmd) => {
+      expect(CMD_PAYMENT.test(cmd)).toBe(true);
+    });
+
+    it('NO reconoce texto sin @Z', () => {
+      expect(CMD_PAYMENT.test('llave')).toBe(false);
+    });
+  });
 
   describe('CMD_REGISTER', () => {
     it.each([
@@ -1142,6 +1160,9 @@ describe('MessageHandlerService — handleMessage', () => {
       expect(msg).toContain('caja');
       expect(msg).toContain('lucas');
       expect(msg).toContain('multas');
+      // Medio de pago
+      expect(msg).toContain('llave');
+      expect(msg).toContain('nequi');
       // Ejemplo inline
       expect(msg).toContain('+ Carlos');
     });
@@ -1155,6 +1176,33 @@ describe('MessageHandlerService — handleMessage', () => {
       mockPrisma.game.findFirst.mockResolvedValue(null);
       await service.handleMessage('111', '@Z alternativas', 'group-1');
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Alias del Bot'));
+    });
+  });
+
+  // ─── comando llave / pagos ────────────────────────────────────────────────
+
+  describe('comando llave', () => {
+    it('devuelve la llave Bre-B', async () => {
+      await service.handleMessage('111', '@Z llave', 'group-1');
+      const msg: string = mockWp.sendToGroup.mock.calls[0][0];
+      expect(msg).toContain('Medio de pago');
+      expect(msg).toContain('Bre-B');
+      expect(msg).toContain('@MLR608');
+    });
+
+    it('también funciona con "pagos" y "nequi"', async () => {
+      await service.handleMessage('111', '@Z pagos', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Bre-B'));
+
+      mockWp.sendToGroup.mockClear();
+      await service.handleMessage('111', '@Z nequi', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Bre-B'));
+    });
+
+    it('no requiere juego activo', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(null);
+      await service.handleMessage('111', '@Z transferencia', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Bre-B'));
     });
   });
 
