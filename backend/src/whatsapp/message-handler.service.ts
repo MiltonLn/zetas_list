@@ -5,6 +5,7 @@ import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { FinancesService } from '../finances/finances.service';
 import { Role } from '@prisma/client';
+import { GAME_MANAGERS } from '../common/constants/roles';
 import {
   AlreadyRegisteredException,
   GameFullException,
@@ -325,7 +326,7 @@ export class MessageHandlerService {
   }
 
   private async handleFinish(ctx: CommandContext): Promise<void> {
-    if (ctx.user!.role !== Role.admin) {
+    if (!GAME_MANAGERS.includes(ctx.user!.role)) {
       await this.wp.sendToGroup(`⛔ Solo los administradores pueden usar este comando.`);
       return;
     }
@@ -340,7 +341,7 @@ export class MessageHandlerService {
   }
 
   private async handleRemoveOther(ctx: CommandContext): Promise<void> {
-    if (ctx.user!.role !== Role.admin) {
+    if (!GAME_MANAGERS.includes(ctx.user!.role)) {
       await this.wp.sendToGroup(`⛔ Solo los administradores pueden sacar a otros de la lista.`);
       return;
     }
@@ -386,7 +387,7 @@ export class MessageHandlerService {
 
     // Admin confirma por otros mencionándolos: "@Z confirmar @persona".
     if (otherMentions.length > 0) {
-      if (ctx.user!.role !== Role.admin) {
+      if (!GAME_MANAGERS.includes(ctx.user!.role)) {
         await this.wp.sendToGroup(`⛔ Solo los administradores pueden confirmar por otros.`);
         return;
       }
@@ -562,10 +563,11 @@ export class MessageHandlerService {
       return jidNumber !== ctx.phone;
     });
 
-    const allowedMentions = ctx.user!.role === Role.admin
+    const isGameManager = GAME_MANAGERS.includes(ctx.user!.role);
+    const allowedMentions = isGameManager
       ? otherMentions
       : otherMentions.slice(0, 1);
-    const rejectedMentions = ctx.user!.role === Role.admin
+    const rejectedMentions = isGameManager
       ? []
       : otherMentions.slice(1);
 

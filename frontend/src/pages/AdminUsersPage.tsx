@@ -228,6 +228,11 @@ export default function AdminUsersPage() {
                         Admin
                       </span>
                     )}
+                    {user.role === 'ayudante' && (
+                      <span style={{ background: '#e3a00822', color: '#e3a008', fontSize: 11, padding: '1px 7px', borderRadius: 6, fontWeight: 600 }}>
+                        Ayudante
+                      </span>
+                    )}
                     <span
                       style={{
                         color: USER_STATUS_COLORS[user.status],
@@ -307,6 +312,7 @@ export default function AdminUsersPage() {
               <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Rol</label>
               <select className="zetas-input" value={role} onChange={(e) => setRole(e.target.value as Role)} style={{ cursor: 'pointer' }}>
                 <option value="member">Miembro</option>
+                <option value="ayudante">Ayudante</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
@@ -394,7 +400,7 @@ export default function AdminUsersPage() {
               {selectedUser.phone}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {selectedUser.role === 'member' ? (
+              {selectedUser.role !== 'admin' && (
                 <button
                   className="btn"
                   onClick={async () => {
@@ -408,7 +414,23 @@ export default function AdminUsersPage() {
                 >
                   👑 Hacer administrador
                 </button>
-              ) : (
+              )}
+              {selectedUser.role !== 'ayudante' && (
+                <button
+                  className="btn"
+                  onClick={async () => {
+                    try {
+                      const { data } = await usersService.updateRole(selectedUser.id, 'ayudante');
+                      setUsers((prev) => prev.map((u) => (u.id === data.id ? data : u)));
+                      setSelectedUser(null);
+                    } catch (err) { setError(getApiError(err)); }
+                  }}
+                  style={{ textAlign: 'left', color: '#e3a008' }}
+                >
+                  🤝 Hacer ayudante
+                </button>
+              )}
+              {selectedUser.role !== 'member' && (
                 <button
                   className="btn"
                   onClick={async () => {
@@ -420,7 +442,7 @@ export default function AdminUsersPage() {
                   }}
                   style={{ textAlign: 'left' }}
                 >
-                  👤 Quitar rol de admin
+                  👤 Quitar rol especial
                 </button>
               )}
               {selectedUser.status !== 'active' && (

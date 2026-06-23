@@ -35,7 +35,7 @@ import { formatReportLine } from '../utils/format-report';
 
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isGameManager } = useAuth();
 
   const [game, setGame] = useState<Game | null>(null);
   const [loading, setLoading] = useState(true);
@@ -272,7 +272,7 @@ export default function GameDetailPage() {
   const mainListFull = mainList.length >= game.maxMainSpots;
   const allRegs = [...mainList, ...waitList];
   const proxyCount = allRegs.filter((r) => r.registeredById === user?.id && r.userId !== user?.id && !r.isGuest).length;
-  const proxyLimitReached = !isAdmin && proxyCount >= game.maxProxyRegistrations;
+  const proxyLimitReached = !isGameManager && proxyCount >= game.maxProxyRegistrations;
   const hasPendingConfirmation = allRegs.some(
     (r) => r.userId === user?.id && r.pendingConfirmation,
   );
@@ -289,7 +289,7 @@ export default function GameDetailPage() {
         title={game.title}
         backTo="/"
         action={
-          isAdmin ? (
+          isGameManager ? (
             <div style={{ display: 'flex', gap: 6 }}>
               {(game.status === 'registration_open' || game.status === 'in_progress') && (
                 <button
@@ -300,7 +300,7 @@ export default function GameDetailPage() {
                   ✅ Terminar
                 </button>
               )}
-              {game.status !== 'completed' && game.status !== 'cancelled' && (
+              {isAdmin && game.status !== 'completed' && game.status !== 'cancelled' && (
                 <button
                   onClick={() => setShowCancel(true)}
                   style={{
@@ -344,7 +344,7 @@ export default function GameDetailPage() {
           )}
         </div>
 
-        {isAdmin && (
+        {isGameManager && (
           <div style={{
             display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
             gap: 8, marginBottom: 16,
@@ -487,7 +487,7 @@ export default function GameDetailPage() {
           </h2>
         </div>
 
-        {isAdmin ? (
+        {isGameManager ? (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDragEnd(e, 'main')}>
             <SortableContext items={mainList.map((r) => r.id)} strategy={verticalListSortingStrategy}>
               {mainList.map((reg, i) => (
@@ -495,7 +495,7 @@ export default function GameDetailPage() {
                   key={reg.id}
                   reg={reg}
                   index={i}
-                  isAdmin={isAdmin}
+                  isGameManager={isGameManager}
                   readonly={isFinished}
                   mainListFull={mainListFull}
                   onToggleAttended={() => handleToggle(reg.id, 'attended', reg.attended)}
@@ -506,7 +506,7 @@ export default function GameDetailPage() {
                   onRemove={() => handleRemove(reg.userId, reg.isGuest ? reg.id : undefined)}
                   isSelf={reg.userId === user?.id}
                   allowSelfRemove={isOpen}
-                  draggable={isAdmin && !isFinished}
+                  draggable={isGameManager && !isFinished}
                   onNameClick={() => setSelectedReg(reg)}
                 />
               ))}
@@ -518,7 +518,7 @@ export default function GameDetailPage() {
               key={reg.id}
               reg={reg}
               index={i}
-              isAdmin={false}
+              isGameManager={false}
               onRemove={() => handleRemove(reg.userId, reg.isGuest ? reg.id : undefined)}
               isSelf={reg.userId === user?.id}
               allowSelfRemove={isOpen}
@@ -546,7 +546,7 @@ export default function GameDetailPage() {
                 {waitList.length}
               </span>
             </h2>
-            {isAdmin ? (
+            {isGameManager ? (
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDragEnd(e, 'wait')}>
                 <SortableContext items={waitList.map((r) => r.id)} strategy={verticalListSortingStrategy}>
                   {waitList.map((reg, i) => (
@@ -554,7 +554,7 @@ export default function GameDetailPage() {
                       key={reg.id}
                       reg={reg}
                       index={i}
-                      isAdmin={isAdmin}
+                      isGameManager={isGameManager}
                       readonly={isFinished}
                       mainListFull={mainListFull}
                       onToggleAttended={() => handleToggle(reg.id, 'attended', reg.attended)}
@@ -565,7 +565,7 @@ export default function GameDetailPage() {
                       onRemove={() => handleRemove(reg.userId, reg.isGuest ? reg.id : undefined)}
                       isSelf={reg.userId === user?.id}
                       allowSelfRemove={isOpen}
-                      draggable={isAdmin && !isFinished}
+                      draggable={isGameManager && !isFinished}
                       onNameClick={() => setSelectedReg(reg)}
                     />
                   ))}
@@ -577,13 +577,13 @@ export default function GameDetailPage() {
                   key={reg.id}
                   reg={reg}
                   index={i}
-                isAdmin={false}
-                onRemove={() => handleRemove(reg.userId, reg.isGuest ? reg.id : undefined)}
-                isSelf={reg.userId === user?.id}
-                allowSelfRemove={isOpen}
-                isOwnGuest={reg.isGuest && reg.registeredById === user?.id}
-                draggable={false}
-                onNameClick={() => setSelectedReg(reg)}
+                  isGameManager={false}
+                  onRemove={() => handleRemove(reg.userId, reg.isGuest ? reg.id : undefined)}
+                  isSelf={reg.userId === user?.id}
+                  allowSelfRemove={isOpen}
+                  isOwnGuest={reg.isGuest && reg.registeredById === user?.id}
+                  draggable={false}
+                  onNameClick={() => setSelectedReg(reg)}
                 />
               ))
             )}
@@ -648,7 +648,7 @@ export default function GameDetailPage() {
           gameId={id}
           availableMembers={availableMembers}
           isUserRegistered={isAlreadyRegistered}
-          isAdmin={isAdmin}
+          isGameManager={isGameManager}
           proxyLimitReached={proxyLimitReached}
           maxProxyRegistrations={game.maxProxyRegistrations}
           onSuccess={() => { fetchGame(); loadAvailableMembers(); }}

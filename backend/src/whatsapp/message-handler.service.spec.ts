@@ -1258,5 +1258,91 @@ describe('MessageHandlerService — handleMessage', () => {
       expect(mockGames.register).toHaveBeenCalledTimes(3);
       expect(mockWp.sendToGroup).not.toHaveBeenCalledWith(expect.stringContaining('ignoradas'));
     });
+
+    it('un ayudante puede anotar a múltiples personas (sin límite de proxy)', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockImplementation((phone: string) => {
+        if (phone === '111') return Promise.resolve(makeUser({ role: Role.ayudante }));
+        if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
+        if (phone === '333') return Promise.resolve({ id: 'user-3', name: 'Pedro', role: Role.member, status: 'active' });
+        return Promise.resolve(null);
+      });
+      mockGames.retryFromWaitingList.mockResolvedValue({ promoted: false, game: null });
+      mockGames.register.mockResolvedValue({ isWaitingList: false, position: 1 });
+      mockGames.findOne.mockResolvedValue(makeActiveGame());
+
+      await service.handleMessage('111', '@Z anotame @222 @333', 'group-1', ['222@s.whatsapp.net', '333@s.whatsapp.net']);
+
+      expect(mockGames.register).toHaveBeenCalledTimes(3);
+      expect(mockWp.sendToGroup).not.toHaveBeenCalledWith(expect.stringContaining('ignoradas'));
+    });
+  });
+
+  // ─── permisos ayudante ─────────────────────────────────────────────────────
+
+  describe('permisos del rol ayudante', () => {
+    it('ayudante puede terminar un partido', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.ayudante }));
+      mockGames.complete.mockResolvedValue({ game: {}, report: '✅ Reporte final' });
+
+      await service.handleMessage('111', '@Z terminar', 'group-1');
+      expect(mockGames.complete).toHaveBeenCalledWith('game-1', 'user-1', { silent: true });
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith('✅ Reporte final');
+    });
+
+    it('ayudante puede sacar a otro jugador', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockImplementation((phone: string) => {
+        if (phone === '111') return Promise.resolve(makeUser({ role: Role.ayudante }));
+        if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
+        return Promise.resolve(null);
+      });
+      mockGames.removeRegistration.mockResolvedValue(undefined);
+
+      await service.handleMessage('111', '@Z sacar @222', 'group-1', ['222@s.whatsapp.net']);
+      expect(mockGames.removeRegistration).toHaveBeenCalledWith('game-1', 'user-2', 'user-1', Role.ayudante);
+      expect(mockWp.sendToGroup).not.toHaveBeenCalled();
+    });
+
+    it('ayudante puede confirmar asistencia por otro', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockImplementation((phone: string) => {
+        if (phone === '111') return Promise.resolve(makeUser({ role: Role.ayudante }));
+        if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
+        return Promise.resolve(null);
+      });
+      mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: false, confirmedGuests: [] });
+
+      await service.handleMessage('111', '@Z confirmar @222', 'group-1', ['222@s.whatsapp.net']);
+      expect(mockGames.confirmRegistration).toHaveBeenCalledWith('game-1', 'user-2', 'user-1');
+    });
+
+    it('member sigue sin poder terminar el partido', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.member }));
+
+      await service.handleMessage('111', '@Z terminar', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('administradores'));
+      expect(mockGames.complete).not.toHaveBeenCalled();
+    });
+
+    it('member sigue sin poder sacar a otro jugador', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.member }));
+
+      await service.handleMessage('111', '@Z sacar @222', 'group-1', ['222@s.whatsapp.net']);
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Solo los administradores'));
+      expect(mockGames.removeRegistration).not.toHaveBeenCalled();
+    });
+
+    it('member sigue sin poder confirmar por otro', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.member }));
+
+      await service.handleMessage('111', '@Z confirmar @222', 'group-1', ['222@s.whatsapp.net']);
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Solo los administradores'));
+      expect(mockGames.confirmRegistration).not.toHaveBeenCalled();
+    });
   });
 });

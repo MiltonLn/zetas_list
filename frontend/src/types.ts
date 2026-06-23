@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'member';
+export type Role = 'admin' | 'ayudante' | 'member';
 export type UserStatus = 'active' | 'inactive' | 'banned';
 export type Position = 'auxiliar' | 'libero' | 'armador' | 'central' | 'opuesto';
 export type Gender = 'masculino' | 'femenino' | 'otro';

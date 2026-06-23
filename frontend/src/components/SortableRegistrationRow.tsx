@@ -7,7 +7,7 @@ import { Avatar } from './Avatar';
 interface Props {
   reg: GameRegistration;
   index: number;
-  isAdmin: boolean;
+  isGameManager: boolean;
   readonly?: boolean;
   mainListFull?: boolean;
   onToggleAttended?: () => void;
@@ -27,7 +27,7 @@ interface Props {
 export function SortableRegistrationRow({
   reg,
   index,
-  isAdmin,
+  isGameManager,
   readonly: isReadonly,
   mainListFull,
   onToggleAttended,
@@ -112,7 +112,7 @@ export function SortableRegistrationRow({
         </div>
       </div>
 
-      {isAdmin && !isReadonly && reg.pendingConfirmation && onConfirm && (
+      {isGameManager && !isReadonly && reg.pendingConfirmation && onConfirm && (
         <button
           onClick={onConfirm}
           title="Confirmar asistencia por este jugador"
@@ -126,7 +126,7 @@ export function SortableRegistrationRow({
         </button>
       )}
 
-      {isAdmin && !isReadonly && (
+      {isGameManager && !isReadonly && (
         <>
           <button
             onClick={onToggleAttended}
@@ -181,7 +181,7 @@ export function SortableRegistrationRow({
         </>
       )}
 
-      {isAdmin && !isReadonly && (
+      {isGameManager && !isReadonly && (
         <button
           onClick={() => {
             if (confirmRemove) {
@@ -207,7 +207,7 @@ export function SortableRegistrationRow({
         </button>
       )}
 
-      {!isAdmin && allowSelfRemove && (isSelf || isOwnGuest) && (
+      {!isGameManager && allowSelfRemove && (isSelf || isOwnGuest) && (
         <button
           onClick={() => {
             if (confirmRemove) {

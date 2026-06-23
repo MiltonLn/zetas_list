@@ -17,6 +17,7 @@ interface AuthContextValue {
   logout: () => void;
   setUser: (u: AuthUser) => void;
   isAdmin: boolean;
+  isGameManager: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -54,7 +55,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, login, logout, setUser, isAdmin: user?.role === 'admin' }),
+    () => ({
+      user,
+      loading,
+      login,
+      logout,
+      setUser,
+      isAdmin: user?.role === 'admin',
+      isGameManager: user?.role === 'admin' || user?.role === 'ayudante',
+    }),
     [user, loading, login, logout],
   );
 
