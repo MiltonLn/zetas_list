@@ -5,6 +5,7 @@ import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { FinancesService } from '../finances/finances.service';
 import { Role } from '@prisma/client';
+import { GAME_MANAGERS } from '../common/constants/roles';
 import {
   AlreadyRegisteredException,
   GameFullException,
@@ -44,8 +45,8 @@ function extractInlineGuests(text: string): string[] {
 }
 
 // All regexes use plain ASCII — input is pre-normalized in dispatch().
-const CMD_REGISTER = /^@z\s+(anotame|anotarme|meteme|meterme|apuntame|apuntarme|inscribeme|inscribirme|juego|voy|entro|anotar|anota|apuntar|apunta)\b/i;
-const CMD_UNREGISTER = /^@z\s+(salirme|sacame|sacarme|quitame|quitarme|borrame|borrarme|retirame|retirarme|no\s+voy|no\s+juego|no\s+puedo|salgo|salir)\b/i;
+const CMD_REGISTER = /^@z\s+(anotame|anotarme|meteme|meterme|meto|apuntame|apuntarme|inscribeme|inscribirme|juego|voy|entro|anotar|anota|apuntar|apunta)\b/i;
+const CMD_UNREGISTER = /^@z\s+(salirme|sacame|sacarme|quitame|quitarme|borrame|borrarme|retirame|retirarme|safo|no\s+voy|no\s+juego|no\s+puedo|salgo|salir)\b/i;
 const CMD_LIST = /^@z\s+(lista|cupos|quienes?\s+van|cuantos|como\s+vamos)\b/i;
 const CMD_FINISH = /^@z\s+(terminar|cerrar|finalizar|completar)\b/i;
 const CMD_PROMOTE = /^@z\s+(promover|subir|jalar|meter)\b/i;
@@ -56,6 +57,7 @@ const CMD_HELP = /^@z\s+(ayuda|help|comandos|info)\b/i;
 const CMD_RULES = /^@z\s+(reglas|reglamento|normas)\b/i;
 const CMD_FINANCES = /^@z\s+(finanzas|presupuesto|plata|dinero|caja|lucas|fondos)\b/i;
 const CMD_FINED = /^@z\s+(multados|deudores|morosos|multas|deudas)\b/i;
+const CMD_PAYMENT = /^@z\s+(llave|pago|pagos|transferencia|nequi)\b/i;
 const CMD_ALIASES = /^@z\s+(alias|variantes|sinonimos|alternativas)\b/i;
 const CMD_IS_BOT_MENTION = /^@z\b/i;
 
@@ -97,6 +99,7 @@ export class MessageHandlerService {
       { regex: CMD_RULES,   requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleRules() },
       { regex: CMD_FINANCES,requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFinances() },
       { regex: CMD_FINED,   requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFined() },
+      { regex: CMD_PAYMENT, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handlePayment() },
       { regex: CMD_FINISH,  requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  handler: (ctx) => this.handleFinish(ctx) },
       { regex: CMD_REMOVE_OTHER, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handleRemoveOther(ctx) },
       { regex: CMD_CONFIRM, requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  handler: (ctx) => this.handleConfirm(ctx) },
@@ -245,9 +248,9 @@ export class MessageHandlerService {
       `📖 *Alias del Bot Zetas*\n` +
       `_Todos funcionan con o sin tildes._\n\n` +
       `📝 *Anotarse:*\n` +
-      `anótame · anotarme · méteme · meterme · apúntame · apuntarme · inscríbeme · inscribirme · voy · juego · entro · anotar · anota · apuntar · apunta\n\n` +
+      `anótame · anotarme · méteme · meterme · meto · apúntame · apuntarme · inscríbeme · inscribirme · voy · juego · entro · anotar · anota · apuntar · apunta\n\n` +
       `🚪 *Salirse:*\n` +
-      `salirme · sácame · sacarme · quítame · quitarme · bórrame · borrarme · retírame · retirarme · no voy · no juego · no puedo · salgo · salir\n\n` +
+      `salirme · sácame · sacarme · quítame · quitarme · bórrame · borrarme · retírame · retirarme · safo · no voy · no juego · no puedo · salgo · salir\n\n` +
       `✅ *Confirmar:*\n` +
       `confirmar · confirmo · confirma · listo · acepto\n\n` +
       `📋 *Ver lista:*\n` +
@@ -262,6 +265,8 @@ export class MessageHandlerService {
       `finanzas · presupuesto · plata · dinero · caja · lucas · fondos\n\n` +
       `🚫 *Multados/Deudas:*\n` +
       `multados · deudores · morosos · multas · deudas\n\n` +
+      `💳 *Medio de pago:*\n` +
+      `llave · pago · pagos · transferencia · nequi\n\n` +
       `📜 *Reglas:* reglas · reglamento · normas\n` +
       `❓ *Ayuda:* ayuda · help · comandos · info\n` +
       `📖 *Alias:* alias · variantes · sinónimos · alternativas`,
@@ -312,8 +317,16 @@ export class MessageHandlerService {
     }
   }
 
+  private async handlePayment(): Promise<void> {
+    const brebKey = process.env.BREB_KEY ?? '@MLR608';
+    await this.wp.sendToGroup(
+      `💳 *Medio de pago*\n\n` +
+      `Bre-B: *${brebKey}*`,
+    );
+  }
+
   private async handleFinish(ctx: CommandContext): Promise<void> {
-    if (ctx.user!.role !== Role.admin) {
+    if (!GAME_MANAGERS.includes(ctx.user!.role)) {
       await this.wp.sendToGroup(`⛔ Solo los administradores pueden usar este comando.`);
       return;
     }
@@ -328,7 +341,7 @@ export class MessageHandlerService {
   }
 
   private async handleRemoveOther(ctx: CommandContext): Promise<void> {
-    if (ctx.user!.role !== Role.admin) {
+    if (!GAME_MANAGERS.includes(ctx.user!.role)) {
       await this.wp.sendToGroup(`⛔ Solo los administradores pueden sacar a otros de la lista.`);
       return;
     }
@@ -374,7 +387,7 @@ export class MessageHandlerService {
 
     // Admin confirma por otros mencionándolos: "@Z confirmar @persona".
     if (otherMentions.length > 0) {
-      if (ctx.user!.role !== Role.admin) {
+      if (!GAME_MANAGERS.includes(ctx.user!.role)) {
         await this.wp.sendToGroup(`⛔ Solo los administradores pueden confirmar por otros.`);
         return;
       }
@@ -550,10 +563,11 @@ export class MessageHandlerService {
       return jidNumber !== ctx.phone;
     });
 
-    const allowedMentions = ctx.user!.role === Role.admin
+    const isGameManager = GAME_MANAGERS.includes(ctx.user!.role);
+    const allowedMentions = isGameManager
       ? otherMentions
       : otherMentions.slice(0, 1);
-    const rejectedMentions = ctx.user!.role === Role.admin
+    const rejectedMentions = isGameManager
       ? []
       : otherMentions.slice(1);
 

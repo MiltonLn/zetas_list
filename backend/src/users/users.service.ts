@@ -18,6 +18,7 @@ const USER_PUBLIC_SELECT = {
   id: true,
   username: true,
   name: true,
+  alias: true,
   phone: true,
   role: true,
   position: true,
@@ -66,6 +67,7 @@ export class UsersService {
         username,
         passwordHash,
         name: dto.name,
+        alias: dto.alias?.trim() || null,
         phone: normalizedPhone,
         role: dto.role ?? Role.member,
         position: dto.position,
@@ -149,6 +151,10 @@ export class UsersService {
       throw new ForbiddenException('Solo puedes editar tu propio perfil');
     }
 
+    if (dto.name !== undefined && actorRole !== Role.admin) {
+      throw new ForbiddenException('Solo un administrador puede cambiar el nombre real.');
+    }
+
     if (typeof dto.shirtNumber === 'number') {
       await assertShirtNumberAvailable(this.prisma, {
         number: dto.shirtNumber,
@@ -161,6 +167,7 @@ export class UsersService {
       where: { id },
       data: {
         name: dto.name,
+        alias: dto.alias !== undefined ? (dto.alias.trim() || null) : undefined,
         position: dto.position,
         gender: dto.gender,
         heightCm: dto.heightCm,

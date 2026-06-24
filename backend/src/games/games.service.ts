@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, Role, GameStatus, Modalidad } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { GAME_MANAGERS } from '../common/constants/roles';
 import { AuditService } from '../audit/audit.service';
 import { GameEventsService } from './game-events.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
@@ -673,7 +674,7 @@ export class GamesService {
         if (!foundReg) throw new NotRegisteredException();
 
         const regOwnerId = foundReg.userId ?? foundReg.registeredById;
-        if (actorRole !== Role.admin && actorId !== regOwnerId) {
+        if (!GAME_MANAGERS.includes(actorRole) && actorId !== regOwnerId) {
           throw new CannotRemoveOtherException();
         }
 

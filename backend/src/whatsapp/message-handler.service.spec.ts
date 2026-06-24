@@ -50,11 +50,29 @@ describe('MessageHandlerService — regex', () => {
     return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   }
 
-  const CMD_REGISTER = /^@z\s+(anotame|anotarme|meteme|meterme|apuntame|apuntarme|inscribeme|inscribirme|juego|voy|entro|anotar|anota|apuntar|apunta)\b/i;
-  const CMD_UNREGISTER = /^@z\s+(salirme|sacame|sacarme|quitame|quitarme|borrame|borrarme|retirame|retirarme|no\s+voy|no\s+juego|no\s+puedo|salgo|salir)\b/i;
+  const CMD_REGISTER = /^@z\s+(anotame|anotarme|meteme|meterme|meto|apuntame|apuntarme|inscribeme|inscribirme|juego|voy|entro|anotar|anota|apuntar|apunta)\b/i;
+  const CMD_UNREGISTER = /^@z\s+(salirme|sacame|sacarme|quitame|quitarme|borrame|borrarme|retirame|retirarme|safo|no\s+voy|no\s+juego|no\s+puedo|salgo|salir)\b/i;
   const CMD_LIST = /^@z\s+(lista|cupos|quienes?\s+van|cuantos|como\s+vamos)\b/i;
   const CMD_FINISH = /^@z\s+(terminar|cerrar|finalizar|completar)\b/i;
+  const CMD_PAYMENT = /^@z\s+(llave|pago|pagos|transferencia|nequi)\b/i;
   const CMD_ALIASES = /^@z\s+(alias|variantes|sinonimos|alternativas)\b/i;
+
+  describe('CMD_PAYMENT', () => {
+    it.each([
+      ['@Z llave'],
+      ['@z llave'],
+      ['@Z pago'],
+      ['@Z pagos'],
+      ['@Z transferencia'],
+      ['@Z nequi'],
+    ])('reconoce "%s"', (cmd) => {
+      expect(CMD_PAYMENT.test(cmd)).toBe(true);
+    });
+
+    it('NO reconoce texto sin @Z', () => {
+      expect(CMD_PAYMENT.test('llave')).toBe(false);
+    });
+  });
 
   describe('CMD_REGISTER', () => {
     it.each([
@@ -63,6 +81,8 @@ describe('MessageHandlerService — regex', () => {
       ['@Z anotarme'],
       ['@Z meteme'],
       ['@Z meterme'],
+      ['@Z meto'],
+      ['@z meto'],
       ['@Z apuntame'],
       ['@Z apuntarme'],
       ['@Z inscribeme'],
@@ -105,6 +125,8 @@ describe('MessageHandlerService — regex', () => {
       ['@Z borrarme'],
       ['@Z retirame'],
       ['@Z retirarme'],
+      ['@Z safo'],
+      ['@z safo'],
       ['@Z no voy'],
       ['@Z no juego'],
       ['@Z no puedo'],
@@ -1138,6 +1160,9 @@ describe('MessageHandlerService — handleMessage', () => {
       expect(msg).toContain('caja');
       expect(msg).toContain('lucas');
       expect(msg).toContain('multas');
+      // Medio de pago
+      expect(msg).toContain('llave');
+      expect(msg).toContain('nequi');
       // Ejemplo inline
       expect(msg).toContain('+ Carlos');
     });
@@ -1151,6 +1176,33 @@ describe('MessageHandlerService — handleMessage', () => {
       mockPrisma.game.findFirst.mockResolvedValue(null);
       await service.handleMessage('111', '@Z alternativas', 'group-1');
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Alias del Bot'));
+    });
+  });
+
+  // ─── comando llave / pagos ────────────────────────────────────────────────
+
+  describe('comando llave', () => {
+    it('devuelve la llave Bre-B', async () => {
+      await service.handleMessage('111', '@Z llave', 'group-1');
+      const msg: string = mockWp.sendToGroup.mock.calls[0][0];
+      expect(msg).toContain('Medio de pago');
+      expect(msg).toContain('Bre-B');
+      expect(msg).toContain('@MLR608');
+    });
+
+    it('también funciona con "pagos" y "nequi"', async () => {
+      await service.handleMessage('111', '@Z pagos', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Bre-B'));
+
+      mockWp.sendToGroup.mockClear();
+      await service.handleMessage('111', '@Z nequi', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Bre-B'));
+    });
+
+    it('no requiere juego activo', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(null);
+      await service.handleMessage('111', '@Z transferencia', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Bre-B'));
     });
   });
 
@@ -1205,6 +1257,92 @@ describe('MessageHandlerService — handleMessage', () => {
 
       expect(mockGames.register).toHaveBeenCalledTimes(3);
       expect(mockWp.sendToGroup).not.toHaveBeenCalledWith(expect.stringContaining('ignoradas'));
+    });
+
+    it('un ayudante puede anotar a múltiples personas (sin límite de proxy)', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockImplementation((phone: string) => {
+        if (phone === '111') return Promise.resolve(makeUser({ role: Role.ayudante }));
+        if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
+        if (phone === '333') return Promise.resolve({ id: 'user-3', name: 'Pedro', role: Role.member, status: 'active' });
+        return Promise.resolve(null);
+      });
+      mockGames.retryFromWaitingList.mockResolvedValue({ promoted: false, game: null });
+      mockGames.register.mockResolvedValue({ isWaitingList: false, position: 1 });
+      mockGames.findOne.mockResolvedValue(makeActiveGame());
+
+      await service.handleMessage('111', '@Z anotame @222 @333', 'group-1', ['222@s.whatsapp.net', '333@s.whatsapp.net']);
+
+      expect(mockGames.register).toHaveBeenCalledTimes(3);
+      expect(mockWp.sendToGroup).not.toHaveBeenCalledWith(expect.stringContaining('ignoradas'));
+    });
+  });
+
+  // ─── permisos ayudante ─────────────────────────────────────────────────────
+
+  describe('permisos del rol ayudante', () => {
+    it('ayudante puede terminar un partido', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.ayudante }));
+      mockGames.complete.mockResolvedValue({ game: {}, report: '✅ Reporte final' });
+
+      await service.handleMessage('111', '@Z terminar', 'group-1');
+      expect(mockGames.complete).toHaveBeenCalledWith('game-1', 'user-1', { silent: true });
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith('✅ Reporte final');
+    });
+
+    it('ayudante puede sacar a otro jugador', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockImplementation((phone: string) => {
+        if (phone === '111') return Promise.resolve(makeUser({ role: Role.ayudante }));
+        if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
+        return Promise.resolve(null);
+      });
+      mockGames.removeRegistration.mockResolvedValue(undefined);
+
+      await service.handleMessage('111', '@Z sacar @222', 'group-1', ['222@s.whatsapp.net']);
+      expect(mockGames.removeRegistration).toHaveBeenCalledWith('game-1', 'user-2', 'user-1', Role.ayudante);
+      expect(mockWp.sendToGroup).not.toHaveBeenCalled();
+    });
+
+    it('ayudante puede confirmar asistencia por otro', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockImplementation((phone: string) => {
+        if (phone === '111') return Promise.resolve(makeUser({ role: Role.ayudante }));
+        if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
+        return Promise.resolve(null);
+      });
+      mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: false, confirmedGuests: [] });
+
+      await service.handleMessage('111', '@Z confirmar @222', 'group-1', ['222@s.whatsapp.net']);
+      expect(mockGames.confirmRegistration).toHaveBeenCalledWith('game-1', 'user-2', 'user-1');
+    });
+
+    it('member sigue sin poder terminar el partido', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.member }));
+
+      await service.handleMessage('111', '@Z terminar', 'group-1');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('administradores'));
+      expect(mockGames.complete).not.toHaveBeenCalled();
+    });
+
+    it('member sigue sin poder sacar a otro jugador', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.member }));
+
+      await service.handleMessage('111', '@Z sacar @222', 'group-1', ['222@s.whatsapp.net']);
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Solo los administradores'));
+      expect(mockGames.removeRegistration).not.toHaveBeenCalled();
+    });
+
+    it('member sigue sin poder confirmar por otro', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.member }));
+
+      await service.handleMessage('111', '@Z confirmar @222', 'group-1', ['222@s.whatsapp.net']);
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Solo los administradores'));
+      expect(mockGames.confirmRegistration).not.toHaveBeenCalled();
     });
   });
 });

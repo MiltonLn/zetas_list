@@ -3,11 +3,12 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { GameRegistration } from '../types';
 import { Avatar } from './Avatar';
+import { displayName } from '../utils/display-name';
 
 interface Props {
   reg: GameRegistration;
   index: number;
-  isAdmin: boolean;
+  isGameManager: boolean;
   readonly?: boolean;
   mainListFull?: boolean;
   onToggleAttended?: () => void;
@@ -27,7 +28,7 @@ interface Props {
 export function SortableRegistrationRow({
   reg,
   index,
-  isAdmin,
+  isGameManager,
   readonly: isReadonly,
   mainListFull,
   onToggleAttended,
@@ -87,13 +88,13 @@ export function SortableRegistrationRow({
         onClick={onNameClick}
         style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, cursor: 'pointer' }}
       >
-        <Avatar name={reg.isGuest ? reg.guestName || 'Invitado' : reg.user?.name || '?'} photoUrl={reg.isGuest ? undefined : reg.user?.photoUrl} size={30} />
+        <Avatar name={reg.isGuest ? reg.guestName || 'Invitado' : (reg.user ? displayName(reg.user) : '?')} photoUrl={reg.isGuest ? undefined : reg.user?.photoUrl} size={30} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <span style={{ color: '#e8eaf6', fontSize: 14, fontWeight: isSelf ? 700 : 500 }}>
             {reg.isGuest ? (
-              <>{reg.guestName || 'Invitado'} <span style={{ color: '#7c8db5', fontSize: 11 }}>👤 inv. de {reg.registeredBy?.name || '?'}</span></>
+              <>{reg.guestName || 'Invitado'} <span style={{ color: '#7c8db5', fontSize: 11 }}>👤 inv. de {reg.registeredBy ? displayName(reg.registeredBy) : '?'}</span></>
             ) : (
-              reg.user?.name || '?'
+              reg.user ? displayName(reg.user) : '?'
             )}
             {isSelf && <span style={{ color: '#6e8efb', fontSize: 11, marginLeft: 6 }}>Tú</span>}
           </span>
@@ -107,12 +108,12 @@ export function SortableRegistrationRow({
             <span style={{ color: '#f59f00', fontSize: 11, marginLeft: 6, background: '#f59f0022', padding: '1px 6px', borderRadius: 4 }}>⏳ pendiente</span>
           )}
           {reg.registeredById && reg.registeredById !== reg.userId && !reg.isGuest && reg.registeredBy && (
-            <span style={{ color: '#7c8db5', fontSize: 11, marginLeft: 6 }}>por {reg.registeredBy.name}</span>
+            <span style={{ color: '#7c8db5', fontSize: 11, marginLeft: 6 }}>por {displayName(reg.registeredBy)}</span>
           )}
         </div>
       </div>
 
-      {isAdmin && !isReadonly && reg.pendingConfirmation && onConfirm && (
+      {isGameManager && !isReadonly && reg.pendingConfirmation && onConfirm && (
         <button
           onClick={onConfirm}
           title="Confirmar asistencia por este jugador"
@@ -126,7 +127,7 @@ export function SortableRegistrationRow({
         </button>
       )}
 
-      {isAdmin && !isReadonly && (
+      {isGameManager && !isReadonly && (
         <>
           <button
             onClick={onToggleAttended}
@@ -181,7 +182,7 @@ export function SortableRegistrationRow({
         </>
       )}
 
-      {isAdmin && !isReadonly && (
+      {isGameManager && !isReadonly && (
         <button
           onClick={() => {
             if (confirmRemove) {
@@ -207,7 +208,7 @@ export function SortableRegistrationRow({
         </button>
       )}
 
-      {!isAdmin && allowSelfRemove && (isSelf || isOwnGuest) && (
+      {!isGameManager && allowSelfRemove && (isSelf || isOwnGuest) && (
         <button
           onClick={() => {
             if (confirmRemove) {

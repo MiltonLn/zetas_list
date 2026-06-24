@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PageHeader } from '../components/PageHeader';
+import { FinanceSummary } from '../components/FinanceSummary';
 import { Spinner } from '../components/Spinner';
 import { Modal } from '../components/Modal';
 import { financesService, type FinanceTransaction, type Fine } from '../services/finances.service';
@@ -92,6 +93,13 @@ export function AdminFinancesPage() {
     } catch (e) { showToast(getApiError(e), 'error'); }
   };
 
+  const summary = useMemo(() => {
+    const totalIncome = transactions.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const totalExpenses = transactions.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const totalFinesPaid = fines.filter((f) => f.status === 'paid').reduce((s, f) => s + f.amount, 0);
+    return { totalIncome, totalExpenses, totalFinesPaid, balance: totalIncome - totalExpenses };
+  }, [transactions, fines]);
+
   if (loading) return <Spinner />;
 
   return (
@@ -116,6 +124,8 @@ export function AdminFinancesPage() {
             <button className={`btn ${tab === 'fines' ? 'btn-primary' : ''}`} onClick={() => setTab('fines')}>Multas y Deudas</button>
           </div>
         </div>
+
+        <FinanceSummary {...summary} />
 
         {tab === 'transactions' && (
           <>

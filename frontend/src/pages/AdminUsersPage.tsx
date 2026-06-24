@@ -21,6 +21,7 @@ export default function AdminUsersPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   const [name, setName] = useState('');
+  const [alias, setAlias] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<Role>('member');
   const [position, setPosition] = useState<Position | ''>('');
@@ -35,6 +36,7 @@ export default function AdminUsersPage() {
 
   const [editUser, setEditUser] = useState<User | null>(null);
   const [editName, setEditName] = useState('');
+  const [editAlias, setEditAlias] = useState('');
   const [editPosition, setEditPosition] = useState<Position | ''>('');
   const [editGender, setEditGender] = useState<Gender | ''>('');
   const [editHeightCm, setEditHeightCm] = useState('');
@@ -71,6 +73,7 @@ export default function AdminUsersPage() {
     try {
       const payload: CreateUserPayload = {
         name,
+        alias: alias.trim() || undefined,
         phone,
         role,
         position: position || undefined,
@@ -80,6 +83,7 @@ export default function AdminUsersPage() {
       setUsers((prev) => [data, ...prev]);
       setShowCreate(false);
       setName('');
+      setAlias('');
       setPhone('');
       setRole('member');
       setPosition('');
@@ -115,6 +119,7 @@ export default function AdminUsersPage() {
   function openEdit(user: User) {
     setEditUser(user);
     setEditName(user.name);
+    setEditAlias(user.alias || '');
     setEditPosition(user.position || '');
     setEditGender(user.gender || '');
     setEditHeightCm(user.heightCm ? String(user.heightCm) : '');
@@ -130,6 +135,7 @@ export default function AdminUsersPage() {
     try {
       const payload: UpdateUserPayload = {
         name: editName || undefined,
+        alias: editAlias,
         position: editPosition || undefined,
         gender: (editGender as Gender) || undefined,
         heightCm: editHeightCm ? parseInt(editHeightCm, 10) : undefined,
@@ -154,6 +160,7 @@ export default function AdminUsersPage() {
           <button
             onClick={() => {
               setName('');
+              setAlias('');
               setPhone('');
               setRole('member');
               setPosition('');
@@ -218,14 +225,22 @@ export default function AdminUsersPage() {
                   onClick={() => setProfileUser(user)}
                   style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}
                 >
-                  <Avatar name={user.name} photoUrl={user.photoUrl} size={40} />
+                  <Avatar name={user.alias || user.name} photoUrl={user.photoUrl} size={40} />
 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ color: '#e8eaf6', fontWeight: 600, fontSize: 14 }}>{user.name}</span>
+                    {user.alias && user.alias !== user.name && (
+                      <span style={{ color: '#7c8db5', fontSize: 11 }}>alias: "{user.alias}"</span>
+                    )}
                     {user.role === 'admin' && (
                       <span style={{ background: '#3b5bdb22', color: '#6e8efb', fontSize: 11, padding: '1px 7px', borderRadius: 6, fontWeight: 600 }}>
                         Admin
+                      </span>
+                    )}
+                    {user.role === 'ayudante' && (
+                      <span style={{ background: '#e3a00822', color: '#e3a008', fontSize: 11, padding: '1px 7px', borderRadius: 6, fontWeight: 600 }}>
+                        Ayudante
                       </span>
                     )}
                     <span
@@ -296,6 +311,13 @@ export default function AdminUsersPage() {
             <input className="zetas-input" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div>
+            <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Alias en la lista</label>
+            <input className="zetas-input" value={alias} onChange={(e) => setAlias(e.target.value)} placeholder={name || 'Ej: Juancho'} maxLength={50} />
+            <span style={{ color: '#7c8db5', fontSize: 11, marginTop: 4, display: 'block' }}>
+              Nombre que aparece en la lista de juego. Si se deja vacío, se usa el nombre real.
+            </span>
+          </div>
+          <div>
             <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Teléfono (con indicativo) *</label>
             <input className="zetas-input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="573001234567" required />
             <span style={{ color: '#7c8db5', fontSize: 11, marginTop: 4, display: 'block' }}>
@@ -307,6 +329,7 @@ export default function AdminUsersPage() {
               <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Rol</label>
               <select className="zetas-input" value={role} onChange={(e) => setRole(e.target.value as Role)} style={{ cursor: 'pointer' }}>
                 <option value="member">Miembro</option>
+                <option value="ayudante">Ayudante</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
@@ -346,6 +369,13 @@ export default function AdminUsersPage() {
             <div>
               <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Nombre completo</label>
               <input className="zetas-input" value={editName} onChange={(e) => setEditName(e.target.value)} />
+            </div>
+            <div>
+              <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Alias en la lista</label>
+              <input className="zetas-input" value={editAlias} onChange={(e) => setEditAlias(e.target.value)} placeholder={editName || 'Ej: Juancho'} maxLength={50} />
+              <span style={{ color: '#7c8db5', fontSize: 11, marginTop: 4, display: 'block' }}>
+                Nombre que aparece en la lista de juego. Si se deja vacío, se usa el nombre real.
+              </span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
               <div>
@@ -394,7 +424,7 @@ export default function AdminUsersPage() {
               {selectedUser.phone}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {selectedUser.role === 'member' ? (
+              {selectedUser.role !== 'admin' && (
                 <button
                   className="btn"
                   onClick={async () => {
@@ -408,7 +438,23 @@ export default function AdminUsersPage() {
                 >
                   👑 Hacer administrador
                 </button>
-              ) : (
+              )}
+              {selectedUser.role !== 'ayudante' && (
+                <button
+                  className="btn"
+                  onClick={async () => {
+                    try {
+                      const { data } = await usersService.updateRole(selectedUser.id, 'ayudante');
+                      setUsers((prev) => prev.map((u) => (u.id === data.id ? data : u)));
+                      setSelectedUser(null);
+                    } catch (err) { setError(getApiError(err)); }
+                  }}
+                  style={{ textAlign: 'left', color: '#e3a008' }}
+                >
+                  🤝 Hacer ayudante
+                </button>
+              )}
+              {selectedUser.role !== 'member' && (
                 <button
                   className="btn"
                   onClick={async () => {
@@ -420,7 +466,7 @@ export default function AdminUsersPage() {
                   }}
                   style={{ textAlign: 'left' }}
                 >
-                  👤 Quitar rol de admin
+                  👤 Quitar rol especial
                 </button>
               )}
               {selectedUser.status !== 'active' && (

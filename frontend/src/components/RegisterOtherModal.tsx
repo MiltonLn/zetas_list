@@ -17,13 +17,13 @@ interface Props {
   gameId: string;
   availableMembers: AvailableMember[];
   isUserRegistered: boolean;
-  isAdmin: boolean;
+  isGameManager: boolean;
   proxyLimitReached: boolean;
   maxProxyRegistrations: number;
   onSuccess: () => void;
 }
 
-export function RegisterOtherModal({ open, onClose, gameId, availableMembers, isUserRegistered, isAdmin, proxyLimitReached, maxProxyRegistrations, onSuccess }: Props) {
+export function RegisterOtherModal({ open, onClose, gameId, availableMembers, isUserRegistered, isGameManager, proxyLimitReached, maxProxyRegistrations, onSuccess }: Props) {
   const [tab, setTab] = useState<'member' | 'guest'>('member');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState('');
@@ -122,7 +122,7 @@ export function RegisterOtherModal({ open, onClose, gameId, availableMembers, is
 
       {tab === 'member' && (
         <div>
-          {!isAdmin && !isUserRegistered ? (
+          {!isGameManager && !isUserRegistered ? (
             <div style={{
               background: '#e3a00811', border: '1px solid #e3a00833',
               borderRadius: 10, padding: '20px 16px', textAlign: 'center',

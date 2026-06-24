@@ -225,13 +225,21 @@ describe('UsersService', () => {
       expect(result.name).toBe('Nuevo Nombre');
     });
 
-    it('permite a un miembro editar su propio perfil', async () => {
+    it('permite a un miembro editar su propio perfil (alias, bio, etc.)', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(makeCreatedUser({ id: 'user-1' }));
-      mockPrisma.user.update.mockResolvedValue(makeCreatedUser({ name: 'Mi Nombre' }));
+      mockPrisma.user.update.mockResolvedValue(makeCreatedUser({ bio: 'Hola' }));
 
       await expect(
-        service.update('user-1', { name: 'Mi Nombre' } as any, 'user-1', Role.member),
+        service.update('user-1', { bio: 'Hola' } as any, 'user-1', Role.member),
       ).resolves.toBeDefined();
+    });
+
+    it('impide a un miembro cambiar su nombre real', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(makeCreatedUser({ id: 'user-1' }));
+
+      await expect(
+        service.update('user-1', { name: 'Nuevo Nombre' } as any, 'user-1', Role.member),
+      ).rejects.toThrow('Solo un administrador puede cambiar el nombre real.');
     });
 
     it('llama a audit.log con "user_updated"', async () => {

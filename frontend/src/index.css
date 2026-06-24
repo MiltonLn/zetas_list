@@ -1154,6 +1154,59 @@ select.zetas-input {
   box-shadow: 0 2px 8px rgba(231, 76, 60, 0.4);
 }
 
+/* ── Responsive form grids ── */
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.form-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 480px) {
+  .form-grid-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+/* ── Create-game card: tighter on small screens ── */
+.create-game-card {
+  padding: 16px;
+  gap: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 480px) {
+  .create-game-card {
+    padding: 24px;
+    gap: 20px;
+  }
+}
+
+/* field label */
+.field-label {
+  display: block;
+  color: #7c8db5;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+/* helper text below inputs */
+.field-hint {
+  color: #7c8db5;
+  font-size: 12px;
+  margin-top: 5px;
+  line-height: 1.4;
+}
+
 /* ── Rules Page ── */
 .rules-content h1 {
   font-size: 2rem;
