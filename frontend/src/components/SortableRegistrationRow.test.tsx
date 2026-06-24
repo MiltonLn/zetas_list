@@ -51,7 +51,7 @@ describe('SortableRegistrationRow', () => {
   const baseProps = {
     reg: makeReg(),
     index: 0,
-    isAdmin: true,
+    isGameManager: true,
     isSelf: false,
     allowSelfRemove: false,
     draggable: false,
@@ -81,7 +81,7 @@ describe('SortableRegistrationRow', () => {
   });
 
   it('oculta botones de admin para miembros no-admin', () => {
-    render(<SortableRegistrationRow {...baseProps} isAdmin={false} />);
+    render(<SortableRegistrationRow {...baseProps} isGameManager={false} />);
     expect(screen.queryByTitle('Asistió')).not.toBeInTheDocument();
     expect(screen.queryByTitle('Pagó')).not.toBeInTheDocument();
   });
@@ -105,7 +105,7 @@ describe('SortableRegistrationRow', () => {
     render(
       <SortableRegistrationRow
         {...baseProps}
-        isAdmin={false}
+        isGameManager={false}
         isSelf={true}
         allowSelfRemove={true}
       />,
@@ -119,7 +119,7 @@ describe('SortableRegistrationRow', () => {
       <SortableRegistrationRow
         {...baseProps}
         reg={guestReg}
-        isAdmin={false}
+        isGameManager={false}
         isSelf={false}
         allowSelfRemove={true}
         isOwnGuest={true}
@@ -134,7 +134,7 @@ describe('SortableRegistrationRow', () => {
       <SortableRegistrationRow
         {...baseProps}
         reg={guestReg}
-        isAdmin={false}
+        isGameManager={false}
         isSelf={false}
         allowSelfRemove={true}
         isOwnGuest={false}
