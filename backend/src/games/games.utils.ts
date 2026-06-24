@@ -25,6 +25,7 @@ export const REGISTRATION_INCLUDE = {
     select: {
       id: true,
       name: true,
+      alias: true,
       username: true,
       phone: true,
       whatsappLid: true,
@@ -37,7 +38,7 @@ export const REGISTRATION_INCLUDE = {
     },
   },
   registeredBy: {
-    select: { id: true, name: true, username: true, phone: true, whatsappLid: true },
+    select: { id: true, name: true, alias: true, username: true, phone: true, whatsappLid: true },
   },
 } as const;
 

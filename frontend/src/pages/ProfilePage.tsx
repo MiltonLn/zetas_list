@@ -12,9 +12,10 @@ import { ImageCropModal } from '../components/ImageCropModal';
 import { Spinner } from '../components/Spinner';
 import { getApiError } from '../services/api';
 import { prepareImageForCrop } from '../utils/image';
+import { displayName as getDisplayName } from '../utils/display-name';
 
 export default function ProfilePage() {
-  const { user: authUser } = useAuth();
+  const { user: authUser, isAdmin } = useAuth();
   const [profile, setProfile] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -22,6 +23,7 @@ export default function ProfilePage() {
   const [error, setError] = useState('');
 
   const [name, setName] = useState('');
+  const [alias, setAlias] = useState('');
   const [bio, setBio] = useState('');
   const [position, setPosition] = useState<Position | ''>('');
   const [gender, setGender] = useState<Gender | ''>('');
@@ -47,6 +49,7 @@ export default function ProfilePage() {
       .then(({ data }) => {
         setProfile(data);
         setName(data.name);
+        setAlias(data.alias || '');
         setBio(data.bio || '');
         setPosition((data.position as Position) || '');
         setGender((data.gender as Gender) || '');
@@ -70,7 +73,8 @@ export default function ProfilePage() {
     setSaving(true);
     try {
       const payload: UpdateUserPayload = {
-        name,
+        ...(isAdmin ? { name } : {}),
+        alias: alias || '',
         bio: bio || undefined,
         position: position || undefined,
         gender: (gender as Gender) || undefined,
@@ -156,7 +160,7 @@ export default function ProfilePage() {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
             <div style={{ position: 'relative' }}>
-              <Avatar name={profile?.name || ''} photoUrl={profile?.photoUrl} size={72} />
+              <Avatar name={profile ? getDisplayName(profile) : ''} photoUrl={profile?.photoUrl} size={72} />
               {(photoUploading || photoPreparing) && (
                 <div style={{
                   position: 'absolute', inset: 0, borderRadius: '50%',
@@ -196,9 +200,37 @@ export default function ProfilePage() {
           <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
               <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>
-                Nombre
+                Nombre real
               </label>
-              <input className="zetas-input" value={name} onChange={(e) => setName(e.target.value)} required />
+              <input
+                className="zetas-input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={!isAdmin}
+                style={!isAdmin ? { opacity: 0.5 } : undefined}
+                required
+              />
+              {!isAdmin && (
+                <p style={{ color: '#7c8db5', fontSize: 11, margin: '4px 0 0' }}>
+                  Solo un administrador puede cambiar el nombre real.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>
+                Alias en la lista
+              </label>
+              <input
+                className="zetas-input"
+                value={alias}
+                onChange={(e) => setAlias(e.target.value)}
+                maxLength={50}
+                placeholder={name || 'Ej: Juancho'}
+              />
+              <p style={{ color: '#7c8db5', fontSize: 11, margin: '4px 0 0' }}>
+                Este es el nombre que aparece en la lista de juego. Si lo dejas vacío se usará tu nombre real.
+              </p>
             </div>
 
             <div>

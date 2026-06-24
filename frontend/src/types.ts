@@ -16,6 +16,7 @@ export interface User {
   id: string;
   username: string;
   name: string;
+  alias?: string;
   phone: string;
   role: Role;
   position?: Position;
@@ -36,6 +37,7 @@ export interface AuthUser {
   id: string;
   username: string;
   name: string;
+  alias?: string;
   role: Role;
   phone: string;
   position?: Position;
@@ -47,6 +49,7 @@ export interface AuthUser {
 export interface RegistrationUser {
   id: string;
   name: string;
+  alias?: string;
   username: string;
   phone: string;
   position?: Position;
@@ -76,7 +79,7 @@ export interface GameRegistration {
   confirmationDeclined: boolean;
   originalWaitPosition?: number;
   user: RegistrationUser;
-  registeredBy: { id: string; name: string; username: string };
+  registeredBy: { id: string; name: string; alias?: string; username: string };
 }
 
 export interface Game {
