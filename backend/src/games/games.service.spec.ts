@@ -1153,6 +1153,7 @@ describe('GamesService', () => {
         count: jest.fn(),
         updateMany: jest.fn(),
         findFirst: jest.fn(),
+        findMany: jest.fn(),
         aggregate: jest.fn(),
         update: jest.fn(),
       },
@@ -1161,6 +1162,7 @@ describe('GamesService', () => {
     beforeEach(() => {
       txMock.$queryRaw.mockResolvedValue(undefined);
       txMock.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
+      txMock.gameRegistration.findMany.mockResolvedValue([]);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
       txMock.gameRegistration.update.mockResolvedValue({});
     });
@@ -1203,7 +1205,7 @@ describe('GamesService', () => {
         (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
       );
       txMock.gameRegistration.count.mockResolvedValue(16);
-      txMock.gameRegistration.findFirst.mockResolvedValue(waiter);
+      txMock.gameRegistration.findMany.mockResolvedValue([waiter]);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 16 } });
       txMock.gameRegistration.update.mockResolvedValue(waiter);
       jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
@@ -1223,7 +1225,7 @@ describe('GamesService', () => {
         (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
       );
       txMock.gameRegistration.count.mockResolvedValue(16);
-      txMock.gameRegistration.findFirst.mockResolvedValue(waiter);
+      txMock.gameRegistration.findMany.mockResolvedValue([waiter]);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 16 } });
       txMock.gameRegistration.update.mockResolvedValue(waiter);
       jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
@@ -1264,12 +1266,11 @@ describe('GamesService', () => {
         (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
       );
       txMock.gameRegistration.count.mockResolvedValue(16);
-      txMock.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
-      txMock.gameRegistration.findFirst.mockResolvedValue(null);
+      txMock.gameRegistration.findMany.mockResolvedValue([]);
 
       await service.autoPromoteIfNeeded('game-1');
 
-      expect(txMock.gameRegistration.findFirst).toHaveBeenCalledWith(
+      expect(txMock.gameRegistration.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ isGuest: false }),
         }),
@@ -1285,12 +1286,11 @@ describe('GamesService', () => {
         (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
       );
       txMock.gameRegistration.count.mockResolvedValue(16);
-      txMock.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
-      txMock.gameRegistration.findFirst.mockResolvedValue(null);
+      txMock.gameRegistration.findMany.mockResolvedValue([]);
 
       await service.autoPromoteIfNeeded('game-1');
 
-      expect(txMock.gameRegistration.findFirst).toHaveBeenCalledWith(
+      expect(txMock.gameRegistration.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.not.objectContaining({ isGuest: false }),
         }),
@@ -1303,8 +1303,7 @@ describe('GamesService', () => {
         (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock),
       );
       txMock.gameRegistration.count.mockResolvedValue(16);
-      txMock.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
-      txMock.gameRegistration.findFirst.mockResolvedValue(null);
+      txMock.gameRegistration.findMany.mockResolvedValue([]);
 
       await service.autoPromoteIfNeeded('game-1');
 
