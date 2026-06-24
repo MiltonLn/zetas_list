@@ -930,20 +930,24 @@ export class GamesService {
 
     const beforeCutoff = isBeforeCutoff(game.guestCutoffTime, game.gameDate);
 
-    // Entire selection + promotion + confirmation marking in a single serializable tx
-    const promoted = await this.prisma.$transaction(
+    // Promote all eligible waiters that fit in the available spots atomically.
+    // Using a single serializable transaction guarantees no two concurrent
+    // calls double-fill the same spots (the FOR UPDATE row-lock on the game
+    // row serializes concurrent calls).
+    const promotedList = await this.prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
 
         const mainCount = await tx.gameRegistration.count({
           where: { gameId, isWaitingList: false },
         });
-        if (mainCount >= game.maxMainSpots) {
+        const spotsAvailable = game.maxMainSpots - mainCount;
+        if (spotsAvailable <= 0) {
           this.logger.log(`[AUTO_PROMOTE] game=${gameId} | mainCount=${mainCount}/${game.maxMainSpots} | FULL, no promotion`);
-          return null;
+          return [];
         }
 
-        const firstInWait = await tx.gameRegistration.findFirst({
+        const eligibleWaiters = await tx.gameRegistration.findMany({
           where: {
             gameId,
             isWaitingList: true,
@@ -951,74 +955,111 @@ export class GamesService {
             ...(beforeCutoff ? { isGuest: false } : {}),
           },
           orderBy: { position: 'asc' },
+          take: spotsAvailable,
           include: REGISTRATION_INCLUDE,
         });
-        if (!firstInWait) {
-          this.logger.log(`[AUTO_PROMOTE] game=${gameId} | mainCount=${mainCount}/${game.maxMainSpots} | beforeCutoff=${beforeCutoff} | No eligible waiter found`);
-          return null;
+
+        if (eligibleWaiters.length === 0) {
+          this.logger.log(`[AUTO_PROMOTE] game=${gameId} | mainCount=${mainCount}/${game.maxMainSpots} | beforeCutoff=${beforeCutoff} | No eligible waiters found`);
+          return [];
         }
 
-        const originalPos = firstInWait.position;
-
-        // Inline promotion within the same transaction
-        const maxPos = await tx.gameRegistration.aggregate({
+        const maxPosResult = await tx.gameRegistration.aggregate({
           where: { gameId, isWaitingList: false },
           _max: { position: true },
         });
+        let nextPos = (maxPosResult._max.position ?? 0) + 1;
 
         const confirmDeadline = new Date(Date.now() + CONFIRMATION_TIMEOUT_MS);
+        const results: Array<{ reg: (typeof eligibleWaiters)[0]; originalPos: number; confirmDeadline: Date }> = [];
 
-        const updatedReg = await tx.gameRegistration.update({
-          where: { id: firstInWait.id },
-          data: {
-            isWaitingList: false,
-            position: (maxPos._max.position ?? 0) + 1,
-            fromWaitList: true,
-            pendingConfirmation: true,
-            confirmationDeadline: confirmDeadline,
-            originalWaitPosition: originalPos,
-          },
-          include: REGISTRATION_INCLUDE,
-        });
+        for (const waiter of eligibleWaiters) {
+          const originalPos = waiter.position as number;
+          const updatedReg = await tx.gameRegistration.update({
+            where: { id: waiter.id },
+            data: {
+              isWaitingList: false,
+              position: nextPos++,
+              fromWaitList: true,
+              pendingConfirmation: true,
+              confirmationDeadline: confirmDeadline,
+              originalWaitPosition: originalPos,
+            },
+            include: REGISTRATION_INCLUDE,
+          });
+          results.push({ reg: updatedReg, originalPos, confirmDeadline });
+        }
 
-        return { reg: updatedReg, originalPos, confirmDeadline };
+        return results;
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
 
-    if (!promoted) return;
+    if (promotedList.length === 0) return;
 
-    await this.audit.log({
-      gameId,
-      actorId: null,
-      targetUserId: promoted.reg.userId ?? undefined,
-      action: 'confirmation_requested',
-      details: { deadline: promoted.confirmDeadline.toISOString(), originalWaitPosition: promoted.originalPos },
-    });
+    // Audit log for each promoted person
+    for (const p of promotedList) {
+      await this.audit.log({
+        gameId,
+        actorId: null,
+        targetUserId: p.reg.userId ?? undefined,
+        action: 'confirmation_requested',
+        details: { deadline: p.confirmDeadline.toISOString(), originalWaitPosition: p.originalPos },
+      });
+    }
 
     const updated = await this.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
 
-    const name = displayName(promoted.reg);
-    // @mention the person who must confirm so they get a WhatsApp notification.
-    // For guests it's the responsible member who invited them.
-    const mention = buildMention(promoted.reg.isGuest ? promoted.reg.registeredBy : promoted.reg.user);
-    const confirmTarget = mention
-      ? mention.tag
-      : promoted.reg.isGuest
-        ? `*${promoted.reg.registeredBy?.name || 'Responsable'}*`
-        : `*${promoted.reg.user?.name || 'Alguien'}*`;
+    if (promotedList.length === 1) {
+      // Single promotion — same message format as before
+      const p = promotedList[0];
+      const name = displayName(p.reg);
+      const mention = buildMention(p.reg.isGuest ? p.reg.registeredBy : p.reg.user);
+      const confirmTarget = mention
+        ? mention.tag
+        : p.reg.isGuest
+          ? `*${p.reg.registeredBy?.name || 'Responsable'}*`
+          : `*${p.reg.user?.name || 'Alguien'}*`;
 
-    this.logger.log(
-      `[AUTO_PROMOTE] game=${gameId} | promoted=${name} | isGuest=${promoted.reg.isGuest} | fromWaitPos=${promoted.originalPos} | beforeCutoff=${beforeCutoff} | confirmWindow=15min`,
-    );
+      this.logger.log(
+        `[AUTO_PROMOTE] game=${gameId} | promoted=${name} | isGuest=${p.reg.isGuest} | fromWaitPos=${p.originalPos} | beforeCutoff=${beforeCutoff} | confirmWindow=15min`,
+      );
 
-    this.whatsapp
-      .sendToGroup(
-        `⬆️ *${name}* fue promovido a la *lista principal* 🏐\n${confirmTarget}, confirma con *@Z confirmar* en los próximos 15 min.\n${buildCounts(updated)}${buildGameLink(gameId)}`,
-        mention ? { mentions: [mention.jid] } : undefined,
-      )
-      .catch((e) => this.logger.warn('WhatsApp send failed', e));
+      this.whatsapp
+        .sendToGroup(
+          `⬆️ *${name}* fue promovido a la *lista principal* 🏐\n${confirmTarget}, confirma con *@Z confirmar* en los próximos 15 min.\n${buildCounts(updated)}${buildGameLink(gameId)}`,
+          mention ? { mentions: [mention.jid] } : undefined,
+        )
+        .catch((e) => this.logger.warn('WhatsApp send failed', e));
+    } else {
+      // Multiple simultaneous promotions — one consolidated message with all @mentions.
+      // Each person still gets their own WhatsApp notification via the mention.
+      const lines: string[] = [];
+      const mentionJids: string[] = [];
+
+      for (const p of promotedList) {
+        const name = displayName(p.reg);
+        const mention = buildMention(p.reg.isGuest ? p.reg.registeredBy : p.reg.user);
+        if (mention) mentionJids.push(mention.jid);
+        const confirmTarget = mention
+          ? mention.tag
+          : p.reg.isGuest
+            ? `*${p.reg.registeredBy?.name || 'Responsable'}*`
+            : `*${p.reg.user?.name || 'Alguien'}*`;
+        lines.push(`• *${name}* → ${confirmTarget}`);
+        this.logger.log(
+          `[AUTO_PROMOTE] game=${gameId} | promoted=${name} | isGuest=${p.reg.isGuest} | fromWaitPos=${p.originalPos} | beforeCutoff=${beforeCutoff} | confirmWindow=15min`,
+        );
+      }
+
+      this.whatsapp
+        .sendToGroup(
+          `⬆️ *${promotedList.length} cupos disponibles* — promovidos a la lista principal 🏐\n${lines.join('\n')}\nConfirmen con *@Z confirmar* en los próximos 15 min.\n${buildCounts(updated)}${buildGameLink(gameId)}`,
+          mentionJids.length > 0 ? { mentions: mentionJids } : undefined,
+        )
+        .catch((e) => this.logger.warn('WhatsApp send failed', e));
+    }
   }
 
   async handleConfirmationTimeout(regId: string) {

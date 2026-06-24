@@ -775,4 +775,118 @@ describe('GamesService — escenarios reales (stateful)', () => {
       );
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('Escenario 8: múltiples cupos libres → se llenan todos simultáneamente', () => {
+    it('al llegar el corte con 3 cupos libres y 5 invitados en espera, sube a los 3 primeros a la vez', async () => {
+      // maxMainSpots=6, 3 miembros en principal → 3 cupos libres.
+      // 5 invitados en espera (antes del corte siempre van a espera).
+      const { service, prisma, members, gameId, whatsapp } = await setup({ members: 4, maxMainSpots: 6 });
+
+      // 3 miembros se anotan (dejan 3 cupos libres).
+      for (const m of members.slice(0, 3)) {
+        await service.register(gameId, m.id, m.id, { silent: true });
+      }
+
+      // 5 invitados se anotan antes del corte → todos a espera.
+      for (let i = 0; i < 5; i++) {
+        await service.registerGuest(gameId, `Invitado ${i + 1}`, members[0].id, { silent: true });
+      }
+
+      let { main, wait } = lists(prisma, gameId);
+      expect(main).toHaveLength(3);
+      expect(wait).toHaveLength(5);
+
+      // Pasa el corte: simulamos poniendo la fecha en el pasado.
+      const g = prisma.getGame(gameId)!;
+      g.gameDate = new Date('2020-01-01');
+
+      // Llamada equivalente a la que hace el scheduler al llegar el corte.
+      await service.autoPromoteIfNeeded(gameId, { skipMainListFullCheck: true });
+
+      ({ main, wait } = lists(prisma, gameId));
+      // Los 3 cupos libres deben llenarse con los 3 primeros invitados.
+      expect(main).toHaveLength(6);
+      expect(wait).toHaveLength(2);
+
+      // Los 3 promovidos deben estar pendientes de confirmación.
+      const pendingInMain = main.filter((r) => r.pendingConfirmation);
+      expect(pendingInMain).toHaveLength(3);
+
+      // Todos son invitados (los únicos en espera antes del corte).
+      expect(pendingInMain.every((r) => r.isGuest)).toBe(true);
+
+      // Un solo mensaje consolidado con los 3 @mentions.
+      expect(whatsapp.sendToGroup).toHaveBeenCalledTimes(1);
+      expect(whatsapp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('3 cupos disponibles'),
+        expect.anything(),
+      );
+    });
+
+    it('si hay exactamente 1 cupo libre, sigue usando el mensaje individual (no el consolidado)', async () => {
+      const { service, prisma, members, gameId, whatsapp } = await setup({ members: 6, maxMainSpots: 4 });
+
+      for (const m of members) {
+        await service.register(gameId, m.id, m.id, { silent: true });
+      }
+
+      const leaving = lists(prisma, gameId).main.find((r) => r.position === 1)!;
+      await service.removeRegistration(gameId, leaving.userId as string, leaving.userId as string, Role.member, { silent: true });
+
+      // Solo 1 cupo libre → mensaje individual.
+      expect(whatsapp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('fue promovido a la'),
+        expect.anything(),
+      );
+    });
+
+    it('con múltiples cupos libres y menos candidatos que cupos, sube solo a los que hay', async () => {
+      const { service, prisma, members, gameId } = await setup({ members: 4, maxMainSpots: 6 });
+
+      // 3 miembros en principal (3 cupos libres).
+      for (const m of members.slice(0, 3)) {
+        await service.register(gameId, m.id, m.id, { silent: true });
+      }
+
+      // Solo 2 invitados en espera (menos que los cupos disponibles).
+      await service.registerGuest(gameId, 'Invitado A', members[0].id, { silent: true });
+      await service.registerGuest(gameId, 'Invitado B', members[0].id, { silent: true });
+
+      // Pasa el corte.
+      const g = prisma.getGame(gameId)!;
+      g.gameDate = new Date('2020-01-01');
+
+      await service.autoPromoteIfNeeded(gameId, { skipMainListFullCheck: true });
+
+      const { main, wait } = lists(prisma, gameId);
+      // Sube a los 2 invitados; queda 1 cupo libre.
+      expect(main).toHaveLength(5);
+      expect(wait).toHaveLength(0);
+      expect(main.filter((r) => r.pendingConfirmation)).toHaveLength(2);
+    });
+
+    it('si la lista principal ya está llena al llegar el corte, nadie sube', async () => {
+      const { service, prisma, members, gameId } = await setup({ members: 6, maxMainSpots: 4 });
+
+      for (const m of members) {
+        await service.register(gameId, m.id, m.id, { silent: true });
+      }
+
+      // Pasa el corte con la lista principal llena (4/4).
+      const g = prisma.getGame(gameId)!;
+      g.gameDate = new Date('2020-01-01');
+
+      const { main: beforeMain, wait: beforeWait } = lists(prisma, gameId);
+      expect(beforeMain).toHaveLength(4);
+      expect(beforeWait).toHaveLength(2);
+
+      await service.autoPromoteIfNeeded(gameId, { skipMainListFullCheck: true });
+
+      const { main, wait } = lists(prisma, gameId);
+      expect(main).toHaveLength(4); // sin cambios
+      expect(wait).toHaveLength(2);
+      expect(main.filter((r) => r.pendingConfirmation)).toHaveLength(0);
+    });
+  });
 });
