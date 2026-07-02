@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { GameStatus, Modalidad, Role } from '@prisma/client';
 import { GamesService } from './games.service';
-import { displayName } from './games.utils';
+import { displayName, userDisplayName } from './games.utils';
 import { formatCutoffTime } from './games.utils';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -1093,14 +1093,41 @@ describe('GamesService', () => {
 
   // ─── displayName ──────────────────────────────────────────────────────────
 
+  describe('userDisplayName', () => {
+    it('returns alias when set', () => {
+      expect(userDisplayName({ name: 'Milton Larrañaga', alias: 'Milt' })).toBe('Milt');
+    });
+
+    it('returns name when alias is null', () => {
+      expect(userDisplayName({ name: 'Milton Larrañaga', alias: null })).toBe('Milton Larrañaga');
+    });
+
+    it('returns name when alias is undefined', () => {
+      expect(userDisplayName({ name: 'Milton Larrañaga' })).toBe('Milton Larrañaga');
+    });
+
+    it('returns name when alias is an empty string', () => {
+      expect(userDisplayName({ name: 'Milton Larrañaga', alias: '' })).toBe('Milton Larrañaga');
+    });
+
+    it('returns name when alias is only whitespace', () => {
+      expect(userDisplayName({ name: 'Milton Larrañaga', alias: '   ' })).toBe('Milton Larrañaga');
+    });
+  });
+
   describe('displayName', () => {
     it('returns guest name with inviter', () => {
-      const reg = { isGuest: true, guestName: 'Carlos', registeredBy: { name: 'Milton' }, user: null };
+      const reg = { isGuest: true, guestName: 'Carlos', registeredBy: { name: 'Milton', alias: null }, user: null };
       expect(displayName(reg)).toBe('Carlos (inv. de Milton)');
     });
 
+    it('uses inviter alias when set', () => {
+      const reg = { isGuest: true, guestName: 'Carlos', registeredBy: { name: 'Milton Larrañaga', alias: 'Milt' }, user: null };
+      expect(displayName(reg)).toBe('Carlos (inv. de Milt)');
+    });
+
     it('returns "Invitado" when guestName is null', () => {
-      const reg = { isGuest: true, guestName: null, registeredBy: { name: 'Milton' }, user: null };
+      const reg = { isGuest: true, guestName: null, registeredBy: { name: 'Milton', alias: null }, user: null };
       expect(displayName(reg)).toBe('Invitado (inv. de Milton)');
     });
 
@@ -1110,8 +1137,13 @@ describe('GamesService', () => {
     });
 
     it('returns user name for non-guest', () => {
-      const reg = { isGuest: false, user: { name: 'Test User' }, registeredBy: null };
+      const reg = { isGuest: false, user: { name: 'Test User', alias: null }, registeredBy: null };
       expect(displayName(reg)).toBe('Test User');
+    });
+
+    it('returns user alias for non-guest when set', () => {
+      const reg = { isGuest: false, user: { name: 'Test User', alias: 'Tester' }, registeredBy: null };
+      expect(displayName(reg)).toBe('Tester');
     });
 
     it('returns "Desconocido" when user is null for non-guest', () => {

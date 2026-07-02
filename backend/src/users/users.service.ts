@@ -119,7 +119,7 @@ export class UsersService {
   async findByPhone(phone: string) {
     return this.prisma.user.findUnique({
       where: { phone },
-      select: { id: true, name: true, phone: true, role: true, status: true },
+      select: { id: true, name: true, alias: true, phone: true, role: true, status: true },
     });
   }
 
@@ -128,7 +128,7 @@ export class UsersService {
       where: {
         OR: [{ phone: phoneOrLid }, { whatsappLid: phoneOrLid }],
       },
-      select: { id: true, name: true, phone: true, role: true, status: true },
+      select: { id: true, name: true, alias: true, phone: true, role: true, status: true },
     });
   }
 
