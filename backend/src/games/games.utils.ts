@@ -63,12 +63,21 @@ export function buildMention(
   return { jid, tag: `@${num}` };
 }
 
-export function displayName(r: { isGuest: boolean; guestName?: string | null; user?: { name: string } | null; registeredBy?: { name: string } | null }): string {
+export function userDisplayName(user: { name: string; alias?: string | null }): string {
+  return user.alias?.trim() || user.name;
+}
+
+export function displayName(r: {
+  isGuest: boolean;
+  guestName?: string | null;
+  user?: { name: string; alias?: string | null } | null;
+  registeredBy?: { name: string; alias?: string | null } | null;
+}): string {
   if (r.isGuest) {
-    const inviter = r.registeredBy?.name || '?';
+    const inviter = r.registeredBy ? userDisplayName(r.registeredBy) : '?';
     return `${r.guestName || 'Invitado'} (inv. de ${inviter})`;
   }
-  return r.user?.name || 'Desconocido';
+  return r.user ? userDisplayName(r.user) : 'Desconocido';
 }
 
 export function buildCounts(game: { maxMainSpots: number; registrations: Array<{ isWaitingList: boolean }> }): string {

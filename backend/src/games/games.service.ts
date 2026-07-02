@@ -34,6 +34,7 @@ import {
 } from './exceptions';
 import {
   displayName,
+  userDisplayName,
   buildCounts,
   buildTitle,
   buildGameLink,
@@ -386,7 +387,7 @@ export class GamesService {
     const updated = await this.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
 
-    const userName = registration.user?.name || 'Alguien';
+    const userName = registration.user ? userDisplayName(registration.user) : 'Alguien';
     const spot = registration.isWaitingList
       ? `en la *lista de espera* (puesto ${registration.position})`
       : `en la *lista principal*`;
@@ -395,7 +396,7 @@ export class GamesService {
       // the app), the message must make the actor explicit instead of implying
       // the target registered themselves.
       const onBehalf = registration.registeredById !== registration.userId;
-      const actorName = registration.registeredBy?.name;
+      const actorName = registration.registeredBy ? userDisplayName(registration.registeredBy) : undefined;
       const msg = onBehalf && actorName
         ? `✅ *${actorName}* anotó a *${userName}* ${spot} 🏐\n${buildCounts(updated)}${buildGameLink(gameId)}`
         : `✅ *${userName}* se anotó ${spot}! 🏐\n${buildCounts(updated)}${buildGameLink(gameId)}`;
@@ -487,7 +488,7 @@ export class GamesService {
       ? `en la *lista de espera* (puesto ${registration.position})`
       : `en la *lista principal*`;
     if (!options?.silent) {
-      const inviterName = registration.registeredBy?.name;
+      const inviterName = registration.registeredBy ? userDisplayName(registration.registeredBy) : undefined;
       const byInviter = inviterName ? ` por *${inviterName}*` : '';
       this.whatsapp
         .sendToGroup(`✅ Invitado *${guestName}* fue anotado ${spot}${byInviter} 🏐\n${buildCounts(updated)}${buildGameLink(gameId)}`)
@@ -556,7 +557,7 @@ export class GamesService {
 
         const reg = await tx.gameRegistration.findFirst({
           where: { id: regId, gameId, pendingConfirmation: true },
-          include: { user: { select: { name: true } } },
+          include: { user: { select: { name: true, alias: true } } },
         });
         if (!reg) throw new NoPendingConfirmationException();
 
@@ -566,7 +567,7 @@ export class GamesService {
         });
 
         return {
-          name: reg.isGuest ? reg.guestName || 'Invitado' : reg.user?.name || 'Jugador',
+          name: reg.isGuest ? reg.guestName || 'Invitado' : (reg.user ? userDisplayName(reg.user) : 'Jugador'),
           userId: reg.userId as string | null,
         };
       },
@@ -581,15 +582,16 @@ export class GamesService {
       details: { confirmedRegId: regId, onBehalf: true },
     });
 
-    const actor = await this.prisma.user.findUnique({ where: { id: actorId }, select: { name: true } });
+    const actor = await this.prisma.user.findUnique({ where: { id: actorId }, select: { name: true, alias: true } });
 
     this.logger.log(`[CONFIRM] game=${gameId} | reg=${regId} | confirmed=${confirmed.name} | by=${actor?.name || actorId} | onBehalf=true`);
 
     const updated = await this.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
 
+    const actorDisplayName = actor ? userDisplayName(actor) : 'Un admin';
     this.whatsapp
-      .sendToGroup(`✅ *${actor?.name || 'Un admin'}* confirmó la asistencia de *${confirmed.name}* 🏐`)
+      .sendToGroup(`✅ *${actorDisplayName}* confirmó la asistencia de *${confirmed.name}* 🏐`)
       .catch((e) => this.logger.warn('WhatsApp send failed', e));
 
     return { game: updated, name: confirmed.name };
@@ -1019,8 +1021,8 @@ export class GamesService {
       const confirmTarget = mention
         ? mention.tag
         : p.reg.isGuest
-          ? `*${p.reg.registeredBy?.name || 'Responsable'}*`
-          : `*${p.reg.user?.name || 'Alguien'}*`;
+          ? `*${p.reg.registeredBy ? userDisplayName(p.reg.registeredBy) : 'Responsable'}*`
+          : `*${p.reg.user ? userDisplayName(p.reg.user) : 'Alguien'}*`;
 
       this.logger.log(
         `[AUTO_PROMOTE] game=${gameId} | promoted=${name} | isGuest=${p.reg.isGuest} | fromWaitPos=${p.originalPos} | beforeCutoff=${beforeCutoff} | confirmWindow=15min`,
@@ -1045,8 +1047,8 @@ export class GamesService {
         const confirmTarget = mention
           ? mention.tag
           : p.reg.isGuest
-            ? `*${p.reg.registeredBy?.name || 'Responsable'}*`
-            : `*${p.reg.user?.name || 'Alguien'}*`;
+            ? `*${p.reg.registeredBy ? userDisplayName(p.reg.registeredBy) : 'Responsable'}*`
+            : `*${p.reg.user ? userDisplayName(p.reg.user) : 'Alguien'}*`;
         lines.push(`• *${name}* → ${confirmTarget}`);
         this.logger.log(
           `[AUTO_PROMOTE] game=${gameId} | promoted=${name} | isGuest=${p.reg.isGuest} | fromWaitPos=${p.originalPos} | beforeCutoff=${beforeCutoff} | confirmWindow=15min`,
@@ -1213,8 +1215,8 @@ export class GamesService {
     const nextConfirmTarget = nextMention
       ? nextMention.tag
       : result.nextInWait.isGuest
-        ? `*${result.nextInWait.registeredBy?.name || 'Responsable'}*`
-        : `*${result.nextInWait.user?.name || 'Alguien'}*`;
+        ? `*${result.nextInWait.registeredBy ? userDisplayName(result.nextInWait.registeredBy) : 'Responsable'}*`
+        : `*${result.nextInWait.user ? userDisplayName(result.nextInWait.user) : 'Alguien'}*`;
 
     const finalUpdated = await this.findOne(reg.gameId);
     this.events.emit({ gameId: reg.gameId, type: 'update', data: finalUpdated });
@@ -1465,8 +1467,8 @@ export class GamesService {
       lines.push('*Lista Principal:*');
       mainList.forEach((r, i) => {
         const name = r.isGuest
-          ? `${r.guestName || 'Invitado'} 👤 _(inv. de ${r.registeredBy?.name || '?'})_`
-          : r.user?.name || 'Desconocido';
+          ? `${r.guestName || 'Invitado'} 👤 _(inv. de ${r.registeredBy ? userDisplayName(r.registeredBy) : '?'})_`
+          : displayName(r);
         const pendingTag = r.pendingConfirmation ? ' ⏳' : '';
         lines.push(`${i + 1}. ${name}${pendingTag}`);
       });
@@ -1476,8 +1478,8 @@ export class GamesService {
       lines.push('', `*Lista de Espera (${waitList.length}):*`);
       waitList.forEach((r, i) => {
         const name = r.isGuest
-          ? `${r.guestName || 'Invitado'} 👤 _(inv. de ${r.registeredBy?.name || '?'})_`
-          : r.user?.name || 'Desconocido';
+          ? `${r.guestName || 'Invitado'} 👤 _(inv. de ${r.registeredBy ? userDisplayName(r.registeredBy) : '?'})_`
+          : displayName(r);
         lines.push(`${i + 1}. ${name}`);
       });
     }

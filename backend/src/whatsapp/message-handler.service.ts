@@ -18,6 +18,7 @@ import {
   MustBeRegisteredFirstException,
 } from '../games/exceptions';
 import { extractPhoneFromJid } from './utils/jid-utils';
+import { userDisplayName } from '../games/games.utils';
 import { isExpectedBusinessError } from '../common/errors/is-expected-error';
 import {
   runWithLogContext,
@@ -303,7 +304,7 @@ export class MessageHandlerService {
 
       for (const fine of pendingFines) {
         const dateStr = new Date(fine.date).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
-        lines.push(`• ${fine.user?.name ?? fine.userName ?? 'Sin asignar'} - $${fine.amount.toLocaleString('es-CO')} (${fine.reason}) - ${dateStr}`);
+        lines.push(`• ${fine.user ? userDisplayName(fine.user) : fine.userName ?? 'Sin asignar'} - $${fine.amount.toLocaleString('es-CO')} (${fine.reason}) - ${dateStr}`);
         total += fine.amount;
       }
 
@@ -371,10 +372,10 @@ export class MessageHandlerService {
       await this.games.removeRegistration(ctx.activeGame.id, targetUser.id, ctx.user!.id, ctx.user!.role);
     } catch (e: unknown) {
       if (e instanceof NotRegisteredException) {
-        await this.wp.sendToGroup(`ℹ️ ${targetUser.name} no está anotado en esta lista.`);
+        await this.wp.sendToGroup(`ℹ️ ${userDisplayName(targetUser)} no está anotado en esta lista.`);
       } else {
         this.logError('Error al sacar jugador', e);
-        await this.wp.sendToGroup(`❌ No se pudo sacar a ${targetUser.name}. Intenta de nuevo.`);
+        await this.wp.sendToGroup(`❌ No se pudo sacar a ${userDisplayName(targetUser)}. Intenta de nuevo.`);
       }
     }
   }
@@ -402,19 +403,19 @@ export class MessageHandlerService {
         }
         try {
           await this.games.confirmRegistration(ctx.activeGame.id, targetUser.id, ctx.user!.id);
-          confirmedNames.push(targetUser.name);
+          confirmedNames.push(userDisplayName(targetUser));
         } catch (e: unknown) {
           if (e instanceof NoPendingConfirmationException) {
-            await this.wp.sendToGroup(`ℹ️ ${targetUser.name} no tiene ninguna confirmación pendiente.`);
+            await this.wp.sendToGroup(`ℹ️ ${userDisplayName(targetUser)} no tiene ninguna confirmación pendiente.`);
           } else {
             this.logError('Error al confirmar por otro', e);
-            await this.wp.sendToGroup(`❌ No se pudo confirmar a ${targetUser.name}. Intenta de nuevo.`);
+            await this.wp.sendToGroup(`❌ No se pudo confirmar a ${userDisplayName(targetUser)}. Intenta de nuevo.`);
           }
         }
       }
 
       if (confirmedNames.length > 0) {
-        await this.wp.sendToGroup(`✅ *${ctx.user!.name}* confirmó la asistencia de ${confirmedNames.join(', ')} 🏐`);
+        await this.wp.sendToGroup(`✅ *${userDisplayName(ctx.user!)}* confirmó la asistencia de ${confirmedNames.join(', ')} 🏐`);
       }
       return;
     }
@@ -427,10 +428,10 @@ export class MessageHandlerService {
         const guestNames = result.confirmedGuests.join(', ');
         parts.push(result.confirmedOwn ? `la de ${guestNames}` : `asistencia de ${guestNames}`);
       }
-      await this.wp.sendToGroup(`✅ *${ctx.user!.name}* confirmó ${parts.join(' y ')} 🏐`);
+      await this.wp.sendToGroup(`✅ *${userDisplayName(ctx.user!)}* confirmó ${parts.join(' y ')} 🏐`);
     } catch (e: unknown) {
       if (e instanceof NoPendingConfirmationException) {
-        await this.wp.sendToGroup(`ℹ️ ${ctx.user!.name}, no tienes ninguna confirmación pendiente.`);
+        await this.wp.sendToGroup(`ℹ️ ${userDisplayName(ctx.user!)}, no tienes ninguna confirmación pendiente.`);
       } else {
         this.logError('Error al confirmar', e);
         await this.wp.sendToGroup(`❌ No se pudo confirmar tu asistencia. Intenta de nuevo.`);
@@ -444,7 +445,7 @@ export class MessageHandlerService {
         (r: any) => r.user?.id === ctx.user!.id && !r.isWaitingList,
       );
       if (!isInGame) {
-        await this.wp.sendToGroup(`⛔ ${ctx.user!.name}, solo los jugadores en la lista principal pueden usar este comando.`);
+        await this.wp.sendToGroup(`⛔ ${userDisplayName(ctx.user!)}, solo los jugadores en la lista principal pueden usar este comando.`);
         return;
       }
     }
@@ -468,7 +469,7 @@ export class MessageHandlerService {
   private async handleInvite(ctx: CommandContext, _match: RegExpMatchArray | null): Promise<void> {
     const isRegistered = ctx.activeGame.registrations.some((r: any) => r.user?.id === ctx.user!.id);
     if (!isRegistered) {
-      await this.wp.sendToGroup(`⚠️ ${ctx.user!.name}, debes estar anotado en la lista antes de invitar a alguien.`);
+      await this.wp.sendToGroup(`⚠️ ${userDisplayName(ctx.user!)}, debes estar anotado en la lista antes de invitar a alguien.`);
       return;
     }
 
@@ -500,13 +501,13 @@ export class MessageHandlerService {
         const spot = reg.isWaitingList
           ? `en la *lista de espera* (puesto ${reg.position})`
           : `en la *lista principal*`;
-        msgs.push(`✅ *${targetUser.name}* fue anotado ${spot} por *${ctx.user!.name}* 🏐`);
+        msgs.push(`✅ *${userDisplayName(targetUser)}* fue anotado ${spot} por *${userDisplayName(ctx.user!)}* 🏐`);
       } catch (e: unknown) {
         if (e instanceof AlreadyRegisteredException) {
-          msgs.push(`ℹ️ ${targetUser.name} ya está anotado en esta lista.`);
+          msgs.push(`ℹ️ ${userDisplayName(targetUser)} ya está anotado en esta lista.`);
         } else {
           this.logError(`Error al anotar al miembro ${targetUser.name} via invitar`, e);
-          msgs.push(`❌ No se pudo anotar a *${targetUser.name}*. Intenta de nuevo.`);
+          msgs.push(`❌ No se pudo anotar a *${userDisplayName(targetUser)}*. Intenta de nuevo.`);
         }
       }
     }
@@ -523,7 +524,7 @@ export class MessageHandlerService {
         const spot = reg.isWaitingList
           ? `en la *lista de espera* (puesto ${reg.position})`
           : `en la *lista principal*`;
-        msgs.push(`✅ Invitado *${guestName}* fue anotado ${spot} por *${ctx.user!.name}* 🏐`);
+        msgs.push(`✅ Invitado *${guestName}* fue anotado ${spot} por *${userDisplayName(ctx.user!)}* 🏐`);
       } catch (e: unknown) {
         this.logError(`Error al invitar a ${guestName}`, e);
         msgs.push(`❌ No se pudo anotar a *${guestName}*. Intenta de nuevo.`);
@@ -549,7 +550,7 @@ export class MessageHandlerService {
       await this.games.removeRegistration(ctx.activeGame.id, ctx.user!.id, ctx.user!.id, ctx.user!.role);
     } catch (e: unknown) {
       if (e instanceof NotRegisteredException) {
-        await this.wp.sendToGroup(`ℹ️ ${ctx.user!.name}, no estás anotado en esta lista.`);
+        await this.wp.sendToGroup(`ℹ️ ${userDisplayName(ctx.user!)}, no estás anotado en esta lista.`);
       } else {
         this.logError('Error al salir', e);
         await this.wp.sendToGroup(`❌ No se pudo salir de la lista. Intenta de nuevo.`);
@@ -592,7 +593,7 @@ export class MessageHandlerService {
           senderRegistered = true;
           if (!retry.promoted && !hasTargetMention && !hasInlineGuests) {
             const counts = this.games.buildCounts(retry.game);
-            await this.wp.sendToGroup(`⚠️ *${ctx.user!.name}*, no hay cupos disponibles en este momento. Si se libera un cupo serás promovido automáticamente.\n${counts}${this.games.buildGameLink(ctx.activeGame.id)}`);
+            await this.wp.sendToGroup(`⚠️ *${userDisplayName(ctx.user!)}*, no hay cupos disponibles en este momento. Si se libera un cupo serás promovido automáticamente.\n${counts}${this.games.buildGameLink(ctx.activeGame.id)}`);
             return;
           }
         } else {
@@ -603,7 +604,7 @@ export class MessageHandlerService {
         if (e instanceof AlreadyRegisteredException) {
           senderAlreadyRegistered = true;
         } else if (e instanceof UserHasUnpaidFinesException) {
-          await this.wp.sendToGroup(`🚫 *${ctx.user!.name}*, no puedes anotarte porque tienes multas/deudas pendientes. Contacta a un admin para ponerte al día.`);
+          await this.wp.sendToGroup(`🚫 *${userDisplayName(ctx.user!)}*, no puedes anotarte porque tienes multas/deudas pendientes. Contacta a un admin para ponerte al día.`);
           return;
         } else {
           this.logError('Error al anotar al remitente', e);
@@ -616,7 +617,7 @@ export class MessageHandlerService {
     // Solo el emisor, sin invitados → mensaje simple y salir.
     if (!hasTargetMention && !hasInlineGuests) {
       if (senderAlreadyRegistered) {
-        await this.wp.sendToGroup(`ℹ️ ${ctx.user!.name}, ya estás anotado en esta lista.`);
+        await this.wp.sendToGroup(`ℹ️ ${userDisplayName(ctx.user!)}, ya estás anotado en esta lista.`);
       } else {
         const updated = await this.games.findOne(ctx.activeGame.id);
         const counts = this.games.buildCounts(updated);
@@ -624,14 +625,14 @@ export class MessageHandlerService {
         const spot = senderReg?.isWaitingList
           ? `en la *lista de espera* en el puesto ${senderReg.position}`
           : `en la *lista principal*`;
-        await this.wp.sendToGroup(`✅ *${ctx.user!.name}* se anotó ${spot}! 🏐\n${counts}${this.games.buildGameLink(ctx.activeGame.id)}`);
+        await this.wp.sendToGroup(`✅ *${userDisplayName(ctx.user!)}* se anotó ${spot}! 🏐\n${counts}${this.games.buildGameLink(ctx.activeGame.id)}`);
       }
       return;
     }
 
     // Hay menciones de miembros o invitados externos → acumular mensajes.
     const msgs: string[] = [];
-    if (senderRegistered) msgs.push(`✅ *${ctx.user!.name}* se anotó en la lista.`);
+    if (senderRegistered) msgs.push(`✅ *${userDisplayName(ctx.user!)}* se anotó en la lista.`);
 
     // ── Miembros mencionados con @mention ────────────────────────────────────
     for (const mentionJid of allowedMentions) {
@@ -648,21 +649,21 @@ export class MessageHandlerService {
         const spot = reg.isWaitingList
           ? `en la *lista de espera* (puesto ${reg.position})`
           : `en la *lista principal*`;
-        msgs.push(`✅ *${targetUser.name}* fue anotado ${spot} por *${ctx.user!.name}* 🏐`);
+        msgs.push(`✅ *${userDisplayName(targetUser)}* fue anotado ${spot} por *${userDisplayName(ctx.user!)}* 🏐`);
       } catch (e: unknown) {
         if (e instanceof AlreadyRegisteredException) {
-          msgs.push(`ℹ️ ${targetUser.name} ya está anotado en esta lista.`);
+          msgs.push(`ℹ️ ${userDisplayName(targetUser)} ya está anotado en esta lista.`);
         } else if (e instanceof UserHasUnpaidFinesException) {
-          msgs.push(`🚫 ${targetUser.name} tiene multas/deudas pendientes y no puede anotarse.`);
+          msgs.push(`🚫 ${userDisplayName(targetUser)} tiene multas/deudas pendientes y no puede anotarse.`);
         } else if (e instanceof ProxyLimitExceededException) {
-          msgs.push(`🚫 No pudimos anotar a ${targetUser.name}: ya alcanzaste el máximo de personas que puedes anotar en este partido.`);
+          msgs.push(`🚫 No pudimos anotar a ${userDisplayName(targetUser)}: ya alcanzaste el máximo de personas que puedes anotar en este partido.`);
         } else if (e instanceof MustBeRegisteredFirstException) {
-          msgs.push(`🚫 No pudimos anotar a ${targetUser.name}: primero debes anotarte tú para poder anotar a alguien más.`);
+          msgs.push(`🚫 No pudimos anotar a ${userDisplayName(targetUser)}: primero debes anotarte tú para poder anotar a alguien más.`);
         } else if (e instanceof InactiveUserException) {
-          msgs.push(`🚫 No pudimos anotar a ${targetUser.name}: su cuenta no está activa. Contacta a un admin.`);
+          msgs.push(`🚫 No pudimos anotar a ${userDisplayName(targetUser)}: su cuenta no está activa. Contacta a un admin.`);
         } else {
           this.logError(`Error al anotar a ${targetUser.name}`, e);
-          msgs.push(`❌ No se pudo anotar a ${targetUser.name}. Intenta de nuevo.`);
+          msgs.push(`❌ No se pudo anotar a ${userDisplayName(targetUser)}. Intenta de nuevo.`);
         }
       }
     }
@@ -675,7 +676,7 @@ export class MessageHandlerService {
     if (hasInlineGuests) {
       const canInvite = senderRegistered || senderAlreadyRegistered;
       if (!canInvite) {
-        msgs.push(`⚠️ ${ctx.user!.name}, debes estar anotado en la lista para poder traer invitados.`);
+        msgs.push(`⚠️ ${userDisplayName(ctx.user!)}, debes estar anotado en la lista para poder traer invitados.`);
       } else {
         for (const guestName of inlineGuests) {
           try {
@@ -683,7 +684,7 @@ export class MessageHandlerService {
             const spot = reg.isWaitingList
               ? `en la *lista de espera* (puesto ${reg.position})`
               : `en la *lista principal*`;
-            msgs.push(`✅ Invitado *${guestName}* fue anotado ${spot} por *${ctx.user!.name}* 🏐`);
+            msgs.push(`✅ Invitado *${guestName}* fue anotado ${spot} por *${userDisplayName(ctx.user!)}* 🏐`);
           } catch (e: unknown) {
             this.logError(`Error al invitar inline a ${guestName}`, e);
             msgs.push(`❌ No se pudo anotar al invitado *${guestName}*. Intenta de nuevo.`);

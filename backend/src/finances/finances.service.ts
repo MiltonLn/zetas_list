@@ -260,7 +260,7 @@ export class FinancesService {
   async getPendingFines() {
     return this.prisma.fine.findMany({
       where: { status: FineStatus.pending },
-      include: { user: { select: { id: true, name: true, phone: true } } },
+      include: { user: { select: { id: true, name: true, alias: true, phone: true } } },
       orderBy: { date: 'asc' },
     });
   }
