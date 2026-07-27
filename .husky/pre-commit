@@ -1,5 +1,5 @@
 #!/bin/sh
-# Pre-commit: lint whichever sub-project has staged changes.
+# Pre-commit: lint only the staged files of each sub-project.
 # One-time setup: run `make hooks` (or `git config core.hooksPath .husky`).
 
 set -e
@@ -9,24 +9,32 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 RESET='\033[0m'
 
-FRONTEND_STAGED=$(git diff --cached --name-only --diff-filter=ACMR | grep "^frontend/src/.*\.\(ts\|tsx\)$" || true)
-BACKEND_STAGED=$(git diff --cached --name-only --diff-filter=ACMR | grep "^backend/src/.*\.ts$" || true)
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+
+FRONTEND_STAGED=$(printf '%s\n' "$STAGED" | grep "^frontend/.*\.\(ts\|tsx\)$" || true)
+BACKEND_STAGED=$(printf '%s\n' "$STAGED" | grep "^backend/.*\.ts$" || true)
 
 if [ -z "$FRONTEND_STAGED" ] && [ -z "$BACKEND_STAGED" ]; then
   exit 0
 fi
 
+# ESLint is invoked with the staged paths only, so commit time stays proportional
+# to the size of the change instead of the size of the project.
 if [ -n "$FRONTEND_STAGED" ]; then
-  printf "${CYAN}→ Frontend lint...${RESET}\n"
-  if ! (cd frontend && npm run lint -- --max-warnings=0 2>&1); then
+  printf "${CYAN}→ Frontend lint (%s archivo(s))...${RESET}\n" "$(printf '%s\n' "$FRONTEND_STAGED" | wc -l | tr -d ' ')"
+  RELATIVE=$(printf '%s\n' "$FRONTEND_STAGED" | sed 's|^frontend/||')
+  # shellcheck disable=SC2086
+  if ! (cd frontend && npx eslint --max-warnings=0 $RELATIVE); then
     printf "${RED}✗ Frontend lint failed. Fix errors above before committing.${RESET}\n"
     exit 1
   fi
 fi
 
 if [ -n "$BACKEND_STAGED" ]; then
-  printf "${CYAN}→ Backend lint...${RESET}\n"
-  if ! (cd backend && npm run lint -- --max-warnings=0 2>&1); then
+  printf "${CYAN}→ Backend lint (%s archivo(s))...${RESET}\n" "$(printf '%s\n' "$BACKEND_STAGED" | wc -l | tr -d ' ')"
+  RELATIVE=$(printf '%s\n' "$BACKEND_STAGED" | sed 's|^backend/||')
+  # shellcheck disable=SC2086
+  if ! (cd backend && npx eslint --max-warnings=0 $RELATIVE); then
     printf "${RED}✗ Backend lint failed. Fix errors above before committing.${RESET}\n"
     exit 1
   fi
