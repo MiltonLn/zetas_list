@@ -1,8 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { gamesService } from '../services/games.service';
-import type { Game, GameStatus } from '../types';
+import { queryKeys } from '../lib/query-client';
+import type { GameStatus } from '../types';
 import { MODALIDAD_LABELS, GAME_STATUS_LABELS } from '../types';
 import { Spinner } from '../components/Spinner';
 import { StatusBadge } from '../components/StatusBadge';
@@ -29,14 +31,9 @@ export default function HomePage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [activeGame, setActiveGame] = useState<Game | null>(null);
-  const [historyGames, setHistoryGames] = useState<Game[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [error, setError] = useState('');
+  const currentPageParam = searchParams.get('page') || '1';
 
-  const currentPage = parseInt(searchParams.get('page') || '1', 10);
+  const currentPage = parseInt(currentPageParam, 10);
   const filterMonth = searchParams.get('month') || '';
   const filterYear = searchParams.get('year') || '';
   const filterStatus = (searchParams.get('status') || '') as GameStatus | '';
@@ -55,53 +52,32 @@ export default function HomePage() {
     [setSearchParams],
   );
 
+  // Members land here only while there is no open game, so poll until one
+  // shows up and then send them straight into it.
+  const memberGames = useQuery({
+    queryKey: queryKeys.games({ scope: 'member-active' }),
+    queryFn: async () => (await gamesService.list()).data.data,
+    enabled: !isAdmin,
+    refetchInterval: 5_000,
+  });
+
+  const adminActive = useQuery({
+    queryKey: queryKeys.games({ page: 1, limit: 1, status: 'registration_open' }),
+    queryFn: async () =>
+      (await gamesService.list({ page: 1, limit: 1, status: 'registration_open' as GameStatus }))
+        .data.data[0] ?? null,
+    enabled: isAdmin,
+  });
+
+  const memberActiveGame = memberGames.data?.[0] ?? null;
+
   useEffect(() => {
-    if (!isAdmin) {
-      let mounted = true;
-
-      const check = () =>
-        gamesService
-          .list()
-          .then(({ data }) => {
-            if (!mounted) return;
-            const games = data.data;
-            if (games.length >= 1) {
-              navigate(`/game/${games[0].id}`, { replace: true });
-            } else {
-              setActiveGame(null);
-              setLoading(false);
-            }
-          })
-          .catch((e) => {
-            if (mounted) {
-              setError(getApiError(e));
-              setLoading(false);
-            }
-          });
-
-      check();
-      const interval = setInterval(check, 5_000);
-      return () => {
-        mounted = false;
-        clearInterval(interval);
-      };
+    if (!isAdmin && memberActiveGame) {
+      navigate(`/game/${memberActiveGame.id}`, { replace: true });
     }
+  }, [isAdmin, memberActiveGame, navigate]);
 
-    setLoading(true);
-    gamesService
-      .list({ page: 1, limit: 1, status: 'registration_open' as GameStatus })
-      .then(({ data }) => {
-        const active = data.data[0] ?? null;
-        setActiveGame(active);
-      })
-      .catch((e) => setError(getApiError(e)))
-      .finally(() => setLoading(false));
-  }, [isAdmin, navigate]);
-
-  const fetchHistory = useCallback(() => {
-    if (!isAdmin) return;
-    setHistoryLoading(true);
-
+  const historyParams = useCallback(() => {
     const params: Record<string, string | number> = {
       page: currentPage,
       limit: PAGE_SIZE,
@@ -123,19 +99,27 @@ export default function HomePage() {
     }
     if (searchQuery) params.search = searchQuery;
 
-    gamesService
-      .list(params as Parameters<typeof gamesService.list>[0])
-      .then(({ data }) => {
-        setHistoryGames(data.data);
-        setTotal(data.total);
-      })
-      .catch((e) => setError(getApiError(e)))
-      .finally(() => setHistoryLoading(false));
-  }, [isAdmin, currentPage, filterMonth, filterYear, filterStatus, searchQuery]);
+    return params;
+  }, [currentPage, filterMonth, filterYear, filterStatus, searchQuery]);
 
-  useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
+  const params = historyParams();
+  const history = useQuery({
+    queryKey: queryKeys.games(params),
+    queryFn: async () =>
+      (await gamesService.list(params as Parameters<typeof gamesService.list>[0])).data,
+    enabled: isAdmin,
+    // Keep the previous page on screen while the next one loads.
+    placeholderData: (previous) => previous,
+  });
+
+  const activeGame = isAdmin ? (adminActive.data ?? null) : memberActiveGame;
+  const historyGames = history.data?.data ?? [];
+  const total = history.data?.total ?? 0;
+  const historyLoading = history.isFetching;
+  const loading = isAdmin ? adminActive.isPending : memberGames.isPending;
+  const error = [memberGames.error, adminActive.error, history.error]
+    .filter(Boolean)
+    .map((e) => getApiError(e))[0] ?? '';
 
   if (loading) {
     return (
