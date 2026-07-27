@@ -4,7 +4,6 @@ import {
   NestModule,
 } from '@nestjs/common';
 import { SentryModule } from '@sentry/nestjs/setup';
-import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
@@ -22,13 +21,11 @@ import { AuditModule } from './audit/audit.module';
 import { FinancesModule } from './finances/finances.module';
 import { OrdersModule } from './orders/orders.module';
 import { HealthController } from './health.controller';
-
-const isProduction = process.env.NODE_ENV === 'production';
+import { isProduction } from './config/env';
 
 @Module({
   imports: [
     SentryModule.forRoot(),
-    ConfigModule.forRoot({ isGlobal: true }),
     LoggerModule.forRoot(buildLoggerConfig()),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 300 }]),

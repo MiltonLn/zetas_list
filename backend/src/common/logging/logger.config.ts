@@ -1,6 +1,7 @@
 import { stdTimeFunctions } from 'pino';
 import type { Params } from 'nestjs-pino';
 import { getLogContext } from './log-context';
+import { env, isProduction } from '../../config/env';
 
 /**
  * Builds the nestjs-pino configuration.
@@ -14,8 +15,8 @@ import { getLogContext } from './log-context';
  *   high; we log meaningful domain events explicitly instead.
  */
 export function buildLoggerConfig(): Params {
-  const isProd = process.env.NODE_ENV === 'production';
-  const level = process.env.LOG_LEVEL || (isProd ? 'info' : 'debug');
+  const isProd = isProduction;
+  const level = env.LOG_LEVEL || (isProd ? 'info' : 'debug');
 
   return {
     pinoHttp: {
