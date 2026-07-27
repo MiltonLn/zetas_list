@@ -1767,16 +1767,51 @@ describe('GamesService', () => {
       );
     });
 
-    it('actualiza el campo paid y llama a audit.log', async () => {
+    it('al desmarcar attended también desmarca paid y audita ambos cambios', async () => {
+      const reg = makeReg({ attended: true, paid: true });
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(reg);
+      mockPrisma.gameRegistration.update.mockResolvedValue({ ...reg, attended: false, paid: false });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.updateRegistration('reg-1', { attended: false }, 'admin-1', 'game-1');
+
+      expect(mockPrisma.gameRegistration.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { attended: false, paid: false },
+        }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'attendance_toggled' }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'payment_toggled',
+          details: { paid: false, automatic: true },
+        }),
+      );
+    });
+
+    it('al marcar paid también marca attended y audita ambos cambios', async () => {
       const reg = makeReg();
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(reg);
-      mockPrisma.gameRegistration.update.mockResolvedValue({ ...reg, paid: true });
+      mockPrisma.gameRegistration.update.mockResolvedValue({ ...reg, paid: true, attended: true });
       jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.updateRegistration('reg-1', { paid: true }, 'admin-1', 'game-1');
 
+      expect(mockPrisma.gameRegistration.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { paid: true, attended: true },
+        }),
+      );
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'payment_toggled' }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'attendance_toggled',
+          details: { attended: true, automatic: true },
+        }),
       );
     });
   });

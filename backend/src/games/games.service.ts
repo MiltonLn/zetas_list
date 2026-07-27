@@ -800,17 +800,30 @@ export class GamesService {
     const reg = await this.prisma.gameRegistration.findFirst({ where: { id: regId, gameId } });
     if (!reg) throw new NotRegisteredException();
 
+    const attendanceWasAutomatic = dto.paid === true && dto.attended === undefined && !reg.attended;
+    const paymentWasAutomatic = dto.attended === false && dto.paid === undefined && reg.paid;
+    let updateData: UpdateRegistrationDto = dto;
+    if (dto.paid === true) {
+      updateData = { ...dto, attended: true };
+    } else if (dto.attended === false) {
+      updateData = { ...dto, paid: false };
+    }
+
     const updated = await this.prisma.gameRegistration.update({
       where: { id: regId, gameId },
-      data: dto,
+      data: updateData,
       include: REGISTRATION_INCLUDE,
     });
 
-    if (dto.attended !== undefined) {
-      await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'attendance_toggled', details: { attended: dto.attended } });
+    if (attendanceWasAutomatic) {
+      await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'attendance_toggled', details: { attended: true, automatic: true } });
+    } else if (dto.attended !== undefined) {
+      await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'attendance_toggled', details: { attended: updateData.attended } });
     }
-    if (dto.paid !== undefined) {
-      await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'payment_toggled', details: { paid: dto.paid } });
+    if (paymentWasAutomatic) {
+      await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'payment_toggled', details: { paid: false, automatic: true } });
+    } else if (dto.paid !== undefined) {
+      await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'payment_toggled', details: { paid: updateData.paid } });
     }
     if (dto.note !== undefined) {
       await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'note_updated', details: { note: dto.note } });
