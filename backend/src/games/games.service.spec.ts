@@ -7,8 +7,8 @@ import { formatCutoffTime } from './games.utils';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { GameEventsService } from './game-events.service';
-import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { FinancesService } from '../finances/finances.service';
+import { notificationHarness } from './testing/notifier-harness';
 
 const mockPrisma = {
   game: {
@@ -98,23 +98,27 @@ describe('GamesService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockWhatsapp.sendToGroup.mockResolvedValue(undefined);
+    mockWhatsapp.sendToGroup.mockResolvedValue(true);
     mockWhatsapp.sendMessage.mockResolvedValue(undefined);
     mockAudit.log.mockResolvedValue(undefined);
     mockEvents.emit.mockReturnValue(undefined);
     // Default: execute $transaction callback with mockPrisma as the tx context
     mockPrisma.$transaction.mockImplementation(async (cb: any) => cb(mockPrisma));
 
+    const harness = notificationHarness(mockWhatsapp);
     const module: TestingModule = await Test.createTestingModule({
+      imports: harness.imports,
       providers: [
         GamesService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AuditService, useValue: mockAudit },
         { provide: GameEventsService, useValue: mockEvents },
-        { provide: WhatsappService, useValue: mockWhatsapp },
         { provide: FinancesService, useValue: mockFinances },
+        ...harness.providers,
       ],
     }).compile();
+    // Registers the @OnEvent handlers.
+    await module.init();
 
     service = module.get<GamesService>(GamesService);
   });
@@ -1717,7 +1721,7 @@ describe('GamesService', () => {
     it('envía mensaje de WhatsApp al cancelar', async () => {
       jest.spyOn(service, 'findOne').mockResolvedValue(makeGame({ title: 'Voley VIE' }) as any);
       mockPrisma.game.update.mockResolvedValue(makeGame({ status: GameStatus.cancelled }));
-      mockWhatsapp.sendToGroup.mockResolvedValue(undefined);
+      mockWhatsapp.sendToGroup.mockResolvedValue(true);
 
       await service.cancel('game-1', { reason: '' }, 'admin-1');
 

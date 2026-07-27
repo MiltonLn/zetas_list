@@ -2,8 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { GameSchedulerService } from './game-scheduler.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { GamesService } from './games.service';
-import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { GameStatus } from '@prisma/client';
+import { notificationHarness } from './testing/notifier-harness';
 
 const mockPrisma = {
   game: {
@@ -17,7 +17,6 @@ const mockPrisma = {
 
 const mockGames = {
   openRegistration: jest.fn(),
-  buildRegistrationOpenMessage: jest.fn().mockReturnValue('¡Inscripción abierta!'),
   handleConfirmationTimeout: jest.fn(),
   isBeforeCutoff: jest.fn(),
   autoPromoteIfNeeded: jest.fn(),
@@ -60,14 +59,18 @@ describe('GameSchedulerService', () => {
     // "delivered" result for every test (some tests override it).
     mockWhatsapp.sendToGroup.mockResolvedValue(true);
 
+    const harness = notificationHarness(mockWhatsapp);
     const module: TestingModule = await Test.createTestingModule({
+      imports: harness.imports,
       providers: [
         GameSchedulerService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: GamesService, useValue: mockGames },
-        { provide: WhatsappService, useValue: mockWhatsapp },
+        ...harness.providers,
       ],
     }).compile();
+    // Registers the @OnEvent handlers.
+    await module.init();
 
     scheduler = module.get<GameSchedulerService>(GameSchedulerService);
   });
@@ -99,7 +102,9 @@ describe('GameSchedulerService', () => {
 
       await scheduler.checkRegistrationOpening();
 
-      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith('¡Inscripción abierta!');
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('Voley VIE'),
+      );
     });
 
     it('continúa con otros partidos si uno falla', async () => {

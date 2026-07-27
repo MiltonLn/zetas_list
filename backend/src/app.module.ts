@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { ConfigModule } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
@@ -30,6 +31,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     SentryModule.forRoot(),
     ConfigModule.forRoot({ isGlobal: true }),
     LoggerModule.forRoot(buildLoggerConfig()),
+    EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 300 }]),
     ...(isProduction

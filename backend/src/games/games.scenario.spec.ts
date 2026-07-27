@@ -13,7 +13,7 @@ import { GamesService } from './games.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { GameEventsService } from './game-events.service';
-import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { notificationHarness } from './testing/notifier-harness';
 import { FinancesService } from '../finances/finances.service';
 import { GameNotOpenException, NoPendingConfirmationException } from './exceptions';
 import { InMemoryPrisma, makeGameData } from './testing/in-memory-prisma';
@@ -50,7 +50,7 @@ async function setup(opts: { members: number; maxMainSpots?: number; gameDate?: 
     }),
   });
 
-  const whatsapp = { sendToGroup: jest.fn().mockResolvedValue(undefined), sendMessage: jest.fn().mockResolvedValue(undefined) };
+  const whatsapp = { sendToGroup: jest.fn().mockResolvedValue(true), sendMessage: jest.fn().mockResolvedValue(undefined) };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const events = { emit: jest.fn() };
   const finances = {
@@ -60,16 +60,20 @@ async function setup(opts: { members: number; maxMainSpots?: number; gameDate?: 
     createGameIncome: jest.fn().mockResolvedValue(undefined),
   };
 
+  const harness = notificationHarness(whatsapp);
   const module: TestingModule = await Test.createTestingModule({
+    imports: harness.imports,
     providers: [
       GamesService,
       { provide: PrismaService, useValue: prisma },
       { provide: AuditService, useValue: audit },
       { provide: GameEventsService, useValue: events },
-      { provide: WhatsappService, useValue: whatsapp },
       { provide: FinancesService, useValue: finances },
+      ...harness.providers,
     ],
   }).compile();
+  // Registers the @OnEvent handlers.
+  await module.init();
 
   return { service: module.get(GamesService), prisma, members, gameId: game.id as string, whatsapp, audit, finances };
 }
