@@ -15,9 +15,6 @@ backend/whatsapp-session/
 frontend/dist/
 backend/dist/
 
-# Prisma
-backend/prisma/migrations/**/migration_lock.toml
-
 # Logs
 *.log
 npm-debug.log*
