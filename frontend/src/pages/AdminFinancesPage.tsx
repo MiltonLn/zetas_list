@@ -3,24 +3,15 @@ import { PageHeader } from '../components/PageHeader';
 import { FinanceSummary } from '../components/FinanceSummary';
 import { Spinner } from '../components/Spinner';
 import { Modal } from '../components/Modal';
+import { Pagination } from '../components/Pagination';
 import { financesService, type FinanceTransaction, type Fine } from '../services/finances.service';
-
-const PAGE_SIZE = 10;
-
-function Pagination({ page, totalPages, onPageChange }: { page: number; totalPages: number; onPageChange: (p: number) => void }) {
-  if (totalPages <= 1) return null;
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '12px 0' }}>
-      <button className="btn" style={{ fontSize: 12, padding: '4px 10px' }} disabled={page === 1} onClick={() => onPageChange(page - 1)}>← Anterior</button>
-      <span style={{ fontSize: 12, opacity: 0.7 }}>Pág. {page} de {totalPages}</span>
-      <button className="btn" style={{ fontSize: 12, padding: '4px 10px' }} disabled={page === totalPages} onClick={() => onPageChange(page + 1)}>Siguiente →</button>
-    </div>
-  );
-}
 import { usersService } from '../services/users.service';
 import { getApiError } from '../services/api';
 import { showToast } from '../utils/toast';
+import { formatCurrency, formatDate } from '../utils/currency';
 import type { User } from '../types';
+
+const PAGE_SIZE = 10;
 
 type Tab = 'transactions' | 'fines';
 
@@ -63,9 +54,6 @@ export function AdminFinancesPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { loadUsers(); }, [loadUsers]);
-
-  const formatCurrency = (amount: number) => `$${amount.toLocaleString('es-CO')}`;
-  const formatDate = (date: string) => new Date(date).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
 
   const handleDeleteTx = async (id: string) => {
     if (!confirm('¿Eliminar esta transacción?')) return;
@@ -134,8 +122,6 @@ export function AdminFinancesPage() {
             </div>
             <TransactionsTable
               transactions={transactions}
-              formatCurrency={formatCurrency}
-              formatDate={formatDate}
               onEdit={(tx) => { setEditingTx(tx); setShowTxModal(true); }}
               onDelete={handleDeleteTx}
             />
@@ -149,8 +135,6 @@ export function AdminFinancesPage() {
             </div>
             <FinesTable
               fines={fines}
-              formatCurrency={formatCurrency}
-              formatDate={formatDate}
               onEdit={(f) => { setEditingFine(f); setShowFineModal(true); }}
               onDelete={handleDeleteFine}
               onMarkPaid={handleMarkPaid}
@@ -188,10 +172,8 @@ export function AdminFinancesPage() {
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function TransactionsTable({ transactions, formatCurrency, formatDate, onEdit, onDelete }: {
+function TransactionsTable({ transactions, onEdit, onDelete }: {
   transactions: FinanceTransaction[];
-  formatCurrency: (n: number) => string;
-  formatDate: (d: string) => string;
   onEdit: (tx: FinanceTransaction) => void;
   onDelete: (id: string) => void;
 }) {
@@ -291,10 +273,8 @@ function TransactionsTable({ transactions, formatCurrency, formatDate, onEdit, o
   );
 }
 
-function FinesTable({ fines, formatCurrency, formatDate, onEdit, onDelete, onMarkPaid }: {
+function FinesTable({ fines, onEdit, onDelete, onMarkPaid }: {
   fines: Fine[];
-  formatCurrency: (n: number) => string;
-  formatDate: (d: string) => string;
   onEdit: (f: Fine) => void;
   onDelete: (id: string) => void;
   onMarkPaid: (id: string) => void;
