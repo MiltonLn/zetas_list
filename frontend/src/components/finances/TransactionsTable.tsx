@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { Pagination } from '../Pagination';
 import { PAGE_SIZE } from './constants';
+import { formatCurrency, formatDate } from '../../utils/currency';
 import type { FinanceTransaction } from '../../services/finances.service';
 
-export function TransactionsTable({ transactions, formatCurrency, formatDate, onEdit, onDelete }: {
+export function TransactionsTable({ transactions, onEdit, onDelete }: {
   transactions: FinanceTransaction[];
-  formatCurrency: (n: number) => string;
-  formatDate: (d: string) => string;
   onEdit: (tx: FinanceTransaction) => void;
   onDelete: (id: string) => void;
 }) {

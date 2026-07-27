@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { CatalogProduct, CatalogVariant, ShirtSize } from '../../types';
-import { money, makeKey, LABEL_STYLE, type CartItem } from './shared';
+import { formatCurrency } from '../../utils/currency';
+import { makeKey, LABEL_STYLE, type CartItem } from './shared';
 
 export function ProductConfigModal({
   product,
@@ -93,7 +94,7 @@ export function ProductConfigModal({
             <h3 style={{ color: '#e8eaf6', fontSize: 16, fontWeight: 700, margin: 0 }}>
               {product.name}
             </h3>
-            <span style={{ color: '#6e8efb', fontWeight: 700, whiteSpace: 'nowrap' }}>{money(unitPrice)}</span>
+            <span style={{ color: '#6e8efb', fontWeight: 700, whiteSpace: 'nowrap' }}>{formatCurrency(unitPrice)}</span>
           </div>
           <p style={{ color: '#7c8db5', fontSize: 13, margin: '6px 0 14px' }}>
             {product.description}

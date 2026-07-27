@@ -1,16 +1,31 @@
-export type Role = 'admin' | 'ayudante' | 'member';
-export type UserStatus = 'active' | 'inactive' | 'banned';
-export type Position = 'auxiliar' | 'libero' | 'armador' | 'central' | 'opuesto';
-export type Gender = 'masculino' | 'femenino' | 'otro';
-export type ShirtSize = 'XS' | 'S' | 'M' | 'L' | 'XL' | 'XXL';
-export type OrderStatus = 'pending' | 'deposit_paid' | 'paid' | 'delivered' | 'cancelled';
-export type Modalidad = 'seis_x_seis' | 'cuatro_x_cuatro';
-export type GameStatus =
-  | 'scheduled'
-  | 'registration_open'
-  | 'in_progress'
-  | 'completed'
-  | 'cancelled';
+// Domain enums are generated from backend/prisma/schema.prisma so they cannot
+// drift from the backend. See scripts/generate-api-types.mjs.
+export type {
+  AuditAction,
+  FineStatus,
+  Gender,
+  GameStatus,
+  Modalidad,
+  OrderStatus,
+  Position,
+  Role,
+  ShirtSize,
+  TransactionType,
+  UserStatus,
+} from './api-types.gen';
+
+import type {
+  AuditAction,
+  Gender,
+  GameStatus,
+  Modalidad,
+  OrderStatus,
+  Position,
+  Role,
+  ShirtSize,
+  UserStatus,
+} from './api-types.gen';
+import { SHIRT_SIZE_VALUES } from './api-types.gen';
 
 export interface User {
   id: string;
@@ -110,7 +125,7 @@ export interface AuditLog {
   gameId?: string;
   actorId: string;
   targetUserId?: string;
-  action: string;
+  action: AuditAction;
   details: Record<string, unknown>;
   createdAt: string;
   actor: { id: string; name: string; username: string };
@@ -136,7 +151,7 @@ export const GENDER_LABELS: Record<Gender, string> = {
   otro: 'Otro',
 };
 
-export const SHIRT_SIZES: ShirtSize[] = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+export const SHIRT_SIZES: readonly ShirtSize[] = SHIRT_SIZE_VALUES;
 
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   pending: 'Pendiente',
@@ -266,7 +281,9 @@ export interface GameList {
   waitList: Player[];
 }
 
-export const AUDIT_ACTION_LABELS: Record<string, string> = {
+// Exhaustive by type: adding an AuditAction in schema.prisma without a label
+// here breaks the frontend typecheck instead of rendering a raw enum value.
+export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   player_registered: 'Jugador anotado',
   proxy_registered: 'Jugador anotado (por otro)',
   guest_registered: 'Invitado anotado',
@@ -290,5 +307,6 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   user_updated: 'Usuario actualizado',
   user_status_changed: 'Estado de usuario cambiado',
   order_created: 'Pedido creado',
+  order_updated: 'Pedido actualizado',
   order_status_changed: 'Estado de pedido cambiado',
 };

@@ -1,4 +1,5 @@
 import type { Player } from '../types';
+import { formatCurrency } from './currency';
 
 const VIGILANTE_FEE = 7000;
 
@@ -32,9 +33,9 @@ export function generateLegacyReport(title: string, mainList: Player[], waitList
   lines.push(`📅 ${today[0].toUpperCase()}${today.slice(1)}`);
   lines.push('');
   lines.push(`✅ *Asistentes:* ${totalAttended}/${totalSlots}`);
-  lines.push(`💰 *Recaudado:* $${grossCollected.toLocaleString('es-CO')}`);
-  lines.push(`🔒 *Vigilante:* -$${VIGILANTE_FEE.toLocaleString('es-CO')}`);
-  lines.push(`💵 *Neto:* $${netCollected.toLocaleString('es-CO')}`);
+  lines.push(`💰 *Recaudado:* ${formatCurrency(grossCollected)}`);
+  lines.push(`🔒 *Vigilante:* -${formatCurrency(VIGILANTE_FEE)}`);
+  lines.push(`💵 *Neto:* ${formatCurrency(netCollected)}`);
   lines.push('');
 
   if (fined.length > 0) {

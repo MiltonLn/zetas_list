@@ -2,8 +2,6 @@ import { Injectable, Inject, Logger, forwardRef } from '@nestjs/common';
 import { WhatsappProvider, WHATSAPP_PROVIDER } from './whatsapp.interface';
 import { GamesService } from '../games/games.service';
 import { UsersService } from '../users/users.service';
-import { PrismaService } from '../prisma/prisma.service';
-import { FinancesService } from '../finances/finances.service';
 import { Role } from '@prisma/client';
 import { GAME_MANAGERS } from '../common/constants/roles';
 import {
@@ -20,13 +18,20 @@ import {
 import { extractPhoneFromJid } from './utils/jid-utils';
 import { userDisplayName } from '../games/games.utils';
 import { isExpectedBusinessError } from '../common/errors/is-expected-error';
+import { InfoCommandsService } from './commands/info-commands.service';
+import {
+  BOT_MENTION,
+  MSG_NO_ACTIVE_GAME,
+  MSG_UNEXPECTED_ERROR,
+  MSG_UNKNOWN_COMMAND,
+  MSG_USER_NOT_FOUND,
+  buildAccountNotActiveMessage,
+} from './commands/messages';
 import {
   runWithLogContext,
   setLogContext,
   newReqId,
 } from '../common/logging/log-context';
-
-const BOT_MENTION = '@Z';
 
 /** Strip diacritics so all commands match with or without accents. */
 function stripAccents(s: string): string {
@@ -62,9 +67,6 @@ const CMD_PAYMENT = /^@z\s+(llave|pago|pagos|transferencia|nequi)\b/i;
 const CMD_ALIASES = /^@z\s+(alias|variantes|sinonimos|alternativas)\b/i;
 const CMD_IS_BOT_MENTION = /^@z\b/i;
 
-const MSG_NO_ACTIVE_GAME = 'No hay ninguna lista abierta en el momento 🤷';
-const MSG_USER_NOT_FOUND = '❌ No encontré tu número registrado en el sistema. Pídele a un administrador que te cree una cuenta primero.';
-
 interface CommandContext {
   phone: string;
   text: string;
@@ -78,6 +80,13 @@ interface CommandDef {
   requiresGame: boolean;
   requiresUser: boolean;
   requiresActiveAccount: boolean;
+  /**
+   * When set, dispatch rejects non-managers with this message before the handler
+   * runs. Commands whose permission depends on the arguments (e.g. `confirmar`,
+   * which only needs manager rights when confirming for someone else) check
+   * inline instead.
+   */
+  managerOnly?: string;
   handler: (ctx: CommandContext, match: RegExpMatchArray | null) => Promise<void>;
 }
 
@@ -90,19 +99,18 @@ export class MessageHandlerService {
     @Inject(WHATSAPP_PROVIDER) private wp: WhatsappProvider,
     @Inject(forwardRef(() => GamesService)) private games: GamesService,
     private users: UsersService,
-    private prisma: PrismaService,
-    private finances: FinancesService,
+    private info: InfoCommandsService,
   ) {
     this.commands = [
-      { regex: CMD_LIST,    requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: (ctx) => this.handleList(ctx) },
-      { regex: CMD_HELP,    requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleHelp() },
-      { regex: CMD_ALIASES, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleAliases() },
-      { regex: CMD_RULES,   requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleRules() },
-      { regex: CMD_FINANCES,requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFinances() },
-      { regex: CMD_FINED,   requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleFined() },
-      { regex: CMD_PAYMENT, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handlePayment() },
-      { regex: CMD_FINISH,  requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  handler: (ctx) => this.handleFinish(ctx) },
-      { regex: CMD_REMOVE_OTHER, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.handleRemoveOther(ctx) },
+      { regex: CMD_LIST,    requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: (ctx) => this.info.list(ctx.activeGame) },
+      { regex: CMD_HELP,    requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.info.help() },
+      { regex: CMD_ALIASES, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.info.aliases() },
+      { regex: CMD_RULES,   requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.info.rules() },
+      { regex: CMD_FINANCES,requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.info.financesInfo() },
+      { regex: CMD_FINED,   requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.info.fined() },
+      { regex: CMD_PAYMENT, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.info.payment() },
+      { regex: CMD_FINISH,  requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  managerOnly: '⛔ Solo los administradores pueden usar este comando.', handler: (ctx) => this.handleFinish(ctx) },
+      { regex: CMD_REMOVE_OTHER, requiresGame: true, requiresUser: true, requiresActiveAccount: true, managerOnly: '⛔ Solo los administradores pueden sacar a otros de la lista.', handler: (ctx) => this.handleRemoveOther(ctx) },
       { regex: CMD_CONFIRM, requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  handler: (ctx) => this.handleConfirm(ctx) },
       { regex: CMD_PROMOTE, requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  handler: (ctx) => this.handlePromote(ctx) },
       { regex: CMD_INVITE,  requiresGame: true,  requiresUser: true,  requiresActiveAccount: true,  handler: (ctx, m) => this.handleInvite(ctx, m) },
@@ -140,25 +148,11 @@ export class MessageHandlerService {
     const matchedCommand = this.commands.find((cmd) => cmd.regex.test(forMatching));
 
     if (!matchedCommand) {
-      await this.wp.sendToGroup(
-        `❓ Comando no reconocido. Escribe *${BOT_MENTION} ayuda* para ver los comandos disponibles.`,
-      );
+      await this.wp.sendToGroup(MSG_UNKNOWN_COMMAND);
       return;
     }
 
-    const activeGame = await this.prisma.game.findFirst({
-      where: { status: { in: ['registration_open', 'in_progress'] } },
-      include: {
-        registrations: {
-          include: {
-            user: { select: { id: true, name: true, alias: true, phone: true } },
-            registeredBy: { select: { id: true, name: true, alias: true } },
-          },
-          orderBy: [{ isWaitingList: 'asc' }, { position: 'asc' }],
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const activeGame = await this.games.findActiveGame();
 
     if (activeGame) setLogContext({ gameId: activeGame.id });
     this.logger.log(`[CMD] ${matchedCommand.regex.source.slice(0, 30)} | phone=${phone}`);
@@ -178,13 +172,12 @@ export class MessageHandlerService {
     }
 
     if (matchedCommand.requiresActiveAccount && user && user.status !== 'active') {
-      const statusLabels: Record<string, string> = {
-        inactive: 'inactiva',
-        banned: 'suspendida',
-        suspended: 'suspendida',
-      };
-      const label = statusLabels[user.status] || user.status;
-      await this.wp.sendToGroup(`❌ Tu cuenta está ${label}. Contacta a un administrador.`);
+      await this.wp.sendToGroup(buildAccountNotActiveMessage(user.status));
+      return;
+    }
+
+    if (matchedCommand.managerOnly && user && !GAME_MANAGERS.includes(user.role)) {
+      await this.wp.sendToGroup(matchedCommand.managerOnly);
       return;
     }
 
@@ -201,137 +194,13 @@ export class MessageHandlerService {
       await matchedCommand.handler(ctx, match);
     } catch (e: unknown) {
       this.logError(`Error no manejado en comando ${matchedCommand.regex.source}`, e);
-      await this.wp.sendToGroup('❌ Ocurrió un error inesperado procesando tu comando. Intenta de nuevo.').catch(() => {});
+      await this.wp.sendToGroup(MSG_UNEXPECTED_ERROR).catch(() => {});
     }
   }
 
   // ─── Command Handlers ─────────────────────────────────────────────────────
 
-  private async handleList(ctx: CommandContext): Promise<void> {
-    if (!ctx.activeGame) {
-      await this.wp.sendToGroup(MSG_NO_ACTIVE_GAME);
-      return;
-    }
-    const list = this.games.formatListForWhatsapp(ctx.activeGame);
-    await this.wp.sendToGroup(list);
-  }
-
-  private async handleHelp(): Promise<void> {
-    await this.wp.sendToGroup(
-      `🤖 *Comandos del Bot Zetas*\n\n` +
-      `_Menciónalo al inicio de cada comando._\n\n` +
-      `📝 *Registro:*\n` +
-      `• *${BOT_MENTION} anótame* — Anotarte en la lista\n` +
-      `• *${BOT_MENTION} anótame @persona* — Anotarte y anotar a otro miembro\n` +
-      `• *${BOT_MENTION} anótame + Nombre, Nombre2* — Anotarte y traer invitados externos\n` +
-      `• *${BOT_MENTION} sácame* — Salir de la lista\n` +
-      `• *${BOT_MENTION} invitar Nombre, Nombre2* — Anotar uno o varios invitados externos\n\n` +
-      `📋 *Consulta:*\n` +
-      `• *${BOT_MENTION} lista* — Ver la lista actual y cupos\n` +
-      `• *${BOT_MENTION} reglas* — Ver las reglas del grupo\n` +
-      `• *${BOT_MENTION} finanzas* — Ver el presupuesto del grupo\n` +
-      `• *${BOT_MENTION} multados* — Ver personas con multas pendientes\n\n` +
-      `✅ *Confirmación:*\n` +
-      `• *${BOT_MENTION} confirmar* — Confirmar asistencia cuando te promueven\n\n` +
-      `⬆️ *Gestión de espera:*\n` +
-      `• *${BOT_MENTION} promover* — Subir al primero de la lista de espera\n\n` +
-      `🔒 *Solo admin:*\n` +
-      `• *${BOT_MENTION} sacar @persona* — Sacar a alguien de la lista\n` +
-      `• *${BOT_MENTION} confirmar @persona* — Confirmar por otro jugador\n` +
-      `• *${BOT_MENTION} terminar* — Cerrar el partido y generar reporte\n\n` +
-      `💡 _Todos los comandos funcionan con o sin tildes._\n` +
-      `📖 _Escribe *${BOT_MENTION} alias* para ver todos los alias disponibles._`,
-    );
-  }
-
-  private async handleAliases(): Promise<void> {
-    await this.wp.sendToGroup(
-      `📖 *Alias del Bot Zetas*\n` +
-      `_Todos funcionan con o sin tildes._\n\n` +
-      `📝 *Anotarse:*\n` +
-      `anótame · anotarme · méteme · meterme · meto · apúntame · apuntarme · inscríbeme · inscribirme · voy · juego · entro · anotar · anota · apuntar · apunta\n\n` +
-      `🚪 *Salirse:*\n` +
-      `salirme · sácame · sacarme · quítame · quitarme · bórrame · borrarme · retírame · retirarme · safo · no voy · no juego · no puedo · salgo · salir\n\n` +
-      `✅ *Confirmar:*\n` +
-      `confirmar · confirmo · confirma · listo · acepto\n\n` +
-      `📋 *Ver lista:*\n` +
-      `lista · cupos · quiénes van · cuántos · cómo vamos\n\n` +
-      `⬆️ *Promover de espera:*\n` +
-      `promover · subir · jalar · meter\n\n` +
-      `🎟️ *Invitar externos (uno o varios, separados por coma):*\n` +
-      `invitar · invita · traer · trae\n` +
-      `_Ejemplo: *${BOT_MENTION} invitar Carlos, María*_\n` +
-      `_O al anotarse: *${BOT_MENTION} anotame + Carlos, María*_\n\n` +
-      `💰 *Finanzas:*\n` +
-      `finanzas · presupuesto · plata · dinero · caja · lucas · fondos\n\n` +
-      `🚫 *Multados/Deudas:*\n` +
-      `multados · deudores · morosos · multas · deudas\n\n` +
-      `💳 *Medio de pago:*\n` +
-      `llave · pago · pagos · transferencia · nequi\n\n` +
-      `📜 *Reglas:* reglas · reglamento · normas\n` +
-      `❓ *Ayuda:* ayuda · help · comandos · info\n` +
-      `📖 *Alias:* alias · variantes · sinónimos · alternativas`,
-    );
-  }
-
-  private async handleRules(): Promise<void> {
-    await this.wp.sendToGroup(
-      `📜 *Reglas del Grupo Zetas 2026*\n\n` +
-      `Consulta el reglamento completo aquí:\n` +
-      `🔗 https://zetas.club/reglas`,
-    );
-  }
-
-  private async handleFinances(): Promise<void> {
-    await this.wp.sendToGroup(
-      `💰 *Finanzas del Grupo Zetas*\n\n` +
-      `Consulta el presupuesto, gastos, entradas y multas aquí:\n` +
-      `🔗 https://zetas.club/finances`,
-    );
-  }
-
-  private async handleFined(): Promise<void> {
-    try {
-      const pendingFines = await this.finances.getPendingFines();
-
-      if (pendingFines.length === 0) {
-        await this.wp.sendToGroup(`✅ No hay personas con multas o deudas pendientes. ¡Todos al día! 🎉`);
-        return;
-      }
-
-      const lines: string[] = [`💰 *Multados / Deudores*\n`];
-      let total = 0;
-
-      for (const fine of pendingFines) {
-        const dateStr = new Date(fine.date).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
-        lines.push(`• ${fine.user ? userDisplayName(fine.user) : fine.userName ?? 'Sin asignar'} - $${fine.amount.toLocaleString('es-CO')} (${fine.reason}) - ${dateStr}`);
-        total += fine.amount;
-      }
-
-      lines.push(`\n*Total pendiente:* $${total.toLocaleString('es-CO')}`);
-      lines.push(`\nPonte al día con un admin para poder jugar. 🏐`);
-
-      await this.wp.sendToGroup(lines.join('\n'));
-    } catch (e) {
-      this.logError('Error al consultar multados', e);
-      await this.wp.sendToGroup(`❌ No se pudo consultar los multados. Intenta de nuevo.`);
-    }
-  }
-
-  private async handlePayment(): Promise<void> {
-    const brebKey = process.env.BREB_KEY ?? '@MLR608';
-    await this.wp.sendToGroup(
-      `💳 *Medio de pago*\n\n` +
-      `Bre-B: *${brebKey}*`,
-    );
-  }
-
   private async handleFinish(ctx: CommandContext): Promise<void> {
-    if (!GAME_MANAGERS.includes(ctx.user!.role)) {
-      await this.wp.sendToGroup(`⛔ Solo los administradores pueden usar este comando.`);
-      return;
-    }
-
     try {
       const result = await this.games.complete(ctx.activeGame.id, ctx.user!.id, { silent: true });
       await this.wp.sendToGroup(result.report);
@@ -342,11 +211,6 @@ export class MessageHandlerService {
   }
 
   private async handleRemoveOther(ctx: CommandContext): Promise<void> {
-    if (!GAME_MANAGERS.includes(ctx.user!.role)) {
-      await this.wp.sendToGroup(`⛔ Solo los administradores pueden sacar a otros de la lista.`);
-      return;
-    }
-
     const otherMentions = ctx.mentionedJids.filter((jid) => {
       const jidNumber = extractPhoneFromJid(jid);
       return jidNumber !== ctx.phone;

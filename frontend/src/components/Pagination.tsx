@@ -1,4 +1,10 @@
-export function Pagination({ page, totalPages, onPageChange }: { page: number; totalPages: number; onPageChange: (p: number) => void }) {
+interface Props {
+  page: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}
+
+export function Pagination({ page, totalPages, onPageChange }: Props) {
   if (totalPages <= 1) return null;
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '12px 0' }}>

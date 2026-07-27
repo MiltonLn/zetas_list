@@ -1,10 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  ConflictException,
-  BadRequestException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { Role, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,6 +7,29 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { assertShirtNumberAvailable } from './shirt-number.util';
+import { BCRYPT_ROUNDS, DEFAULT_PASSWORD } from './users.constants';
+import {
+  BanReasonRequiredException,
+  CannotChangeOwnRoleException,
+  CannotEditOtherProfileException,
+  OnlyAdminCanChangeNameException,
+  PhoneTakenException,
+  UsernameTakenException,
+  UserNotFoundException,
+} from './exceptions';
+
+/** A participant as reported by the WhatsApp group metadata. */
+export interface WhatsappParticipant {
+  phone: string | null;
+  lid?: string | null;
+}
+
+export interface WhatsappImportResult {
+  created: number;
+  skipped: number;
+  unresolved: number;
+  createdUsers: Array<{ phone: string; name: string }>;
+}
 
 const USER_PUBLIC_SELECT = {
   id: true,
@@ -50,16 +67,13 @@ export class UsersService {
       where: { OR: [{ username }, { phone: normalizedPhone }] },
     });
     if (existing) {
-      throw new ConflictException(
-        existing.username === username
-          ? 'El nombre de usuario ya existe'
-          : 'El número de teléfono ya está registrado',
-      );
+      throw existing.username === username
+        ? new UsernameTakenException()
+        : new PhoneTakenException();
     }
 
-    const DEFAULT_PASSWORD = 'zetas123';
     const rawPassword = dto.password || DEFAULT_PASSWORD;
-    const passwordHash = await bcrypt.hash(rawPassword, 12);
+    const passwordHash = await bcrypt.hash(rawPassword, BCRYPT_ROUNDS);
     const mustChangePassword = !dto.password;
 
     const user = await this.prisma.user.create({
@@ -91,6 +105,73 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * Creates member accounts for WhatsApp group participants that don't have one
+   * yet. Existing users are left untouched apart from backfilling their LID,
+   * which WhatsApp only exposes through group metadata.
+   */
+  async importFromWhatsapp(
+    participants: WhatsappParticipant[],
+    actorId: string,
+  ): Promise<WhatsappImportResult> {
+    const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, BCRYPT_ROUNDS);
+
+    const result: WhatsappImportResult = {
+      created: 0,
+      skipped: 0,
+      unresolved: 0,
+      createdUsers: [],
+    };
+
+    for (const participant of participants) {
+      if (!participant.phone) {
+        result.unresolved++;
+        continue;
+      }
+
+      const phone = participant.phone;
+      const existing = await this.prisma.user.findFirst({
+        where: { OR: [{ phone }, { username: phone }] },
+      });
+
+      if (existing) {
+        if (participant.lid && !existing.whatsappLid) {
+          await this.setWhatsappLid(existing.id, participant.lid);
+        }
+        result.skipped++;
+        continue;
+      }
+
+      const user = await this.prisma.user.create({
+        data: {
+          username: phone,
+          passwordHash,
+          // The group only gives us the number; members rename themselves on
+          // first login.
+          name: phone,
+          phone,
+          role: Role.member,
+          status: UserStatus.active,
+          mustChangePassword: true,
+          whatsappLid: participant.lid || null,
+        },
+        select: { id: true, name: true, phone: true, username: true, role: true },
+      });
+
+      await this.audit.log({
+        actorId,
+        targetUserId: user.id,
+        action: 'user_created',
+        details: { username: user.username, role: user.role, source: 'whatsapp_import' },
+      });
+
+      result.created++;
+      result.createdUsers.push({ phone: user.phone, name: user.name });
+    }
+
+    return result;
+  }
+
   async findAll(search?: string) {
     return this.prisma.user.findMany({
       where: search
@@ -112,7 +193,7 @@ export class UsersService {
       where: { id },
       select: USER_PUBLIC_SELECT,
     });
-    if (!user) throw new NotFoundException('Usuario no encontrado');
+    if (!user) throw new UserNotFoundException();
     return user;
   }
 
@@ -148,11 +229,11 @@ export class UsersService {
     const existing = await this.findOne(id);
 
     if (actorRole !== Role.admin && actorId !== id) {
-      throw new ForbiddenException('Solo puedes editar tu propio perfil');
+      throw new CannotEditOtherProfileException();
     }
 
     if (dto.name !== undefined && actorRole !== Role.admin) {
-      throw new ForbiddenException('Solo un administrador puede cambiar el nombre real.');
+      throw new OnlyAdminCanChangeNameException();
     }
 
     if (typeof dto.shirtNumber === 'number') {
@@ -194,7 +275,7 @@ export class UsersService {
     await this.findOne(id);
 
     if (dto.status === UserStatus.banned && !dto.reason) {
-      throw new BadRequestException('Se requiere una razón para banear al usuario');
+      throw new BanReasonRequiredException();
     }
 
     const updated = await this.prisma.user.update({
@@ -238,7 +319,7 @@ export class UsersService {
     const user = await this.findOne(id);
 
     if (user.id === actorId) {
-      throw new BadRequestException('No puedes cambiar tu propio rol');
+      throw new CannotChangeOwnRoleException();
     }
 
     const updated = await this.prisma.user.update({

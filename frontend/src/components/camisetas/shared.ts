@@ -1,7 +1,5 @@
 import type { ShirtSize } from '../../types';
 
-export const money = (n: number) => `$${n.toLocaleString('es-CO')}`;
-
 export const makeKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 
 export const BRE_B_KEY = '@MLR608';

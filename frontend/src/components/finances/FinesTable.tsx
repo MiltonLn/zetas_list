@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { Pagination } from '../Pagination';
 import { PAGE_SIZE } from './constants';
+import { formatCurrency, formatDate } from '../../utils/currency';
 import type { Fine } from '../../services/finances.service';
 
-export function FinesTable({ fines, formatCurrency, formatDate, onEdit, onDelete, onMarkPaid }: {
+export function FinesTable({ fines, onEdit, onDelete, onMarkPaid }: {
   fines: Fine[];
-  formatCurrency: (n: number) => string;
-  formatDate: (d: string) => string;
   onEdit: (f: Fine) => void;
   onDelete: (id: string) => void;
   onMarkPaid: (id: string) => void;

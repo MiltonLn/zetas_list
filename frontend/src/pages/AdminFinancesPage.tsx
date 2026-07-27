@@ -57,9 +57,6 @@ export function AdminFinancesPage() {
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
-  const formatCurrency = (amount: number) => `$${amount.toLocaleString('es-CO')}`;
-  const formatDate = (date: string) => new Date(date).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
-
   const handleDeleteTx = async (id: string) => {
     if (!confirm('¿Eliminar esta transacción?')) return;
     try {
@@ -127,8 +124,6 @@ export function AdminFinancesPage() {
             </div>
             <TransactionsTable
               transactions={transactions}
-              formatCurrency={formatCurrency}
-              formatDate={formatDate}
               onEdit={(tx) => { setEditingTx(tx); setShowTxModal(true); }}
               onDelete={handleDeleteTx}
             />
@@ -142,8 +137,6 @@ export function AdminFinancesPage() {
             </div>
             <FinesTable
               fines={fines}
-              formatCurrency={formatCurrency}
-              formatDate={formatDate}
               onEdit={(f) => { setEditingFine(f); setShowFineModal(true); }}
               onDelete={handleDeleteFine}
               onMarkPaid={handleMarkPaid}
@@ -179,5 +172,5 @@ export function AdminFinancesPage() {
   );
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
-
+// Default export as well so App.tsx can lazy-load it like every other page.
+export default AdminFinancesPage;

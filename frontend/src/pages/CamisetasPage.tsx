@@ -12,8 +12,8 @@ import { getApiError } from '../services/api';
 import { PaymentInfo } from '../components/camisetas/PaymentInfo';
 import { ProductTile } from '../components/camisetas/ProductTile';
 import { ProductConfigModal } from '../components/camisetas/ProductConfigModal';
+import { formatCurrency } from '../utils/currency';
 import {
-  money,
   BRE_B_KEY,
   PAYMENT_CONTACT,
   DEPOSIT_RATE,
@@ -106,7 +106,7 @@ export default function CamisetasPage() {
       setCart([]);
       setNotes('');
       setSuccess(
-        `¡Pedido registrado! Para confirmarlo, abona el 50% (${money(depositForMessage)}) a la llave Bre-b ${BRE_B_KEY} y envía el comprobante al ${PAYMENT_CONTACT}. Tu talla y número quedaron guardados en tu perfil.`,
+        `¡Pedido registrado! Para confirmarlo, abona el 50% (${formatCurrency(depositForMessage)}) a la llave Bre-b ${BRE_B_KEY} y envía el comprobante al ${PAYMENT_CONTACT}. Tu talla y número quedaron guardados en tu perfil.`,
       );
     } catch (err) {
       setError(getApiError(err));
@@ -247,7 +247,7 @@ export default function CamisetasPage() {
                       </div>
                     </div>
                     <div style={{ color: '#e8eaf6', fontSize: 14, fontWeight: 600 }}>
-                      {money(item.lineTotal)}
+                      {formatCurrency(item.lineTotal)}
                     </div>
                     <button
                       type="button"
@@ -277,7 +277,7 @@ export default function CamisetasPage() {
                   }}
                 >
                   <span style={{ color: '#e8eaf6', fontWeight: 700 }}>Total</span>
-                  <span style={{ color: '#6e8efb', fontWeight: 700 }}>{money(total)}</span>
+                  <span style={{ color: '#6e8efb', fontWeight: 700 }}>{formatCurrency(total)}</span>
                 </div>
 
                 <PaymentInfo deposit={deposit} pending={pending} />
@@ -354,7 +354,7 @@ export default function CamisetasPage() {
                     </div>
                   ))}
                   <div style={{ color: '#e8eaf6', fontSize: 13, fontWeight: 600, marginTop: 6 }}>
-                    Total: {money(order.totalAmount)}
+                    Total: {formatCurrency(order.totalAmount)}
                   </div>
                 </div>
               ))}

@@ -1,5 +1,5 @@
 import type { CatalogProduct } from '../../types';
-import { money } from './shared';
+import { formatCurrency } from '../../utils/currency';
 
 export function ProductTile({
   product,
@@ -51,7 +51,7 @@ export function ProductTile({
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
           <span style={{ color: '#6e8efb', fontSize: 14, fontWeight: 700 }}>
-            {money(product.price)}
+            {formatCurrency(product.price)}
           </span>
           <span style={{ color: '#7c8db5', fontSize: 18, lineHeight: 1 }}>+</span>
         </div>

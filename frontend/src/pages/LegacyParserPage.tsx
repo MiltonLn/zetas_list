@@ -8,6 +8,8 @@ import {
   deleteLegacyList,
   legacyTitleExists,
 } from '../utils/legacy-storage';
+import { formatCurrency } from '../utils/currency';
+import { useConfirm } from '../hooks/useConfirm';
 import type { Player, GameList, ParseResult } from '../types';
 
 type View = 'home' | 'new' | 'detail';
@@ -31,21 +33,17 @@ export default function LegacyParserPage() {
 
 function LegacyHome({ onNew, onSelect }: { onNew: () => void; onSelect: (id: string) => void }) {
   const [lists, setLists] = useState<GameList[]>([]);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const confirmDelete = useConfirm();
 
   useEffect(() => {
     setLists(getLegacyLists().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
   }, []);
 
   const handleDelete = (id: string) => {
-    if (confirmDelete === id) {
+    confirmDelete.press(() => {
       deleteLegacyList(id);
       setLists((prev) => prev.filter((l) => l.id !== id));
-      setConfirmDelete(null);
-    } else {
-      setConfirmDelete(id);
-      setTimeout(() => setConfirmDelete((cur) => (cur === id ? null : cur)), 3000);
-    }
+    }, id);
   };
 
   return (
@@ -105,11 +103,11 @@ function LegacyHome({ onNew, onSelect }: { onNew: () => void; onSelect: (id: str
                       fontSize: 13,
                       fontWeight: 600,
                       cursor: 'pointer',
-                      color: confirmDelete === list.id ? 'white' : '#e74c3c',
-                      background: confirmDelete === list.id ? '#e74c3c' : 'transparent',
+                      color: confirmDelete.isArmed(list.id) ? 'white' : '#e74c3c',
+                      background: confirmDelete.isArmed(list.id) ? '#e74c3c' : 'transparent',
                     }}
                   >
-                    {confirmDelete === list.id ? '⚠ Confirmar eliminación' : 'Eliminar lista'}
+                    {confirmDelete.isArmed(list.id) ? '⚠ Confirmar eliminación' : 'Eliminar lista'}
                   </button>
                 </div>
               </div>
@@ -366,7 +364,7 @@ function LegacyGameDetail({ gameId, onBack }: { gameId: string; onBack: () => vo
           </div>
           <div className="legacy-summary-cell">
             <span className="legacy-summary-label">Recaudado</span>
-            <span className="legacy-summary-value" style={{ color: '#5c7cfa' }}>${totalCollected.toLocaleString('es-CO')}</span>
+            <span className="legacy-summary-value" style={{ color: '#5c7cfa' }}>{formatCurrency(totalCollected)}</span>
           </div>
         </div>
         <button onClick={copyReport} className={`legacy-report-btn ${copied ? 'copied' : ''}`}>
@@ -435,7 +433,7 @@ function LegacyListSection({
 
       <div className="legacy-stats-row">
         <span className="legacy-stat legacy-stat-green">✓ {attended}/{total} asistieron</span>
-        <span className="legacy-stat legacy-stat-orange">$ {paid}/{total} · ${(paid * 2000).toLocaleString('es-CO')}</span>
+        <span className="legacy-stat legacy-stat-orange">$ {paid}/{total} · {formatCurrency(paid * 2000)}</span>
       </div>
 
       <div className="legacy-player-list">
@@ -467,15 +465,10 @@ function LegacyPlayerRow({
   onDelete: (id: string) => void;
   onPromote?: (id: string) => void;
 }) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const confirmDelete = useConfirm({ timeoutMs: 2500 });
 
   const handleDelete = () => {
-    if (confirmDelete) {
-      onDelete(player.id);
-    } else {
-      setConfirmDelete(true);
-      setTimeout(() => setConfirmDelete(false), 2500);
-    }
+    confirmDelete.press(() => onDelete(player.id));
   };
 
   const isEmpty = !player.name || /^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+$/u.test(player.name);
@@ -518,10 +511,10 @@ function LegacyPlayerRow({
 
         <button
           onClick={handleDelete}
-          className={`legacy-icon-btn ${confirmDelete ? 'danger' : ''}`}
-          title={confirmDelete ? 'Confirmar' : 'Eliminar'}
+          className={`legacy-icon-btn ${confirmDelete.isArmed() ? 'danger' : ''}`}
+          title={confirmDelete.isArmed() ? 'Confirmar' : 'Eliminar'}
         >
-          {confirmDelete ? '!' : '×'}
+          {confirmDelete.isArmed() ? '!' : '×'}
         </button>
       </div>
     </div>

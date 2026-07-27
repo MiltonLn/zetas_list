@@ -8,8 +8,7 @@ import { getApiError } from '../services/api';
 import { AdminOrderFormModal } from '../components/AdminOrderFormModal';
 
 import { buildCsv, buildProveedorCsv } from '../utils/order-csv';
-
-const money = (n: number) => `$${n.toLocaleString('es-CO')}`;
+import { formatCurrency } from '../utils/currency';
 
 const STATUSES: OrderStatus[] = ['pending', 'deposit_paid', 'paid', 'delivered', 'cancelled'];
 
@@ -151,7 +150,7 @@ export function AdminOrdersPage() {
         ) : (
           <>
             <p style={{ color: '#7c8db5', fontSize: 13, marginTop: 0 }}>
-              {orders.length} pedido(s) · Total {money(totalAmount)}
+              {orders.length} pedido(s) · Total {formatCurrency(totalAmount)}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {orders.map((order) => (
@@ -234,7 +233,7 @@ export function AdminOrdersPage() {
                           </td>
                           <td style={{ padding: '4px 8px' }}>{item.customName ?? '—'}</td>
                           <td style={{ padding: '4px 8px', textAlign: 'center' }}>{item.quantity}</td>
-                          <td style={{ padding: '4px 8px', textAlign: 'right' }}>{money(item.lineTotal)}</td>
+                          <td style={{ padding: '4px 8px', textAlign: 'right' }}>{formatCurrency(item.lineTotal)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -246,7 +245,7 @@ export function AdminOrdersPage() {
                     </p>
                   )}
                   <div style={{ color: '#e8eaf6', fontSize: 14, fontWeight: 700, textAlign: 'right', marginTop: 8 }}>
-                    Total: {money(order.totalAmount)}
+                    Total: {formatCurrency(order.totalAmount)}
                   </div>
                 </div>
               ))}
@@ -265,3 +264,6 @@ export function AdminOrdersPage() {
     </>
   );
 }
+
+// Default export as well so App.tsx can lazy-load it like every other page.
+export default AdminOrdersPage;
