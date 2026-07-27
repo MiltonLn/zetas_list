@@ -96,6 +96,16 @@ describe('SortableRegistrationRow', () => {
     expect(screen.getByText('⠿')).toBeInTheDocument();
   });
 
+  it('ubica el control de reordenar después del botón de eliminar', () => {
+    render(<SortableRegistrationRow {...baseProps} draggable={true} />);
+    const removeButton = screen.getByTitle('Eliminar');
+    const dragHandle = screen.getByTitle('Reordenar');
+
+    expect(
+      removeButton.compareDocumentPosition(dragHandle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('muestra "Tú" cuando isSelf=true', () => {
     render(<SortableRegistrationRow {...baseProps} isSelf={true} />);
     expect(screen.getByText('Tú')).toBeInTheDocument();

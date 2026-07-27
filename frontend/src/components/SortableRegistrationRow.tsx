@@ -70,16 +70,6 @@ export function SortableRegistrationRow({
         marginBottom: 6,
       }}
     >
-      {draggable && (
-        <span
-          {...attributes}
-          {...listeners}
-          style={{ color: '#2a2f5a', cursor: 'grab', fontSize: 18, lineHeight: 1, touchAction: 'none' }}
-        >
-          ⠿
-        </span>
-      )}
-
       <span style={{ color: '#7c8db5', fontSize: 13, minWidth: 22, textAlign: 'right' }}>
         {index + 1}.
       </span>
@@ -206,6 +196,23 @@ export function SortableRegistrationRow({
         >
           {confirmRemove ? '¿Seguro?' : '✕'}
         </button>
+      )}
+
+      {draggable && (
+        <span
+          {...attributes}
+          {...listeners}
+          title="Reordenar"
+          style={{
+            color: '#7c8db5',
+            cursor: 'grab',
+            fontSize: 18,
+            lineHeight: 1,
+            touchAction: 'manipulation',
+          }}
+        >
+          ⠿
+        </span>
       )}
 
       {!isGameManager && allowSelfRemove && (isSelf || isOwnGuest) && (
