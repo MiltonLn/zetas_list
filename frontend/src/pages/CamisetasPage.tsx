@@ -9,8 +9,8 @@ import { ORDER_STATUS_COLORS, ORDER_STATUS_LABELS } from '../types';
 import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
 import { getApiError } from '../services/api';
+import { formatCurrency } from '../utils/currency';
 
-const money = (n: number) => `$${n.toLocaleString('es-CO')}`;
 
 const makeKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 
@@ -52,14 +52,14 @@ function PaymentInfo({ deposit, pending }: { deposit: number; pending: number })
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
         <span style={{ color: '#c5cae9', fontSize: 13 }}>Abono ahora (50%)</span>
-        <span style={{ color: '#6e8efb', fontSize: 14, fontWeight: 700 }}>{money(deposit)}</span>
+        <span style={{ color: '#6e8efb', fontSize: 14, fontWeight: 700 }}>{formatCurrency(deposit)}</span>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
         <span style={{ color: '#c5cae9', fontSize: 13 }}>Saldo pendiente</span>
-        <span style={{ color: '#e8eaf6', fontSize: 14, fontWeight: 600 }}>{money(pending)}</span>
+        <span style={{ color: '#e8eaf6', fontSize: 14, fontWeight: 600 }}>{formatCurrency(pending)}</span>
       </div>
       <p style={{ color: '#7c8db5', fontSize: 12, margin: 0, lineHeight: 1.5 }}>
-        Para confirmar tu pedido abona el 50% (<strong style={{ color: '#c5cae9' }}>{money(deposit)}</strong>)
+        Para confirmar tu pedido abona el 50% (<strong style={{ color: '#c5cae9' }}>{formatCurrency(deposit)}</strong>)
         a la llave Bre-b <strong style={{ color: '#6e8efb' }}>{BRE_B_KEY}</strong> y envía el
         comprobante por WhatsApp al <strong style={{ color: '#c5cae9' }}>{PAYMENT_CONTACT}</strong>.
         El saldo restante se cancela en la entrega. Plazo para abonos: 1 de Julio de 2026
@@ -118,7 +118,7 @@ function ProductTile({
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
           <span style={{ color: '#6e8efb', fontSize: 14, fontWeight: 700 }}>
-            {money(product.price)}
+            {formatCurrency(product.price)}
           </span>
           <span style={{ color: '#7c8db5', fontSize: 18, lineHeight: 1 }}>+</span>
         </div>
@@ -218,7 +218,7 @@ function ProductConfigModal({
             <h3 style={{ color: '#e8eaf6', fontSize: 16, fontWeight: 700, margin: 0 }}>
               {product.name}
             </h3>
-            <span style={{ color: '#6e8efb', fontWeight: 700, whiteSpace: 'nowrap' }}>{money(unitPrice)}</span>
+            <span style={{ color: '#6e8efb', fontWeight: 700, whiteSpace: 'nowrap' }}>{formatCurrency(unitPrice)}</span>
           </div>
           <p style={{ color: '#7c8db5', fontSize: 13, margin: '6px 0 14px' }}>
             {product.description}
@@ -417,7 +417,7 @@ export default function CamisetasPage() {
       setCart([]);
       setNotes('');
       setSuccess(
-        `¡Pedido registrado! Para confirmarlo, abona el 50% (${money(depositForMessage)}) a la llave Bre-b ${BRE_B_KEY} y envía el comprobante al ${PAYMENT_CONTACT}. Tu talla y número quedaron guardados en tu perfil.`,
+        `¡Pedido registrado! Para confirmarlo, abona el 50% (${formatCurrency(depositForMessage)}) a la llave Bre-b ${BRE_B_KEY} y envía el comprobante al ${PAYMENT_CONTACT}. Tu talla y número quedaron guardados en tu perfil.`,
       );
     } catch (err) {
       setError(getApiError(err));
@@ -558,7 +558,7 @@ export default function CamisetasPage() {
                       </div>
                     </div>
                     <div style={{ color: '#e8eaf6', fontSize: 14, fontWeight: 600 }}>
-                      {money(item.lineTotal)}
+                      {formatCurrency(item.lineTotal)}
                     </div>
                     <button
                       type="button"
@@ -588,7 +588,7 @@ export default function CamisetasPage() {
                   }}
                 >
                   <span style={{ color: '#e8eaf6', fontWeight: 700 }}>Total</span>
-                  <span style={{ color: '#6e8efb', fontWeight: 700 }}>{money(total)}</span>
+                  <span style={{ color: '#6e8efb', fontWeight: 700 }}>{formatCurrency(total)}</span>
                 </div>
 
                 <PaymentInfo deposit={deposit} pending={pending} />
@@ -665,7 +665,7 @@ export default function CamisetasPage() {
                     </div>
                   ))}
                   <div style={{ color: '#e8eaf6', fontSize: 13, fontWeight: 600, marginTop: 6 }}>
-                    Total: {money(order.totalAmount)}
+                    Total: {formatCurrency(order.totalAmount)}
                   </div>
                 </div>
               ))}

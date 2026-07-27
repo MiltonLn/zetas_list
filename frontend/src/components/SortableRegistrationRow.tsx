@@ -1,9 +1,9 @@
-import { useState, useRef } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { GameRegistration } from '../types';
 import { Avatar } from './Avatar';
 import { displayName } from '../utils/display-name';
+import { useConfirm } from '../hooks/useConfirm';
 
 interface Props {
   reg: GameRegistration;
@@ -43,8 +43,7 @@ export function SortableRegistrationRow({
   draggable,
   onNameClick,
 }: Props) {
-  const [confirmRemove, setConfirmRemove] = useState(false);
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const confirmRemove = useConfirm();
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: reg.id, disabled: !draggable });
@@ -174,27 +173,18 @@ export function SortableRegistrationRow({
 
       {isGameManager && !isReadonly && (
         <button
-          onClick={() => {
-            if (confirmRemove) {
-              if (confirmTimer.current) clearTimeout(confirmTimer.current);
-              setConfirmRemove(false);
-              onRemove?.();
-            } else {
-              setConfirmRemove(true);
-              confirmTimer.current = setTimeout(() => setConfirmRemove(false), 3000);
-            }
-          }}
-          title={confirmRemove ? 'Confirmar eliminación' : 'Eliminar'}
+          onClick={() => confirmRemove.press(() => onRemove?.())}
+          title={confirmRemove.isArmed() ? 'Confirmar eliminación' : 'Eliminar'}
           style={{
-            background: confirmRemove ? '#e031311a' : 'none',
-            border: confirmRemove ? '1px solid #e0313155' : '1px solid #2a2f5a',
+            background: confirmRemove.isArmed() ? '#e031311a' : 'none',
+            border: confirmRemove.isArmed() ? '1px solid #e0313155' : '1px solid #2a2f5a',
             borderRadius: 6, padding: '4px 8px',
-            color: confirmRemove ? '#ff6b6b' : '#7c8db5', cursor: 'pointer',
-            fontSize: confirmRemove ? 11 : 13, fontWeight: confirmRemove ? 600 : 400,
+            color: confirmRemove.isArmed() ? '#ff6b6b' : '#7c8db5', cursor: 'pointer',
+            fontSize: confirmRemove.isArmed() ? 11 : 13, fontWeight: confirmRemove.isArmed() ? 600 : 400,
             transition: 'all 0.15s ease', whiteSpace: 'nowrap',
           }}
         >
-          {confirmRemove ? '¿Seguro?' : '✕'}
+          {confirmRemove.isArmed() ? '¿Seguro?' : '✕'}
         </button>
       )}
 
@@ -217,26 +207,17 @@ export function SortableRegistrationRow({
 
       {!isGameManager && allowSelfRemove && (isSelf || isOwnGuest) && (
         <button
-          onClick={() => {
-            if (confirmRemove) {
-              if (confirmTimer.current) clearTimeout(confirmTimer.current);
-              setConfirmRemove(false);
-              onRemove?.();
-            } else {
-              setConfirmRemove(true);
-              confirmTimer.current = setTimeout(() => setConfirmRemove(false), 3000);
-            }
-          }}
+          onClick={() => confirmRemove.press(() => onRemove?.())}
           title={isOwnGuest ? 'Sacar a tu invitado' : undefined}
           style={{
-            background: confirmRemove ? '#e031311a' : 'none',
-            border: confirmRemove ? '1px solid #e0313155' : '1px solid #2a2f5a',
+            background: confirmRemove.isArmed() ? '#e031311a' : 'none',
+            border: confirmRemove.isArmed() ? '1px solid #e0313155' : '1px solid #2a2f5a',
             borderRadius: 8, padding: '4px 10px',
-            color: confirmRemove ? '#ff6b6b' : '#7c8db5', cursor: 'pointer',
+            color: confirmRemove.isArmed() ? '#ff6b6b' : '#7c8db5', cursor: 'pointer',
             fontSize: 12, fontWeight: 600, transition: 'all 0.15s ease', whiteSpace: 'nowrap',
           }}
         >
-          {confirmRemove ? '¿Seguro?' : isOwnGuest ? 'Sacar' : 'Salirme'}
+          {confirmRemove.isArmed() ? '¿Seguro?' : isOwnGuest ? 'Sacar' : 'Salirme'}
         </button>
       )}
     </div>

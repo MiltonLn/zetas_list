@@ -9,6 +9,7 @@ import { Spinner } from '../components/Spinner';
 import { Avatar } from '../components/Avatar';
 import { PlayerProfileModal } from '../components/PlayerProfileModal';
 import { Modal } from '../components/Modal';
+import { displayName } from '../utils/display-name';
 import { getApiError } from '../services/api';
 
 
@@ -225,7 +226,7 @@ export default function AdminUsersPage() {
                   onClick={() => setProfileUser(user)}
                   style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}
                 >
-                  <Avatar name={user.alias || user.name} photoUrl={user.photoUrl} size={40} />
+                  <Avatar name={displayName(user)} photoUrl={user.photoUrl} size={40} />
 
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
