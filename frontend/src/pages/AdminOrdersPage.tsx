@@ -389,3 +389,6 @@ export function AdminOrdersPage() {
     </>
   );
 }
+
+// Default export as well so App.tsx can lazy-load it like every other page.
+export default AdminOrdersPage;
