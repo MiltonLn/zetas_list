@@ -7,7 +7,7 @@ export interface ProfileUser {
   name: string;
   username: string;
   phone: string;
-  position?: Position;
+  positions?: Position[];
   gender?: Gender;
   heightCm?: number;
   birthDate?: string;
@@ -40,7 +40,12 @@ export function PlayerProfileModal({ user: u, listInfo, onClose }: Props) {
   const genderLabel = u.gender ? GENDER_LABELS[u.gender] : null;
 
   const infoItems: { label: string; value: string }[] = [];
-  if (u.position) infoItems.push({ label: 'Posición', value: POSITION_LABELS[u.position] || u.position });
+  if (u.positions && u.positions.length > 0) {
+    infoItems.push({
+      label: u.positions.length > 1 ? 'Posiciones' : 'Posición',
+      value: u.positions.map((p) => POSITION_LABELS[p] || p).join(', '),
+    });
+  }
   if (u.heightCm) infoItems.push({ label: 'Estatura', value: `${u.heightCm} cm` });
   if (age !== null) infoItems.push({ label: 'Edad', value: `${age} años` });
   if (genderLabel) infoItems.push({ label: 'Género', value: genderLabel });

@@ -9,7 +9,7 @@
  * Intentionally lives outside `*.spec.ts` so Jest does not run it as a suite.
  */
 
-import { GameStatus, Modalidad, Role, UserStatus } from '@prisma/client';
+import { GameStatus, Modalidad, Position, Role, UserStatus } from '@prisma/client';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -150,6 +150,8 @@ export interface SeedUser {
   phone?: string;
   role?: Role;
   status?: UserStatus;
+  positions?: Position[];
+  skillLevel?: number | null;
 }
 
 export class InMemoryPrisma {
@@ -168,7 +170,8 @@ export class InMemoryPrisma {
       phone: user.phone ?? `300${Math.floor(Math.random() * 10000000)}`,
       role: user.role ?? Role.member,
       status: user.status ?? UserStatus.active,
-      position: null,
+      positions: user.positions ?? [],
+      skillLevel: user.skillLevel ?? null,
       gender: null,
       heightCm: null,
       birthDate: null,
@@ -334,6 +337,7 @@ export class InMemoryPrisma {
         confirmationDeadline: null,
         confirmationDeclined: false,
         originalWaitPosition: null,
+        teamNumber: null,
         fineExempt: false,
         note: null,
         registeredAt: new Date(),

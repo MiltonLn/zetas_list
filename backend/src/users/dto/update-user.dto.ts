@@ -3,6 +3,8 @@ import {
   IsOptional,
   IsEnum,
   IsInt,
+  IsNumber,
+  IsArray,
   Min,
   Max,
   IsDateString,
@@ -24,10 +26,18 @@ export class UpdateUserDto {
   @MaxLength(50)
   alias?: string;
 
-  @ApiPropertyOptional({ enum: Position })
+  @ApiPropertyOptional({ enum: Position, isArray: true, description: 'Posiciones en las que juega (puede ser más de una).' })
   @IsOptional()
-  @IsEnum(Position)
-  position?: Position;
+  @IsArray()
+  @IsEnum(Position, { each: true })
+  positions?: Position[];
+
+  @ApiPropertyOptional({ example: 3.5, description: 'Nivel de habilidad de 0.0 a 5.0 (un decimal). Solo editable y visible por admins.' })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 1 })
+  @Min(0)
+  @Max(5)
+  skillLevel?: number;
 
   @ApiPropertyOptional({ enum: Gender })
   @IsOptional()

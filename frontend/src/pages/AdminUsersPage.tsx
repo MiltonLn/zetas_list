@@ -4,6 +4,7 @@ import { usersService } from '../services/users.service';
 import type { CreateUserPayload, UpdateUserPayload } from '../services/users.service';
 import type { User, UserStatus, Role, Position, Gender } from '../types';
 import { POSITION_LABELS, GENDER_LABELS, USER_STATUS_LABELS, USER_STATUS_COLORS } from '../types';
+import { PositionsField } from '../components/PositionsField';
 import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
 import { Avatar } from '../components/Avatar';
@@ -24,7 +25,7 @@ export default function AdminUsersPage() {
   const [alias, setAlias] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<Role>('member');
-  const [position, setPosition] = useState<Position | ''>('');
+  const [positions, setPositions] = useState<Position[]>([]);
   const [gender, setGender] = useState<Gender | ''>('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
@@ -37,10 +38,11 @@ export default function AdminUsersPage() {
   const [editUser, setEditUser] = useState<User | null>(null);
   const [editName, setEditName] = useState('');
   const [editAlias, setEditAlias] = useState('');
-  const [editPosition, setEditPosition] = useState<Position | ''>('');
+  const [editPositions, setEditPositions] = useState<Position[]>([]);
   const [editGender, setEditGender] = useState<Gender | ''>('');
   const [editHeightCm, setEditHeightCm] = useState('');
   const [editBio, setEditBio] = useState('');
+  const [editSkillLevel, setEditSkillLevel] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -76,7 +78,7 @@ export default function AdminUsersPage() {
         alias: alias.trim() || undefined,
         phone,
         role,
-        position: position || undefined,
+        positions,
         gender: (gender as Gender) || undefined,
       };
       const { data } = await usersService.create(payload);
@@ -86,7 +88,7 @@ export default function AdminUsersPage() {
       setAlias('');
       setPhone('');
       setRole('member');
-      setPosition('');
+      setPositions([]);
       setGender('');
     } catch (err) {
       setCreateError(getApiError(err));
@@ -120,10 +122,11 @@ export default function AdminUsersPage() {
     setEditUser(user);
     setEditName(user.name);
     setEditAlias(user.alias || '');
-    setEditPosition(user.position || '');
+    setEditPositions(user.positions || []);
     setEditGender(user.gender || '');
     setEditHeightCm(user.heightCm ? String(user.heightCm) : '');
     setEditBio(user.bio || '');
+    setEditSkillLevel(user.skillLevel != null ? String(user.skillLevel) : '');
     setEditError('');
   }
 
@@ -136,10 +139,11 @@ export default function AdminUsersPage() {
       const payload: UpdateUserPayload = {
         name: editName || undefined,
         alias: editAlias,
-        position: editPosition || undefined,
+        positions: editPositions,
         gender: (editGender as Gender) || undefined,
         heightCm: editHeightCm ? parseInt(editHeightCm, 10) : undefined,
         bio: editBio || undefined,
+        skillLevel: editSkillLevel !== '' ? parseFloat(editSkillLevel) : undefined,
       };
       const { data } = await usersService.update(editUser.id, payload);
       setUsers((prev) => prev.map((u) => (u.id === data.id ? data : u)));
@@ -163,7 +167,7 @@ export default function AdminUsersPage() {
               setAlias('');
               setPhone('');
               setRole('member');
-              setPosition('');
+              setPositions([]);
               setGender('');
               setCreateError('');
               setShowCreate(true);
@@ -255,7 +259,8 @@ export default function AdminUsersPage() {
                   </div>
                   <div style={{ color: '#7c8db5', fontSize: 12, marginTop: 2 }}>
                     {user.phone}
-                    {user.position && ` · ${POSITION_LABELS[user.position]}`}
+                    {user.positions?.length > 0 && ` · ${user.positions.map((p) => POSITION_LABELS[p]).join(', ')}`}
+                    {user.skillLevel != null && ` · ⭐ ${user.skillLevel.toFixed(1)}`}
                   </div>
                 </div>
                 </div>
@@ -324,7 +329,7 @@ export default function AdminUsersPage() {
               Este será también el nombre de usuario para ingresar
             </span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Rol</label>
               <select className="zetas-input" value={role} onChange={(e) => setRole(e.target.value as Role)} style={{ cursor: 'pointer' }}>
@@ -334,19 +339,16 @@ export default function AdminUsersPage() {
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Posición</label>
-              <select className="zetas-input" value={position} onChange={(e) => setPosition(e.target.value as Position | '')} style={{ cursor: 'pointer' }}>
-                <option value="">--</option>
-                {Object.entries(POSITION_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
-            <div>
               <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Género</label>
               <select className="zetas-input" value={gender} onChange={(e) => setGender(e.target.value as Gender | '')} style={{ cursor: 'pointer' }}>
                 <option value="">--</option>
                 {Object.entries(GENDER_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Posiciones</label>
+            <PositionsField value={positions} onChange={setPositions} />
           </div>
           {createError && <p style={{ color: '#ff6b6b', fontSize: 13, margin: 0 }}>{createError}</p>}
           <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
@@ -377,14 +379,11 @@ export default function AdminUsersPage() {
                 Nombre que aparece en la lista de juego. Si se deja vacío, se usa el nombre real.
               </span>
             </div>
+            <div>
+              <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Posiciones</label>
+              <PositionsField value={editPositions} onChange={setEditPositions} />
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-              <div>
-                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Posición</label>
-                <select className="zetas-input" value={editPosition} onChange={(e) => setEditPosition(e.target.value as Position | '')} style={{ cursor: 'pointer' }}>
-                  <option value="">--</option>
-                  {Object.entries(POSITION_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
-              </div>
               <div>
                 <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Género</label>
                 <select className="zetas-input" value={editGender} onChange={(e) => setEditGender(e.target.value as Gender | '')} style={{ cursor: 'pointer' }}>
@@ -395,6 +394,13 @@ export default function AdminUsersPage() {
               <div>
                 <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Altura (cm)</label>
                 <input className="zetas-input" type="number" min="100" max="250" value={editHeightCm} onChange={(e) => setEditHeightCm(e.target.value)} placeholder="175" />
+              </div>
+              <div>
+                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>Habilidad (0-5)</label>
+                <input className="zetas-input" type="number" min="0" max="5" step="0.1" value={editSkillLevel} onChange={(e) => setEditSkillLevel(e.target.value)} placeholder="2.5" />
+                <span style={{ color: '#7c8db5', fontSize: 11, marginTop: 4, display: 'block' }}>
+                  Solo visible para admins. Se usa para balancear equipos.
+                </span>
               </div>
             </div>
             <div>

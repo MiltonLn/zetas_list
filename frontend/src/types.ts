@@ -19,7 +19,9 @@ export interface User {
   alias?: string;
   phone: string;
   role: Role;
-  position?: Position;
+  positions: Position[];
+  /** Nivel de habilidad 0.0–5.0. Solo presente en respuestas para admins. */
+  skillLevel?: number | null;
   gender?: Gender;
   heightCm?: number;
   birthDate?: string;
@@ -40,7 +42,7 @@ export interface AuthUser {
   alias?: string;
   role: Role;
   phone: string;
-  position?: Position;
+  positions?: Position[];
   gender?: Gender;
   photoUrl?: string;
   mustChangePassword?: boolean;
@@ -52,7 +54,8 @@ export interface RegistrationUser {
   alias?: string;
   username: string;
   phone: string;
-  position?: Position;
+  positions?: Position[];
+  skillLevel?: number | string | null;
   gender?: Gender;
   heightCm?: number;
   birthDate?: string;
@@ -78,6 +81,7 @@ export interface GameRegistration {
   confirmationDeadline?: string;
   confirmationDeclined: boolean;
   originalWaitPosition?: number;
+  teamNumber?: number | null;
   user: RegistrationUser;
   registeredBy: { id: string; name: string; alias?: string; username: string };
 }
@@ -291,4 +295,6 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   user_status_changed: 'Estado de usuario cambiado',
   order_created: 'Pedido creado',
   order_status_changed: 'Estado de pedido cambiado',
+  teams_generated: 'Equipos generados',
+  teams_sent: 'Equipos enviados a WhatsApp',
 };

@@ -96,4 +96,9 @@ export const gamesService = {
     api.get<{ report: string }>(`/games/${gameId}/report`),
 
   getAudit: (gameId: string) => api.get<AuditLog[]>(`/games/${gameId}/audit`),
+
+  generateTeams: (gameId: string) => api.post<Game>(`/games/${gameId}/teams/generate`),
+
+  sendTeamsWhatsapp: (gameId: string) =>
+    api.post<{ sent: boolean }>(`/games/${gameId}/teams/send-whatsapp`),
 };

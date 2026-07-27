@@ -1,30 +1,43 @@
-import { PrismaClient, Role, UserStatus } from '@prisma/client';
+import { PrismaClient, Position, Role, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
-const ADMINS = [
+interface AdminData {
+  name: string;
+  phone: string;
+  positions?: Position[];
+  skillLevel?: number;
+}
+
+const ADMINS: AdminData[] = [
   {
     name: 'Juan Diego García',
     phone: '573192352624',
+    positions: [Position.armador],
+    skillLevel: 4.5,
   },
   {
     name: 'Milton Lenis',
     phone: '573166160159',
+    positions: [Position.armador, Position.central],
+    skillLevel: 4.0,
   },
 ];
 
-async function upsertAdmin(data: { name: string; phone: string }) {
+async function upsertAdmin(data: AdminData) {
   const username = data.phone;
 
   const existingByPhone = await prisma.user.findUnique({ where: { phone: data.phone } });
   if (existingByPhone) {
-    if (existingByPhone.username !== username) {
-      await prisma.user.update({
-        where: { id: existingByPhone.id },
-        data: { username },
-      });
-      console.log(`  ✓ Username actualizado: ${existingByPhone.username} → ${username}`);
+    const updates: Record<string, unknown> = {};
+    if (existingByPhone.username !== username) updates.username = username;
+    if (data.positions) updates.positions = data.positions;
+    if (data.skillLevel !== undefined) updates.skillLevel = data.skillLevel;
+
+    if (Object.keys(updates).length > 0) {
+      await prisma.user.update({ where: { id: existingByPhone.id }, data: updates });
+      console.log(`  ✓ Actualizado: ${data.name} (skill=${data.skillLevel ?? '-'})`);
     } else {
       console.log(`  ✓ Ya existe: ${data.name} (${data.phone})`);
     }
@@ -47,10 +60,12 @@ async function upsertAdmin(data: { name: string; phone: string }) {
       role: Role.admin,
       status: UserStatus.active,
       mustChangePassword: false,
+      positions: data.positions ?? [],
+      skillLevel: data.skillLevel,
     },
   });
 
-  console.log(`  ✓ Creado: ${user.name} — phone: ${user.phone} (${user.id})`);
+  console.log(`  ✓ Creado: ${user.name} — phone: ${user.phone} (skill=${data.skillLevel ?? '-'})`);
   return user;
 }
 

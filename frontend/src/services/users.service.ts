@@ -8,7 +8,8 @@ export interface CreateUserPayload {
   alias?: string;
   phone: string;
   role?: Role;
-  position?: Position;
+  positions?: Position[];
+  skillLevel?: number;
   gender?: Gender;
   heightCm?: number;
   birthDate?: string;
@@ -18,7 +19,8 @@ export interface CreateUserPayload {
 export interface UpdateUserPayload {
   name?: string;
   alias?: string;
-  position?: Position;
+  positions?: Position[];
+  skillLevel?: number;
   gender?: Gender;
   heightCm?: number;
   birthDate?: string;

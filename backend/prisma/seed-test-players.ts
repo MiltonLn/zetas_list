@@ -1,4 +1,4 @@
-import { PrismaClient, Role, UserStatus } from '@prisma/client';
+import { PrismaClient, Position, Role, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -6,6 +6,40 @@ const prisma = new PrismaClient();
 const TEST_PREFIX = 'testplayer';
 const TEST_PASSWORD = 'Test1234!';
 const TEST_PHONE_PREFIX = '999000';
+
+/**
+ * Attributes assigned to each test player by index (1-based, cyclical).
+ * Ensures at least 4 armadores in every batch of 18, enough to form 3 teams.
+ */
+interface PlayerProfile {
+  skillLevel: number;
+  positions: Position[];
+}
+
+const PLAYER_PROFILES: PlayerProfile[] = [
+  { skillLevel: 5.0, positions: [Position.armador] },
+  { skillLevel: 4.5, positions: [Position.central] },
+  { skillLevel: 4.0, positions: [Position.opuesto] },
+  { skillLevel: 3.5, positions: [Position.armador] },
+  { skillLevel: 3.0, positions: [Position.auxiliar] },
+  { skillLevel: 2.5, positions: [Position.libero] },
+  { skillLevel: 2.0, positions: [Position.central] },
+  { skillLevel: 1.5, positions: [Position.auxiliar] },
+  { skillLevel: 4.0, positions: [Position.armador, Position.opuesto] },
+  { skillLevel: 3.5, positions: [Position.central, Position.auxiliar] },
+  { skillLevel: 3.0, positions: [Position.armador] },
+  { skillLevel: 2.5, positions: [Position.libero] },
+  { skillLevel: 4.5, positions: [Position.opuesto] },
+  { skillLevel: 2.0, positions: [Position.auxiliar] },
+  { skillLevel: 3.5, positions: [Position.central] },
+  { skillLevel: 1.5, positions: [Position.auxiliar] },
+  { skillLevel: 5.0, positions: [Position.armador] },
+  { skillLevel: 3.0, positions: [Position.opuesto, Position.central] },
+];
+
+function profileFor(i: number): PlayerProfile {
+  return PLAYER_PROFILES[(i - 1) % PLAYER_PROFILES.length];
+}
 
 function parseArgs(): { count: number; gameId?: string; cleanup: boolean } {
   const args = process.argv.slice(2);
@@ -71,8 +105,14 @@ async function seedPlayers(count: number, gameId?: string) {
     const username = `${TEST_PREFIX}${i}`;
     const existing = await prisma.user.findUnique({ where: { username } });
 
+    const profile = profileFor(i);
+
     if (existing) {
-      console.log(`  → Ya existe: ${username}`);
+      await prisma.user.update({
+        where: { id: existing.id },
+        data: { skillLevel: profile.skillLevel, positions: profile.positions },
+      });
+      console.log(`  → Actualizado: ${username} (skill=${profile.skillLevel}, pos=${profile.positions.join(',')})`);
       created.push({ id: existing.id, username });
       continue;
     }
@@ -86,10 +126,12 @@ async function seedPlayers(count: number, gameId?: string) {
         role: Role.member,
         status: UserStatus.active,
         mustChangePassword: false,
+        skillLevel: profile.skillLevel,
+        positions: profile.positions,
       },
     });
 
-    console.log(`  ✓ Creado: ${user.username} — ${user.name}`);
+    console.log(`  ✓ Creado: ${user.username} — ${user.name} (skill=${profile.skillLevel}, pos=${profile.positions.join(',')})`);
     created.push({ id: user.id, username: user.username });
   }
 
