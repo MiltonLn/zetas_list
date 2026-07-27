@@ -3,8 +3,8 @@ import { MessageHandlerService } from './message-handler.service';
 import { WHATSAPP_PROVIDER } from './whatsapp.interface';
 import { GamesService } from '../games/games.service';
 import { UsersService } from '../users/users.service';
-import { PrismaService } from '../prisma/prisma.service';
 import { FinancesService } from '../finances/finances.service';
+import { InfoCommandsService } from './commands/info-commands.service';
 import { Role } from '@prisma/client';
 import { AlreadyRegisteredException, ProxyLimitExceededException } from '../games/exceptions';
 
@@ -15,6 +15,7 @@ const mockGames = {
   confirmRegistration: jest.fn(),
   removeRegistration: jest.fn(),
   findOne: jest.fn(),
+  findActiveGame: jest.fn(),
   complete: jest.fn(),
   promoteNext: jest.fn(),
   retryFromWaitingList: jest.fn(),
@@ -23,7 +24,6 @@ const mockGames = {
   buildGameLink: jest.fn().mockReturnValue(''),
 };
 const mockUsers = { findByPhone: jest.fn(), setWhatsappLid: jest.fn().mockResolvedValue({}) };
-const mockPrisma = { game: { findFirst: jest.fn() } };
 const mockFinances = {
   getPendingFines: jest.fn().mockResolvedValue([]),
   hasUnpaidFines: jest.fn().mockResolvedValue(false),
@@ -236,10 +236,12 @@ describe('MessageHandlerService — handleMessage', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessageHandlerService,
+        // Real InfoCommandsService: these tests assert on the copy the bot sends
+        // for read-only commands, so mocking it would test nothing.
+        InfoCommandsService,
         { provide: WHATSAPP_PROVIDER, useValue: mockWp },
         { provide: GamesService, useValue: mockGames },
         { provide: UsersService, useValue: mockUsers },
-        { provide: PrismaService, useValue: mockPrisma },
         { provide: FinancesService, useValue: mockFinances },
       ],
     }).compile();
@@ -249,7 +251,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
   it('no hace nada si el mensaje no es un comando', async () => {
     await service.handleMessage('111', 'hola como estás', 'group-1');
-    expect(mockPrisma.game.findFirst).not.toHaveBeenCalled();
+    expect(mockGames.findActiveGame).not.toHaveBeenCalled();
     expect(mockWp.sendToGroup).not.toHaveBeenCalled();
   });
 
@@ -257,50 +259,29 @@ describe('MessageHandlerService — handleMessage', () => {
 
   describe('comando lista', () => {
     it('informa que no hay lista cuando no hay juego activo', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(null);
+      mockGames.findActiveGame.mockResolvedValue(null);
 
       await service.handleMessage('111', '@Z lista', 'group-1');
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('No hay'));
     });
 
     it('envía la lista formateada cuando hay juego activo', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockGames.formatListForWhatsapp.mockReturnValue('📋 Lista...');
 
       await service.handleMessage('111', '@Z lista', 'group-1');
       expect(mockWp.sendToGroup).toHaveBeenCalledWith('📋 Lista...');
     });
 
-    it('carga el alias de miembros e invitadores para formatear la lista', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
-      mockGames.formatListForWhatsapp.mockReturnValue('📋 Lista...');
-
-      await service.handleMessage('111', '@Z lista', 'group-1');
-
-      expect(mockPrisma.game.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({
-          include: {
-            registrations: expect.objectContaining({
-              include: {
-                user: {
-                  select: expect.objectContaining({ alias: true }),
-                },
-                registeredBy: {
-                  select: expect.objectContaining({ alias: true }),
-                },
-              },
-            }),
-          },
-        }),
-      );
-    });
+    // The alias-loading contract now lives with the query itself, in
+    // games.service.spec.ts ("findActiveGame").
   });
 
   // ─── terminar ──────────────────────────────────────────────────────────────
 
   describe('comando terminar', () => {
     it('rechaza si el usuario no es admin', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.member }));
 
       await service.handleMessage('111', '@Z terminar', 'group-1');
@@ -309,7 +290,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('rechaza si no hay juego activo', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(null);
+      mockGames.findActiveGame.mockResolvedValue(null);
       mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.admin }));
 
       await service.handleMessage('111', '@Z terminar', 'group-1');
@@ -317,7 +298,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('completa el juego y envía el reporte para admin', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.admin }));
       mockGames.complete.mockResolvedValue({ game: {}, report: '✅ Reporte final' });
 
@@ -331,14 +312,14 @@ describe('MessageHandlerService — handleMessage', () => {
 
   describe('comando anotame', () => {
     it('informa que no hay lista si no hay juego activo', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(null);
+      mockGames.findActiveGame.mockResolvedValue(null);
 
       await service.handleMessage('111', '@Z anotame', 'group-1');
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('No hay'));
     });
 
     it('informa que el número no está registrado si no hay usuario', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(null);
 
       await service.handleMessage('111', '@Z anotame', 'group-1');
@@ -346,7 +327,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('informa que la cuenta no está activa', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ status: 'banned' }));
 
       await service.handleMessage('111', '@Z anotame', 'group-1');
@@ -355,7 +336,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('anota al usuario y envía confirmación', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.register.mockResolvedValue({ position: 1, isWaitingList: false });
       mockGames.findOne.mockResolvedValue(makeActiveGame([{ isWaitingList: false }]));
@@ -366,7 +347,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('informa si ya está anotado (ConflictException)', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.register.mockRejectedValue(new AlreadyRegisteredException());
 
@@ -377,7 +358,7 @@ describe('MessageHandlerService — handleMessage', () => {
     it('un declined en espera usa "anótame" y es promovido si hay cupo', async () => {
       // El remitente ya tiene un registro, pero declinó y volvió a la espera.
       // "anótame" debe reintentar (retryFromWaitingList), no decir "ya estás anotado".
-      mockPrisma.game.findFirst.mockResolvedValue(
+      mockGames.findActiveGame.mockResolvedValue(
         makeActiveGame([{ user: { id: 'user-1' }, isWaitingList: true, confirmationDeclined: true, position: 1 }]),
       );
       mockUsers.findByPhone.mockResolvedValue(makeUser());
@@ -391,7 +372,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('un registro activo normal sí responde "ya estás anotado"', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(
+      mockGames.findActiveGame.mockResolvedValue(
         makeActiveGame([{ user: { id: 'user-1' }, isWaitingList: false, confirmationDeclined: false, position: 3 }]),
       );
       mockUsers.findByPhone.mockResolvedValue(makeUser());
@@ -403,7 +384,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('funciona también con el sinónimo "voy"', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.register.mockResolvedValue({ position: 2, isWaitingList: false });
       mockGames.findOne.mockResolvedValue(makeActiveGame());
@@ -417,14 +398,14 @@ describe('MessageHandlerService — handleMessage', () => {
 
   describe('comando salirme', () => {
     it('informa que no hay lista si no hay juego activo', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(null);
+      mockGames.findActiveGame.mockResolvedValue(null);
 
       await service.handleMessage('111', '@Z salirme', 'group-1');
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('No hay'));
     });
 
     it('informa que el número no está registrado si no hay usuario', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(null);
 
       await service.handleMessage('111', '@Z salirme', 'group-1');
@@ -432,7 +413,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('saca al usuario y envía confirmación', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.removeRegistration.mockResolvedValue({});
       mockGames.findOne.mockResolvedValue(makeActiveGame());
@@ -447,7 +428,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('funciona también con el sinónimo "sacame"', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.removeRegistration.mockResolvedValue({});
       mockGames.findOne.mockResolvedValue(makeActiveGame());
@@ -464,7 +445,7 @@ describe('MessageHandlerService — handleMessage', () => {
       ['@Z retirarme'],
       ['@Z no puedo'],
     ])('alias "%s" también desanota', async (cmd) => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.removeRegistration.mockResolvedValue({});
       mockGames.findOne.mockResolvedValue(makeActiveGame());
@@ -474,7 +455,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('delega en removeRegistration sin enviar un mensaje propio', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(
+      mockGames.findActiveGame.mockResolvedValue(
         makeActiveGame([
           { user: { id: 'user-1' }, isGuest: false },
           { isGuest: true, registeredById: 'user-1', guestName: 'Pepito' },
@@ -494,7 +475,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
   describe('validación de cuenta activa centralizada', () => {
     it('rechaza @Z invitar si la cuenta está inactiva', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ status: 'inactive' }));
 
       await service.handleMessage('111', '@Z invitar Carlos', 'group-1');
@@ -503,7 +484,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('rechaza @Z anotar @persona si la cuenta está suspendida', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ status: 'banned' }));
 
       await service.handleMessage('111', '@Z anotar @222', 'group-1', ['222@s.whatsapp.net']);
@@ -512,7 +493,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('rechaza @Z confirmar si la cuenta está inactiva', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ status: 'inactive' }));
 
       await service.handleMessage('111', '@Z confirmar', 'group-1');
@@ -525,7 +506,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
   describe('comando invitar', () => {
     it('rechaza si el usuario no está anotado en la lista', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
 
       await service.handleMessage('111', '@Z invitar Carlos', 'group-1');
@@ -537,7 +518,7 @@ describe('MessageHandlerService — handleMessage', () => {
       const game = makeActiveGame([
         { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
       ]);
-      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockGames.findActiveGame.mockResolvedValue(game);
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 2 });
       mockGames.findOne.mockResolvedValue(game);
@@ -554,7 +535,7 @@ describe('MessageHandlerService — handleMessage', () => {
       const game = makeActiveGame([
         { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
       ]);
-      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockGames.findActiveGame.mockResolvedValue(game);
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 2 });
       mockGames.findOne.mockResolvedValue(game);
@@ -567,7 +548,7 @@ describe('MessageHandlerService — handleMessage', () => {
       const game = makeActiveGame([
         { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
       ]);
-      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockGames.findActiveGame.mockResolvedValue(game);
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser());
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Lu', role: Role.member, status: 'active' });
@@ -585,7 +566,7 @@ describe('MessageHandlerService — handleMessage', () => {
       const game = makeActiveGame([
         { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
       ]);
-      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockGames.findActiveGame.mockResolvedValue(game);
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser());
         return Promise.resolve(null);
@@ -602,7 +583,7 @@ describe('MessageHandlerService — handleMessage', () => {
       const game = makeActiveGame([
         { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
       ]);
-      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockGames.findActiveGame.mockResolvedValue(game);
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser());
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Lu', role: Role.member, status: 'active' });
@@ -622,7 +603,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
   describe('comando anotar — unified with anótame', () => {
     it('registers sender when only self is mentioned (no other person)', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.register.mockResolvedValue({ isWaitingList: false, position: 1 });
       mockGames.findOne.mockResolvedValue(makeActiveGame());
@@ -635,7 +616,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('registers sender and mentioned person together', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser());
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Other User', role: Role.member, status: 'active' });
@@ -655,7 +636,7 @@ describe('MessageHandlerService — handleMessage', () => {
       const game = makeActiveGame([
         { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
       ]);
-      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockGames.findActiveGame.mockResolvedValue(game);
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser());
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Other User', role: Role.member, status: 'active' });
@@ -670,7 +651,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('reports sender success even if mentioned person is not in system', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser());
         return Promise.resolve(null);
@@ -688,7 +669,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('reports sender success even if mentioned person already registered', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser());
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Other User', role: Role.member, status: 'active' });
@@ -709,7 +690,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('explica claramente cuando se alcanza el límite de personas a anotar', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser());
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Other User', role: Role.member, status: 'active' });
@@ -731,14 +712,14 @@ describe('MessageHandlerService — handleMessage', () => {
 
   describe('comando promover', () => {
     it('informa que no hay lista si no hay juego activo', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(null);
+      mockGames.findActiveGame.mockResolvedValue(null);
 
       await service.handleMessage('111', '@Z promover', 'group-1');
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('No hay'));
     });
 
     it('informa que el número no está registrado si no hay usuario', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(null);
 
       await service.handleMessage('111', '@Z promover', 'group-1');
@@ -749,7 +730,7 @@ describe('MessageHandlerService — handleMessage', () => {
       const game = makeActiveGame([
         { user: { id: 'other-1', name: 'Otro', phone: '222' }, isWaitingList: false },
       ]);
-      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockGames.findActiveGame.mockResolvedValue(game);
       mockUsers.findByPhone.mockResolvedValue(makeUser());
 
       await service.handleMessage('111', '@Z promover', 'group-1');
@@ -758,7 +739,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('permite a un admin promover sin estar en la lista', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.admin }));
       const updated = makeActiveGame();
       mockGames.promoteNext.mockResolvedValue({ updated, promotedName: 'Juan' });
@@ -771,7 +752,7 @@ describe('MessageHandlerService — handleMessage', () => {
       const game = makeActiveGame([
         { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
       ]);
-      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockGames.findActiveGame.mockResolvedValue(game);
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       const updated = makeActiveGame();
       mockGames.promoteNext.mockResolvedValue({ updated, promotedName: 'Juan' });
@@ -784,7 +765,7 @@ describe('MessageHandlerService — handleMessage', () => {
       const game = makeActiveGame([
         { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
       ]);
-      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockGames.findActiveGame.mockResolvedValue(game);
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       const updated = makeActiveGame();
       mockGames.promoteNext.mockResolvedValue({ updated, promotedName: 'Juan' });
@@ -797,7 +778,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
     it('informa si la lista principal está llena', async () => {
       const { GameFullException } = require('../games/exceptions');
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.admin }));
       mockGames.promoteNext.mockRejectedValue(new GameFullException());
 
@@ -807,7 +788,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
     it('informa si no hay nadie en lista de espera', async () => {
       const { NoOneInWaitListException } = require('../games/exceptions');
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.admin }));
       mockGames.promoteNext.mockRejectedValue(new NoOneInWaitListException());
 
@@ -816,7 +797,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('funciona también con el sinónimo "jalar"', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.admin }));
       const updated = makeActiveGame();
       mockGames.promoteNext.mockResolvedValue({ updated, promotedName: 'Ana' });
@@ -830,7 +811,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
   describe('comando sacar', () => {
     it('rechaza si no es admin', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.member }));
 
       await service.handleMessage('111', '@Z sacar @222', 'group-1', ['222@s.whatsapp.net']);
@@ -838,7 +819,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('pide mención si no hay nadie mencionado', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.admin }));
 
       await service.handleMessage('111', '@Z sacar', 'group-1', []);
@@ -846,7 +827,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('admin saca exitosamente a un usuario', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser({ role: Role.admin }));
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
@@ -865,7 +846,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
     it('informa si el target no está en la lista', async () => {
       const { NotRegisteredException } = require('../games/exceptions');
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser({ role: Role.admin }));
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
@@ -878,7 +859,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('informa si el target no está registrado en el sistema', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser({ role: Role.admin }));
         return Promise.resolve(null);
@@ -893,7 +874,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
   describe('comando confirmar', () => {
     it('confirma exitosamente', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: true, confirmedGuests: [] });
 
@@ -908,7 +889,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('confirma invitados del usuario', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: false, confirmedGuests: ['Topota'] });
 
@@ -917,7 +898,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('confirma ambos (propio y invitados)', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: true, confirmedGuests: ['Topota', 'Jeffer'] });
 
@@ -927,7 +908,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
     it('informa si no hay confirmación pendiente', async () => {
       const { NoPendingConfirmationException } = require('../games/exceptions');
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.confirmRegistration.mockRejectedValue(new NoPendingConfirmationException());
 
@@ -941,7 +922,7 @@ describe('MessageHandlerService — handleMessage', () => {
       ['@Z listo'],
       ['@Z acepto'],
     ])('alias "%s" también confirma', async (cmd) => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: true, confirmedGuests: [] });
 
@@ -950,7 +931,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('admin confirma por otro mencionándolo (pasa actorId del admin)', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser({ role: Role.admin }));
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
@@ -970,7 +951,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('rechaza confirmar por otro si no es admin', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser({ role: Role.member }));
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
@@ -985,7 +966,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
     it('informa si no hay confirmación pendiente del mencionado', async () => {
       const { NoPendingConfirmationException } = require('../games/exceptions');
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser({ role: Role.admin }));
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
@@ -1010,7 +991,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
     it('registra dos invitados externos en un solo comando', async () => {
       const game = makeGameWithSender();
-      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockGames.findActiveGame.mockResolvedValue(game);
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 2 });
       mockGames.findOne.mockResolvedValue(game);
@@ -1026,7 +1007,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
     it('informa individualmente si uno de los invitados falla', async () => {
       const game = makeGameWithSender();
-      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockGames.findActiveGame.mockResolvedValue(game);
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.registerGuest
         .mockResolvedValueOnce({ isWaitingList: false, position: 2 })
@@ -1042,7 +1023,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
     it('un solo nombre sin coma sigue funcionando', async () => {
       const game = makeGameWithSender();
-      mockPrisma.game.findFirst.mockResolvedValue(game);
+      mockGames.findActiveGame.mockResolvedValue(game);
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 2 });
       mockGames.findOne.mockResolvedValue(game);
@@ -1058,7 +1039,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
   describe('anotame con invitados externos inline', () => {
     it('@Z anotame + Carlos, María registra al emisor y a ambos invitados', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.retryFromWaitingList.mockResolvedValue({ promoted: false, game: null });
       mockGames.register.mockResolvedValue({ isWaitingList: false, position: 1 });
@@ -1076,7 +1057,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('@Z anotame invitar Carlos, María funciona igual que con +', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.retryFromWaitingList.mockResolvedValue({ promoted: false, game: null });
       mockGames.register.mockResolvedValue({ isWaitingList: false, position: 1 });
@@ -1090,7 +1071,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('si el emisor ya estaba anotado, igual puede traer invitados', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(
+      mockGames.findActiveGame.mockResolvedValue(
         makeActiveGame([{ user: { id: 'user-1' }, isWaitingList: false, confirmationDeclined: false }]),
       );
       mockUsers.findByPhone.mockResolvedValue(makeUser());
@@ -1104,7 +1085,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('nombres con tilde se preservan en el registro del invitado', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.retryFromWaitingList.mockResolvedValue({ promoted: false, game: null });
       mockGames.register.mockResolvedValue({ isWaitingList: false, position: 1 });
@@ -1122,7 +1103,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
   describe('normalización de tildes', () => {
     it('@Z anótame (con tilde) activa el comando de registro', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.register.mockResolvedValue({ position: 1, isWaitingList: false });
       mockGames.findOne.mockResolvedValue(makeActiveGame());
@@ -1132,7 +1113,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('@Z sácame (con tilde) activa el comando de salirse', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.removeRegistration.mockResolvedValue({});
 
@@ -1164,7 +1145,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('no requiere juego activo', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(null);
+      mockGames.findActiveGame.mockResolvedValue(null);
       await service.handleMessage('111', '@Z help', 'group-1');
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Comandos'));
     });
@@ -1207,7 +1188,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('no requiere juego activo', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(null);
+      mockGames.findActiveGame.mockResolvedValue(null);
       await service.handleMessage('111', '@Z alternativas', 'group-1');
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Alias del Bot'));
     });
@@ -1234,7 +1215,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('no requiere juego activo', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(null);
+      mockGames.findActiveGame.mockResolvedValue(null);
       await service.handleMessage('111', '@Z transferencia', 'group-1');
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Bre-B'));
     });
@@ -1258,7 +1239,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
   describe('límite de menciones para no-admins', () => {
     it('solo anota a la primera persona mencionada para un no-admin', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser({ role: Role.member }));
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
@@ -1276,7 +1257,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('un admin puede anotar a múltiples personas', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser({ role: Role.admin }));
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
@@ -1294,7 +1275,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('un ayudante puede anotar a múltiples personas (sin límite de proxy)', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser({ role: Role.ayudante }));
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
@@ -1316,7 +1297,7 @@ describe('MessageHandlerService — handleMessage', () => {
 
   describe('permisos del rol ayudante', () => {
     it('ayudante puede terminar un partido', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.ayudante }));
       mockGames.complete.mockResolvedValue({ game: {}, report: '✅ Reporte final' });
 
@@ -1326,7 +1307,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('ayudante puede sacar a otro jugador', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser({ role: Role.ayudante }));
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
@@ -1340,7 +1321,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('ayudante puede confirmar asistencia por otro', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockImplementation((phone: string) => {
         if (phone === '111') return Promise.resolve(makeUser({ role: Role.ayudante }));
         if (phone === '222') return Promise.resolve({ id: 'user-2', name: 'Juan', role: Role.member, status: 'active' });
@@ -1358,7 +1339,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('member sigue sin poder terminar el partido', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.member }));
 
       await service.handleMessage('111', '@Z terminar', 'group-1');
@@ -1367,7 +1348,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('member sigue sin poder sacar a otro jugador', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.member }));
 
       await service.handleMessage('111', '@Z sacar @222', 'group-1', ['222@s.whatsapp.net']);
@@ -1376,7 +1357,7 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('member sigue sin poder confirmar por otro', async () => {
-      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser({ role: Role.member }));
 
       await service.handleMessage('111', '@Z confirmar @222', 'group-1', ['222@s.whatsapp.net']);

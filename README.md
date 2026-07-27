@@ -13,9 +13,11 @@ Una app web full-stack para que los integrantes del grupo de volley puedan anota
 - **Registro en tiempo real** — la lista se actualiza al instante mientras la gente se anota (SSE)
 - **Bot WhatsApp Z** — los jugadores se anotan con `@Z anotame` sin abrir la app
 - **Sin race conditions** — dos personas compitiendo por el último cupo: solo una gana
-- **Roles** — Admins con control total, Miembros con acceso a inscribirse
+- **Roles** — Admins con control total, Ayudantes que gestionan el partido del día, Miembros que se inscriben
 - **Audit log** — registro de todas las acciones sobre cada partido
 - **Reporte automático** — `@Z terminar` genera el reporte y cierra el partido
+- **Finanzas** — transacciones, multas y deudas del grupo, con dashboard para miembros
+- **Camisetas** — catálogo, carrito y gestión de pedidos de uniformes
 
 ---
 
@@ -79,8 +81,10 @@ make seed
 | http://localhost:3000/health | Health check |
 
 **Credenciales iniciales:**
-- Usuario: `yamijuan` o `MiltonLn`
+- Usuario: el **número de teléfono** del admin creado por el seed (`573192352624` o `573166160159`)
 - Contraseña: `Admin1234!` *(cámbiala desde el perfil)*
+
+Todos los usuarios se loguean con su número de teléfono como nombre de usuario.
 
 ---
 
@@ -110,6 +114,7 @@ make help          # Lista todos los comandos
 | `make seed` | Ejecuta el seed (admins iniciales) |
 | `make reset-db` | ⚠️ Borra y recrea toda la DB |
 | `make studio` | Prisma Studio en http://localhost:5555 |
+| `make gen-types` | Regenera `frontend/src/api-types.gen.ts` desde `schema.prisma` |
 
 ### Desarrollo
 
@@ -129,24 +134,31 @@ make help          # Lista todos los comandos
 zetas_list/
 ├── frontend/                 # React 19 + TypeScript
 │   └── src/
-│       ├── pages/            # LoginPage, HomePage, GameDetailPage, ...
-│       ├── components/       # Header, Spinner, StatusBadge, PrivateRoute
+│       ├── pages/            # LoginPage, HomePage, GameDetailPage, Admin*, ...
+│       ├── components/       # Modal, Spinner, StatusBadge, PrivateRoute, ...
 │       ├── contexts/         # AuthContext
 │       ├── hooks/            # useGameStream (SSE)
-│       └── services/         # api.ts, games.service.ts, users.service.ts, ...
+│       ├── services/         # api.ts, games.service.ts, users.service.ts, ...
+│       └── api-types.gen.ts  # Enums generados desde schema.prisma (no editar)
 │
 ├── backend/                  # NestJS + Prisma
 │   ├── prisma/
-│   │   ├── schema.prisma     # Modelos: User, Game, GameRegistration, AuditLog
+│   │   ├── schema.prisma     # User, Game, GameRegistration, AuditLog,
+│   │   │                     # FinanceTransaction, Fine, Order, OrderItem
 │   │   └── seed.ts           # Admins iniciales
 │   └── src/
+│       ├── config/           # Validación de variables de entorno (zod)
 │       ├── auth/             # JWT login, refresh, guards
-│       ├── users/            # CRUD usuarios
+│       ├── users/            # CRUD usuarios, cumpleaños
 │       ├── games/            # Partidos, registro, SSE, scheduler
 │       ├── whatsapp/         # Bot Z (Baileys + CLI simulator)
+│       ├── finances/         # Transacciones, multas y deudas
+│       ├── orders/           # Pedidos de camisetas
 │       ├── audit/            # Log de actividad
-│       └── common/           # Guards, decorators, filters
+│       └── common/           # Guards, decorators, filters, logging
 │
+├── scripts/                  # generate-api-types.mjs
+├── video/                    # Video promocional (Remotion) — independiente
 ├── docker-compose.yml        # Dev local
 ├── railway.json              # Config de producción (Railway)
 ├── Makefile                  # Comandos de desarrollo
@@ -174,11 +186,26 @@ En desarrollo, el bot funciona como simulador en la terminal del backend. Escrib
 
 ### Comandos disponibles
 
+Cada comando acepta varios sinónimos (`@Z aliases` los lista en el grupo).
+Las tildes son opcionales.
+
 | Comando | Quién | Acción |
 |---------|-------|--------|
-| `@Z anotame` | Cualquier miembro activo | Se anota al partido activo |
+| `@Z anotame` | Miembro activo | Se anota al partido activo |
+| `@Z anotame + Carlos, María` | Miembro activo | Se anota e invita a esos invitados |
+| `@Z invitar <nombres>` | Miembro activo, ya anotado | Anota invitados |
+| `@Z salirme` | Miembro activo | Se saca de la lista |
+| `@Z confirmar` | Miembro activo | Confirma su cupo tras ser promovido |
 | `@Z lista` | Cualquiera | Muestra la lista con cupos disponibles |
-| `@Z terminar` | Solo admins | Genera el reporte y cierra el partido |
+| `@Z promover` | Admin / ayudante | Sube al primero de la lista de espera |
+| `@Z sacar @mención` | Admin / ayudante | Saca a otro jugador de la lista |
+| `@Z terminar` | Admin / ayudante | Genera el reporte y cierra el partido |
+| `@Z reglas` | Cualquiera | Reglamento del grupo |
+| `@Z finanzas` | Cualquiera | Resumen de la caja |
+| `@Z multados` | Cualquiera | Quién tiene multas o deudas pendientes |
+| `@Z pagos` | Cualquiera | Llave Bre-B para transferir |
+| `@Z ayuda` | Cualquiera | Lista de comandos |
+| `@Z aliases` | Cualquiera | Sinónimos aceptados de cada comando |
 
 En producción (`WHATSAPP_MODE=baileys`) se conecta al grupo real mediante una segunda SIM escaneando un QR en el primer arranque.
 
@@ -203,14 +230,23 @@ En producción (`WHATSAPP_MODE=baileys`) se conecta al grupo real mediante una s
 
 | Variable | Descripción | Default |
 |----------|-------------|---------|
-| `DATABASE_URL` | URL de conexión a PostgreSQL | — |
+Todas las variables del backend se validan al arrancar (`backend/src/config/env.ts`).
+Si falta una obligatoria o tiene un formato inválido, el proceso no arranca.
+
+| Variable | Descripción | Default |
+|----------|-------------|---------|
+| `DATABASE_URL` | URL de conexión a PostgreSQL | — *(obligatoria)* |
 | `DB_PASSWORD` | Contraseña de PostgreSQL (docker-compose) | — |
-| `JWT_SECRET` | Clave secreta para firmar tokens JWT | — |
-| `NODE_ENV` | `development` o `production` | `development` |
+| `JWT_SECRET` | Clave para firmar JWT. Mínimo 16 caracteres | — *(obligatoria)* |
+| `NODE_ENV` | `development`, `test` o `production` | `development` |
 | `PORT` | Puerto del backend | `3000` |
-| `APP_URL` | URL pública de la app (para links en WhatsApp) | — |
+| `APP_URL` | URL pública de la app (para links en WhatsApp) | `http://localhost:5173` |
+| `FRONTEND_URL` | Origen permitido por CORS | `http://localhost:5173` |
+| `LOG_LEVEL` | Nivel de log del backend | `info` en prod, `debug` en dev |
 | `WHATSAPP_MODE` | `cli` (dev) o `baileys` (producción) | `cli` |
-| `WHATSAPP_GROUP_ID` | ID del grupo de WhatsApp | — |
+| `WHATSAPP_GROUP_ID` | ID del grupo de WhatsApp | `''` |
+| `WA_LOG_LEVEL` | Nivel de log interno de Baileys | `warn` |
+| `BREB_KEY` | Llave Bre-B que responde el bot en `@Z pagos` | `@MLR608` |
 | `SENTRY_DSN` | DSN de Sentry para error tracking | — |
 | `VITE_API_URL` | URL de la API para el frontend | `/api` |
 | `VITE_SENTRY_DSN` | DSN de Sentry para el frontend | — |

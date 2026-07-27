@@ -5,7 +5,7 @@
 .PHONY: help up up-build down restart logs logs-backend logs-frontend logs-db \
         restart-frontend restart-backend \
         shell-backend shell-db \
-        migrate migrate-deploy seed seed-players cleanup-players reset-db generate studio \
+        migrate migrate-deploy seed seed-players cleanup-players reset-db generate gen-types studio \
         build lint test hooks clean nuke
 
 # Colores
@@ -88,6 +88,9 @@ cleanup-players: ## Elimina todos los jugadores de prueba (testplayer*)
 
 generate: ## Regenera el cliente de Prisma
 	docker compose exec backend npx prisma generate
+
+gen-types: ## Regenera los enums compartidos del frontend desde schema.prisma
+	node scripts/generate-api-types.mjs
 
 studio: ## Abre Prisma Studio en http://localhost:5555
 	docker compose exec -it backend npx prisma studio --port 5555

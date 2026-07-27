@@ -42,6 +42,7 @@ import {
   shouldGoToWaitingList,
   isBeforeCutoff,
   REGISTRATION_INCLUDE,
+  ACTIVE_GAME_STATUSES,
   buildMention,
   DEFAULT_SPOTS,
   CONFIRMATION_TIMEOUT_MS,
@@ -54,6 +55,9 @@ import {
 } from './games.utils';
 
 export { displayName, MODALIDAD_LABEL } from './games.utils';
+
+/** The current game plus its registrations, as returned by findActiveGame(). */
+export type ActiveGame = NonNullable<Awaited<ReturnType<GamesService['findActiveGame']>>>;
 
 @Injectable()
 export class GamesService {
@@ -78,6 +82,25 @@ export class GamesService {
 
   buildRegistrationOpenMessage(game: { id: string; title: string }): string {
     return buildRegistrationOpenMessage(game);
+  }
+
+  /**
+   * The one game people can currently act on, with its registrations ordered as
+   * they appear in the list. Sole owner of this query: the WhatsApp handler used
+   * to keep its own copy with a narrower `include`, which is how it silently
+   * missed the `alias` field.
+   */
+  async findActiveGame() {
+    return this.prisma.game.findFirst({
+      where: { status: { in: [...ACTIVE_GAME_STATUSES] } },
+      include: {
+        registrations: {
+          include: REGISTRATION_INCLUDE,
+          orderBy: [{ isWaitingList: 'asc' }, { position: 'asc' }],
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   // ─── CRUD ──────────────────────────────────────────────────────────────────
@@ -158,13 +181,7 @@ export class GamesService {
     },
   ) {
     if (role !== Role.admin) {
-      const active = await this.prisma.game.findFirst({
-        where: {
-          status: { in: [GameStatus.registration_open, GameStatus.in_progress] },
-        },
-        include: { registrations: { include: REGISTRATION_INCLUDE, orderBy: { position: 'asc' } } },
-        orderBy: { createdAt: 'desc' },
-      });
+      const active = await this.findActiveGame();
       return { data: active ? [active] : [], total: active ? 1 : 0, page: 1, limit: 1 };
     }
 
@@ -1496,7 +1513,9 @@ export class GamesService {
     return isBeforeCutoff(cutoffTime, gameDate);
   }
 
-  formatListForWhatsapp(game: Awaited<ReturnType<typeof this.findOne>>) {
+  // ActiveGame rather than the wider findOne() result, so callers holding either
+  // shape can pass it straight in (the extra findOne() relations go unused here).
+  formatListForWhatsapp(game: ActiveGame) {
     const mainList = game.registrations.filter((r) => !r.isWaitingList);
     const waitList = game.registrations.filter((r) => r.isWaitingList);
     const spotsLeft = Math.max(0, game.maxMainSpots - mainList.length);
