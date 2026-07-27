@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { GameStatus, Modalidad, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GameNotFoundException } from './exceptions';
-import { REGISTRATION_INCLUDE } from './games.utils';
+import { ACTIVE_GAME_STATUSES, REGISTRATION_INCLUDE } from './games.utils';
 
 /**
  * Read-only access to games. Lives apart from the mutating services so those
@@ -11,6 +11,25 @@ import { REGISTRATION_INCLUDE } from './games.utils';
 @Injectable()
 export class GameQueryService {
   constructor(private prisma: PrismaService) {}
+
+  /**
+   * The one game people can currently act on, with its registrations ordered as
+   * they appear in the list. Sole owner of this query: the WhatsApp handler used
+   * to keep its own copy with a narrower `include`, which is how it silently
+   * missed the `alias` field.
+   */
+  async findActiveGame() {
+    return this.prisma.game.findFirst({
+      where: { status: { in: [...ACTIVE_GAME_STATUSES] } },
+      include: {
+        registrations: {
+          include: REGISTRATION_INCLUDE,
+          orderBy: [{ isWaitingList: 'asc' }, { position: 'asc' }],
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
 
   async findAll(
     role: Role,
@@ -26,13 +45,7 @@ export class GameQueryService {
     },
   ) {
     if (role !== Role.admin) {
-      const active = await this.prisma.game.findFirst({
-        where: {
-          status: { in: [GameStatus.registration_open, GameStatus.in_progress] },
-        },
-        include: { registrations: { include: REGISTRATION_INCLUDE, orderBy: { position: 'asc' } } },
-        orderBy: { createdAt: 'desc' },
-      });
+      const active = await this.findActiveGame();
       return { data: active ? [active] : [], total: active ? 1 : 0, page: 1, limit: 1 };
     }
 

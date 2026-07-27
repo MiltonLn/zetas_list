@@ -1,7 +1,8 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { TransactionType, FineStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTransactionDto, UpdateTransactionDto, CreateFineDto, UpdateFineDto, ImportFinancesDto } from './dto';
+import { FineNotFoundException, TransactionNotFoundException } from './exceptions';
 
 @Injectable()
 export class FinancesService {
@@ -89,7 +90,7 @@ export class FinancesService {
 
   async updateTransaction(id: string, dto: UpdateTransactionDto, _actorId: string) {
     const existing = await this.prisma.financeTransaction.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('Transacción no encontrada');
+    if (!existing) throw new TransactionNotFoundException();
 
     return this.prisma.financeTransaction.update({
       where: { id },
@@ -104,7 +105,7 @@ export class FinancesService {
 
   async deleteTransaction(id: string) {
     const existing = await this.prisma.financeTransaction.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('Transacción no encontrada');
+    if (!existing) throw new TransactionNotFoundException();
 
     return this.prisma.financeTransaction.delete({ where: { id } });
   }
@@ -147,7 +148,7 @@ export class FinancesService {
 
   async updateFine(id: string, dto: UpdateFineDto, _actorId: string) {
     const existing = await this.prisma.fine.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('Multa no encontrada');
+    if (!existing) throw new FineNotFoundException();
 
     const data: Record<string, unknown> = {};
     if (dto.userId !== undefined) data.userId = dto.userId;
@@ -173,7 +174,7 @@ export class FinancesService {
 
   async deleteFine(id: string) {
     const existing = await this.prisma.fine.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('Multa no encontrada');
+    if (!existing) throw new FineNotFoundException();
 
     return this.prisma.fine.delete({ where: { id } });
   }

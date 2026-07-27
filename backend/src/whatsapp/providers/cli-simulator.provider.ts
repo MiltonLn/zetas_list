@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as readline from 'readline';
 import { WhatsappProvider, SendOptions } from '../whatsapp.interface';
 import { MessageHandlerService } from '../message-handler.service';
+import { isProduction } from '../../config/env';
 
 @Injectable()
 export class CliSimulatorProvider implements WhatsappProvider, OnModuleInit {
@@ -13,7 +14,7 @@ export class CliSimulatorProvider implements WhatsappProvider, OnModuleInit {
   }
 
   onModuleInit() {
-    if (process.env.NODE_ENV === 'production') {
+    if (isProduction) {
       this.logger.log('CLI Simulator deshabilitado en producción. Setea WHATSAPP_MODE=baileys para WhatsApp real.');
       return;
     }

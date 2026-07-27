@@ -2,21 +2,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
 import { FinanceSummary } from '../components/FinanceSummary';
+import { Pagination } from '../components/Pagination';
 import { financesService, type DashboardData, type FinanceTransaction } from '../services/finances.service';
 import { getApiError } from '../services/api';
+import { formatCurrency, formatDate, formatSignedCurrency } from '../utils/currency';
 
 const PAGE_SIZE = 10;
-
-function Pagination({ page, totalPages, onPageChange }: { page: number; totalPages: number; onPageChange: (p: number) => void }) {
-  if (totalPages <= 1) return null;
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '12px 0' }}>
-      <button className="btn" style={{ fontSize: 12, padding: '4px 10px' }} disabled={page === 1} onClick={() => onPageChange(page - 1)}>← Anterior</button>
-      <span style={{ fontSize: 12, opacity: 0.7 }}>Pág. {page} de {totalPages}</span>
-      <button className="btn" style={{ fontSize: 12, padding: '4px 10px' }} disabled={page === totalPages} onClick={() => onPageChange(page + 1)}>Siguiente →</button>
-    </div>
-  );
-}
 
 export function FinancesDashboardPage() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
@@ -88,9 +79,6 @@ export function FinancesDashboardPage() {
 
   const fineTotalPages = Math.max(1, Math.ceil(sortedFines.length / PAGE_SIZE));
   const paginatedFines = sortedFines.slice((finePage - 1) * PAGE_SIZE, finePage * PAGE_SIZE);
-
-  const formatCurrency = (amount: number) => `$${amount.toLocaleString('es-CO')}`;
-  const formatDate = (date: string) => new Date(date).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
 
   const handleTxSort = (col: typeof txSortCol) => {
     if (txSortCol === col) setTxSortDir((d) => d === 'asc' ? 'desc' : 'asc');
@@ -214,7 +202,7 @@ export function FinancesDashboardPage() {
                         <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatDate(tx.date)}</td>
                         <td style={{ padding: '8px 12px' }}>{tx.description}</td>
                         <td style={{ padding: '8px 12px', textAlign: 'right', color: tx.type === 'income' ? '#66bb6a' : '#ef5350', fontWeight: 500 }}>
-                          {tx.type === 'expense' ? '-' : '+'}{formatCurrency(tx.amount)}
+                          {formatSignedCurrency(tx.amount, tx.type)}
                         </td>
                       </tr>
                     ))}
@@ -229,3 +217,6 @@ export function FinancesDashboardPage() {
     </>
   );
 }
+
+// Default export as well so App.tsx can lazy-load it like every other page.
+export default FinancesDashboardPage;

@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { OrderStatus, ShirtSize } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -10,6 +6,15 @@ import { assertShirtNumberAvailable } from '../users/shirt-number.util';
 import { CATALOG, getProduct, getUnitPrice, getVariant } from './catalog';
 import { CreateOrderDto, OrderItemDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import {
+  InvalidProductException,
+  InvalidSizeException,
+  InvalidVariantException,
+  OrderNotFoundException,
+  OrderUserNotFoundException,
+  ShirtNumberRequiredException,
+  SizeRequiredException,
+} from './exceptions';
 
 const ORDER_INCLUDE = {
   items: true,
@@ -53,13 +58,13 @@ export class OrdersService {
       where: { id: userId },
       select: { id: true, name: true, gender: true },
     });
-    if (!user) throw new NotFoundException('Usuario no encontrado');
+    if (!user) throw new OrderUserNotFoundException();
 
     const lineItems = dto.items.map((item) => this.buildLineItem(item, user.name));
 
     const requiresNumber = lineItems.some((li) => li.requiresNumber);
     if (requiresNumber && (dto.shirtNumber === undefined || dto.shirtNumber === null)) {
-      throw new BadRequestException('Debes indicar tu número de camiseta');
+      throw new ShirtNumberRequiredException('self');
     }
 
     const hasNumber = dto.shirtNumber !== undefined && dto.shirtNumber !== null;
@@ -144,13 +149,13 @@ export class OrdersService {
       where: { id: targetUserId },
       select: { id: true, name: true, gender: true },
     });
-    if (!user) throw new NotFoundException('Usuario no encontrado');
+    if (!user) throw new OrderUserNotFoundException();
 
     const lineItems = dto.items.map((item) => this.buildLineItem(item, user.name));
 
     const requiresNumber = lineItems.some((li) => li.requiresNumber);
     if (requiresNumber && (dto.shirtNumber === undefined || dto.shirtNumber === null)) {
-      throw new BadRequestException('Debes indicar el número de camiseta');
+      throw new ShirtNumberRequiredException('other');
     }
 
     const hasNumber = dto.shirtNumber !== undefined && dto.shirtNumber !== null;
@@ -215,19 +220,19 @@ export class OrdersService {
       where: { id },
       select: { id: true, userId: true },
     });
-    if (!order) throw new NotFoundException('Pedido no encontrado');
+    if (!order) throw new OrderNotFoundException();
 
     const user = await this.prisma.user.findUnique({
       where: { id: order.userId },
       select: { id: true, name: true, gender: true },
     });
-    if (!user) throw new NotFoundException('Usuario no encontrado');
+    if (!user) throw new OrderUserNotFoundException();
 
     const lineItems = dto.items.map((item) => this.buildLineItem(item, user.name));
 
     const requiresNumber = lineItems.some((li) => li.requiresNumber);
     if (requiresNumber && (dto.shirtNumber === undefined || dto.shirtNumber === null)) {
-      throw new BadRequestException('Debes indicar el número de camiseta');
+      throw new ShirtNumberRequiredException('other');
     }
 
     const hasNumber = dto.shirtNumber !== undefined && dto.shirtNumber !== null;
@@ -291,7 +296,7 @@ export class OrdersService {
 
   async updateStatus(id: string, dto: UpdateOrderStatusDto, actorId: string) {
     const order = await this.prisma.order.findUnique({ where: { id } });
-    if (!order) throw new NotFoundException('Pedido no encontrado');
+    if (!order) throw new OrderNotFoundException();
 
     const updated = await this.prisma.order.update({
       where: { id },
@@ -312,21 +317,21 @@ export class OrdersService {
   private buildLineItem(item: OrderItemDto, userName: string): LineItem {
     const product = getProduct(item.productId);
     if (!product) {
-      throw new BadRequestException(`Producto inválido: ${item.productId}`);
+      throw new InvalidProductException(item.productId);
     }
 
     const variant = getVariant(product, item.variantId);
     if (!variant) {
-      throw new BadRequestException(`Variante inválida: ${item.variantId}`);
+      throw new InvalidVariantException(item.variantId);
     }
 
     let size: ShirtSize | null = null;
     if (product.sizes.length > 0) {
       if (!item.size) {
-        throw new BadRequestException(`Debes seleccionar una talla para ${product.name}`);
+        throw new SizeRequiredException(product.name);
       }
       if (!product.sizes.includes(item.size)) {
-        throw new BadRequestException(`Talla inválida para ${product.name}`);
+        throw new InvalidSizeException(product.name);
       }
       size = item.size;
     }

@@ -1,9 +1,11 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import type { Request } from 'express';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtUser } from '../jwt-user.interface';
+import { env } from '../../config/env';
+import { InactiveOrUnknownUserException } from '../exceptions';
 
 export interface JwtPayload {
   sub: string;
@@ -25,7 +27,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: extractJwt,
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'dev-secret-change-me',
+      secretOrKey: env.JWT_SECRET,
     });
   }
 
@@ -47,7 +49,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
 
     if (!user || user.status !== 'active') {
-      throw new UnauthorizedException('Usuario inactivo o no encontrado');
+      throw new InactiveOrUnknownUserException();
     }
 
     return user;

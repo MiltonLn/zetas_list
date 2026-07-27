@@ -1,6 +1,6 @@
-import { ConflictException } from '@nestjs/common';
 import { Gender } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ShirtNumberTakenException } from './exceptions';
 
 /**
  * Returns the set of genders that share a jersey-number pool with the given
@@ -13,8 +13,8 @@ export function sexGroupGenders(gender: Gender | null | undefined): Gender[] {
 }
 
 /**
- * Throws ConflictException when the jersey number is already taken by another
- * user within the same sex pool.
+ * Throws ShirtNumberTakenException when the jersey number is already taken by
+ * another user within the same sex pool.
  */
 export async function assertShirtNumberAvailable(
   prisma: PrismaService,
@@ -30,8 +30,6 @@ export async function assertShirtNumberAvailable(
   });
 
   if (taken) {
-    throw new ConflictException(
-      `El número ${params.number} ya está asignado a ${taken.name} en tu categoría`,
-    );
+    throw new ShirtNumberTakenException(params.number, taken.name);
   }
 }

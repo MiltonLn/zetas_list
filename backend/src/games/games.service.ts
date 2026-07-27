@@ -38,6 +38,9 @@ import {
 
 export { displayName, MODALIDAD_LABEL } from './games.utils';
 
+/** The current game plus its registrations, as returned by findActiveGame(). */
+export type ActiveGame = NonNullable<Awaited<ReturnType<GameQueryService['findActiveGame']>>>;
+
 @Injectable()
 export class GamesService {
   constructor(
@@ -73,6 +76,10 @@ export class GamesService {
 
   findOne(id: string) {
     return this.query.findOne(id);
+  }
+
+  findActiveGame() {
+    return this.query.findActiveGame();
   }
 
   confirmRegistration(...args: Parameters<ConfirmationService['confirmRegistration']>) {
@@ -593,7 +600,7 @@ export class GamesService {
     return isBeforeCutoff(cutoffTime, gameDate);
   }
 
-  formatListForWhatsapp(game: Awaited<ReturnType<typeof this.query.findOne>>) {
+  formatListForWhatsapp(game: ActiveGame) {
     const mainList = game.registrations.filter((r) => !r.isWaitingList);
     const waitList = game.registrations.filter((r) => r.isWaitingList);
     const spotsLeft = Math.max(0, game.maxMainSpots - mainList.length);

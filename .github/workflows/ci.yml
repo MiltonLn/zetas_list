@@ -65,6 +65,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check generated API types are in sync with schema.prisma
+        run: npm run gen:api-types:check
+
       - name: Type check
         run: npx tsc -b --noEmit
 

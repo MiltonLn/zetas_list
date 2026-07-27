@@ -7,20 +7,12 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { AppModule } from './app.module';
 import { configureApp } from './app-config';
+import { env, isProduction } from './config/env';
 
 async function bootstrap() {
-  console.log('[STARTUP] Iniciando bootstrap...');
-  console.log(`[STARTUP] NODE_ENV=${process.env.NODE_ENV}`);
-  console.log(`[STARTUP] PORT=${process.env.PORT}`);
-  console.log(`[STARTUP] DATABASE_URL set=${!!process.env.DATABASE_URL}`);
-  console.log(`[STARTUP] JWT_SECRET set=${!!process.env.JWT_SECRET}`);
-
-  if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
-    console.error('[STARTUP] FATAL: JWT_SECRET env variable is required in production');
-    process.exit(1);
-  }
-
-  console.log('[STARTUP] Creando app NestJS...');
+  // Env vars are validated on import of ./config/env (via ./instrument), so by
+  // this point every value below is present and well-formed.
+  console.log(`[STARTUP] Iniciando bootstrap (NODE_ENV=${env.NODE_ENV})...`);
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
   });
@@ -34,11 +26,11 @@ async function bootstrap() {
   });
 
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: env.FRONTEND_URL,
     credentials: true,
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (!isProduction) {
     const config = new DocumentBuilder()
       .setTitle('Zetas List API')
       .setDescription('API para la gestión de partidos de Volley Zetas Ingenio')
@@ -49,10 +41,9 @@ async function bootstrap() {
     SwaggerModule.setup('api/docs', app, document);
   }
 
-  const port = process.env.PORT || 3000;
-  console.log(`[STARTUP] Escuchando en 0.0.0.0:${port}...`);
-  await app.listen(port, '0.0.0.0');
-  console.log(`[STARTUP] Servidor listo en http://0.0.0.0:${port}`);
+  console.log(`[STARTUP] Escuchando en 0.0.0.0:${env.PORT}...`);
+  await app.listen(env.PORT, '0.0.0.0');
+  console.log(`[STARTUP] Servidor listo en http://0.0.0.0:${env.PORT}`);
 }
 
 bootstrap();

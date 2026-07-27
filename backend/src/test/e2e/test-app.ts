@@ -5,10 +5,13 @@ import { Test } from '@nestjs/testing';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { Role } from '@prisma/client';
 import { configureApp } from '../../app-config';
+import { env } from '../../config/env';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtStrategy } from '../../auth/strategies/jwt.strategy';
 
-export const TEST_JWT_SECRET = 'test-secret-for-controller-smoke-tests';
+// JwtStrategy reads the secret from the validated env at import time, so tests
+// have to sign with that same value rather than one of their own.
+export const TEST_JWT_SECRET = env.JWT_SECRET;
 
 export interface TestUser {
   id: string;
@@ -58,8 +61,6 @@ export async function createTestApp(metadata: ModuleMetadata): Promise<{
   jwt: JwtService;
   tokenFor: (user: Pick<TestUser, 'id' | 'username' | 'role'>) => string;
 }> {
-  process.env.JWT_SECRET = TEST_JWT_SECRET;
-
   const moduleRef = await Test.createTestingModule({
     ...metadata,
     imports: [
