@@ -11,6 +11,7 @@ import { FinancesService } from '../finances/finances.service';
 import { GameQueryService } from './game-query.service';
 import { ConfirmationService } from './confirmation.service';
 import { WaitlistService } from './waitlist.service';
+import { GameLifecycleService } from './game-lifecycle.service';
 import { notificationHarness } from './testing/notifier-harness';
 
 const mockPrisma = {
@@ -121,6 +122,7 @@ describe('GamesService', () => {
         GameQueryService,
         ConfirmationService,
         WaitlistService,
+        GameLifecycleService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AuditService, useValue: mockAudit },
         { provide: GameEventsService, useValue: mockEvents },
