@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
-import { GameStatus, Modalidad, Role } from '@prisma/client';
+import { GameStatus, Modalidad, Prisma, Role } from '@prisma/client';
 import { GamesService } from './games.service';
 import { displayName, userDisplayName } from './games.utils';
 import { formatCutoffTime } from './games.utils';
@@ -880,6 +880,23 @@ describe('GamesService', () => {
       expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
         expect.stringContaining('promovido'),
       );
+    });
+
+    it('usa transacción serializable para evitar sobrepasar los cupos', async () => {
+      const waitReg = makeReg({ isWaitingList: true, position: 1 });
+      txMock.$queryRaw.mockResolvedValue(undefined);
+      txMock.gameRegistration.findFirst.mockResolvedValue(waitReg);
+      txMock.game.findUniqueOrThrow.mockResolvedValue(makeGame({ maxMainSpots: 18 }));
+      txMock.gameRegistration.count.mockResolvedValue(10);
+      txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 10 } });
+      txMock.gameRegistration.update.mockResolvedValue(makeReg({ isWaitingList: false, position: 11 }));
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.promote('game-1', 'reg-1', 'actor-1');
+
+      expect(mockPrisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
     });
 
     it('lanza NotFoundException si el registro no está en lista de espera', async () => {
