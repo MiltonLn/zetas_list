@@ -151,8 +151,8 @@ export class MessageHandlerService {
       include: {
         registrations: {
           include: {
-            user: { select: { id: true, name: true, phone: true } },
-            registeredBy: { select: { id: true, name: true } },
+            user: { select: { id: true, name: true, alias: true, phone: true } },
+            registeredBy: { select: { id: true, name: true, alias: true } },
           },
           orderBy: [{ isWaitingList: 'asc' }, { position: 'asc' }],
         },

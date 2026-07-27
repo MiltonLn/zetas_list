@@ -270,6 +270,30 @@ describe('MessageHandlerService — handleMessage', () => {
       await service.handleMessage('111', '@Z lista', 'group-1');
       expect(mockWp.sendToGroup).toHaveBeenCalledWith('📋 Lista...');
     });
+
+    it('carga el alias de miembros e invitadores para formatear la lista', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.formatListForWhatsapp.mockReturnValue('📋 Lista...');
+
+      await service.handleMessage('111', '@Z lista', 'group-1');
+
+      expect(mockPrisma.game.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: {
+            registrations: expect.objectContaining({
+              include: {
+                user: {
+                  select: expect.objectContaining({ alias: true }),
+                },
+                registeredBy: {
+                  select: expect.objectContaining({ alias: true }),
+                },
+              },
+            }),
+          },
+        }),
+      );
+    });
   });
 
   // ─── terminar ──────────────────────────────────────────────────────────────
