@@ -1,5 +1,4 @@
 import { Module, forwardRef, Inject } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
 import { WhatsappService } from './whatsapp.service';
 import { WhatsappController } from './whatsapp.controller';
 import { MessageHandlerService } from './message-handler.service';
@@ -21,7 +20,6 @@ const providerClass = isBaileys ? BaileysProvider : CliSimulatorProvider;
     forwardRef(() => UsersModule),
     PrismaModule,
     FinancesModule,
-    JwtModule.register({ secret: env.JWT_SECRET }),
   ],
   controllers: isBaileys ? [WhatsappController] : [],
   providers: [

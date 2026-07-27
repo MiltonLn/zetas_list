@@ -13,6 +13,20 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { assertShirtNumberAvailable } from './shirt-number.util';
+import { BCRYPT_ROUNDS, DEFAULT_PASSWORD } from './users.constants';
+
+/** A participant as reported by the WhatsApp group metadata. */
+export interface WhatsappParticipant {
+  phone: string | null;
+  lid?: string | null;
+}
+
+export interface WhatsappImportResult {
+  created: number;
+  skipped: number;
+  unresolved: number;
+  createdUsers: Array<{ phone: string; name: string }>;
+}
 
 const USER_PUBLIC_SELECT = {
   id: true,
@@ -57,9 +71,8 @@ export class UsersService {
       );
     }
 
-    const DEFAULT_PASSWORD = 'zetas123';
     const rawPassword = dto.password || DEFAULT_PASSWORD;
-    const passwordHash = await bcrypt.hash(rawPassword, 12);
+    const passwordHash = await bcrypt.hash(rawPassword, BCRYPT_ROUNDS);
     const mustChangePassword = !dto.password;
 
     const user = await this.prisma.user.create({
@@ -89,6 +102,73 @@ export class UsersService {
     });
 
     return user;
+  }
+
+  /**
+   * Creates member accounts for WhatsApp group participants that don't have one
+   * yet. Existing users are left untouched apart from backfilling their LID,
+   * which WhatsApp only exposes through group metadata.
+   */
+  async importFromWhatsapp(
+    participants: WhatsappParticipant[],
+    actorId: string,
+  ): Promise<WhatsappImportResult> {
+    const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, BCRYPT_ROUNDS);
+
+    const result: WhatsappImportResult = {
+      created: 0,
+      skipped: 0,
+      unresolved: 0,
+      createdUsers: [],
+    };
+
+    for (const participant of participants) {
+      if (!participant.phone) {
+        result.unresolved++;
+        continue;
+      }
+
+      const phone = participant.phone;
+      const existing = await this.prisma.user.findFirst({
+        where: { OR: [{ phone }, { username: phone }] },
+      });
+
+      if (existing) {
+        if (participant.lid && !existing.whatsappLid) {
+          await this.setWhatsappLid(existing.id, participant.lid);
+        }
+        result.skipped++;
+        continue;
+      }
+
+      const user = await this.prisma.user.create({
+        data: {
+          username: phone,
+          passwordHash,
+          // The group only gives us the number; members rename themselves on
+          // first login.
+          name: phone,
+          phone,
+          role: Role.member,
+          status: UserStatus.active,
+          mustChangePassword: true,
+          whatsappLid: participant.lid || null,
+        },
+        select: { id: true, name: true, phone: true, username: true, role: true },
+      });
+
+      await this.audit.log({
+        actorId,
+        targetUserId: user.id,
+        action: 'user_created',
+        details: { username: user.username, role: user.role, source: 'whatsapp_import' },
+      });
+
+      result.created++;
+      result.createdUsers.push({ phone: user.phone, name: user.name });
+    }
+
+    return result;
   }
 
   async findAll(search?: string) {

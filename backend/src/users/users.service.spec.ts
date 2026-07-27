@@ -377,4 +377,106 @@ describe('UsersService', () => {
       );
     });
   });
+
+  // ─── importFromWhatsapp ────────────────────────────────────────────────────
+
+  describe('importFromWhatsapp', () => {
+    const actorId = 'admin-1';
+
+    it('crea un miembro por cada participante nuevo con contraseña por defecto', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockPrisma.user.create.mockImplementation(({ data }: any) =>
+        Promise.resolve({
+          id: `user-${data.phone}`,
+          name: data.name,
+          phone: data.phone,
+          username: data.username,
+          role: data.role,
+        }),
+      );
+
+      const result = await service.importFromWhatsapp(
+        [{ phone: '3001111111', lid: 'lid-1' }, { phone: '3002222222' }],
+        actorId,
+      );
+
+      expect(result.created).toBe(2);
+      expect(result.createdUsers).toEqual([
+        { phone: '3001111111', name: '3001111111' },
+        { phone: '3002222222', name: '3002222222' },
+      ]);
+
+      const firstCall = mockPrisma.user.create.mock.calls[0][0];
+      expect(firstCall.data).toMatchObject({
+        username: '3001111111',
+        phone: '3001111111',
+        role: Role.member,
+        mustChangePassword: true,
+        whatsappLid: 'lid-1',
+      });
+      await expect(bcrypt.compare('zetas123', firstCall.data.passwordHash)).resolves.toBe(true);
+    });
+
+    it('audita cada usuario creado indicando el origen', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockPrisma.user.create.mockResolvedValue({
+        id: 'user-1',
+        name: '3001111111',
+        phone: '3001111111',
+        username: '3001111111',
+        role: Role.member,
+      });
+
+      await service.importFromWhatsapp([{ phone: '3001111111' }], actorId);
+
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorId,
+          targetUserId: 'user-1',
+          action: 'user_created',
+          details: expect.objectContaining({ source: 'whatsapp_import' }),
+        }),
+      );
+    });
+
+    it('omite participantes ya registrados y rellena el LID faltante', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue({
+        id: 'existing-1',
+        phone: '3001111111',
+        whatsappLid: null,
+      });
+      mockPrisma.user.update.mockResolvedValue({});
+
+      const result = await service.importFromWhatsapp(
+        [{ phone: '3001111111', lid: 'lid-1' }],
+        actorId,
+      );
+
+      expect(result).toMatchObject({ created: 0, skipped: 1 });
+      expect(mockPrisma.user.create).not.toHaveBeenCalled();
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'existing-1' },
+        data: { whatsappLid: 'lid-1' },
+      });
+    });
+
+    it('no toca el LID de un usuario que ya lo tiene', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue({
+        id: 'existing-1',
+        phone: '3001111111',
+        whatsappLid: 'lid-viejo',
+      });
+
+      await service.importFromWhatsapp([{ phone: '3001111111', lid: 'lid-nuevo' }], actorId);
+
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('cuenta como no resueltos los participantes sin teléfono', async () => {
+      const result = await service.importFromWhatsapp([{ phone: null, lid: 'lid-1' }], actorId);
+
+      expect(result).toMatchObject({ created: 0, skipped: 0, unresolved: 1 });
+      expect(mockPrisma.user.create).not.toHaveBeenCalled();
+    });
+  });
 });
