@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   DndContext,
@@ -16,11 +16,13 @@ import {
   verticalListSortingStrategy,
   arrayMove,
 } from '@dnd-kit/sortable';
+import { useQuery } from '@tanstack/react-query';
 import { gamesService } from '../services/games.service';
-import type { Game, GameRegistration, AuditLog } from '../types';
+import type { GameRegistration } from '../types';
 import { MODALIDAD_LABELS } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { useGameStream } from '../hooks/useGameStream';
+import { useAvailableMembers, useGameAudit, useGameQuery } from '../hooks/useGameQuery';
+import { queryKeys } from '../lib/query-client';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { Spinner } from '../components/Spinner';
@@ -38,30 +40,33 @@ export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user, isAdmin, isGameManager } = useAuth();
 
-  const [game, setGame] = useState<Game | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: game, isPending: loading, error: loadError, invalidate: refreshGame } = useGameQuery(id);
+
   const [error, setError] = useState('');
   const [registering, setRegistering] = useState(false);
   const [regError, setRegError] = useState('');
 
+  // Drag-and-drop reorders optimistically and only persists after a pause, so
+  // the dragged order has to live outside the query cache until it settles.
   const [mainList, setMainList] = useState<GameRegistration[]>([]);
   const [waitList, setWaitList] = useState<GameRegistration[]>([]);
 
   const [showAudit, setShowAudit] = useState(false);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [auditLoading, setAuditLoading] = useState(false);
-
   const [showCancel, setShowCancel] = useState(false);
-
   const [selectedReg, setSelectedReg] = useState<GameRegistration | null>(null);
-
   const [showComplete, setShowComplete] = useState(false);
-
-  const [completionReport, setCompletionReport] = useState<string | null>(null);
-  const [reportLoading, setReportLoading] = useState(false);
-
-  const [availableMembers, setAvailableMembers] = useState<Array<{ id: string; name: string; phone: string; username: string }>>([]);
   const [showRegisterOther, setShowRegisterOther] = useState(false);
+
+  const { data: auditLogs = [], isFetching: auditLoading } = useGameAudit(id, showAudit);
+
+  const isGameOpen = game?.status === 'registration_open' || game?.status === 'in_progress';
+  const { data: availableMembers = [] } = useAvailableMembers(id, !!isGameOpen);
+
+  const { data: completionReport = null, isPending: reportLoading } = useQuery({
+    queryKey: queryKeys.gameReport(id ?? ''),
+    queryFn: async () => (await gamesService.getReport(id!)).data.report,
+    enabled: !!id && game?.status === 'completed',
+  });
 
   const reorderTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mainListRef = useRef(mainList);
@@ -70,30 +75,12 @@ export default function GameDetailPage() {
   useEffect(() => { mainListRef.current = mainList; }, [mainList]);
   useEffect(() => { waitListRef.current = waitList; }, [waitList]);
 
-  const fetchGame = useCallback(async () => {
-    if (!id) return;
-    try {
-      const { data } = await gamesService.get(id);
-      setGame(data);
-      setMainList(data.registrations.filter((r) => !r.isWaitingList).sort((a, b) => a.position - b.position));
-      setWaitList(data.registrations.filter((r) => r.isWaitingList).sort((a, b) => a.position - b.position));
-    } catch (e) {
-      setError(getApiError(e));
-    }
-  }, [id]);
-
   useEffect(() => {
-    setLoading(true);
-    fetchGame().finally(() => setLoading(false));
-  }, [fetchGame]);
-
-  useEffect(() => {
-    if (game && (game.status === 'registration_open' || game.status === 'in_progress')) {
-      loadAvailableMembers();
-    }
-  }, [game?.status, game?.registrations?.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useGameStream(id, fetchGame);
+    if (!game) return;
+    const byPosition = (a: GameRegistration, b: GameRegistration) => a.position - b.position;
+    setMainList(game.registrations.filter((r) => !r.isWaitingList).sort(byPosition));
+    setWaitList(game.registrations.filter((r) => r.isWaitingList).sort(byPosition));
+  }, [game]);
 
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -125,7 +112,7 @@ export default function GameDetailPage() {
         .reorder(id!, updatedMain.map((r) => r.id), updatedWait.map((r) => r.id))
         .catch((e) => {
           setError(getApiError(e));
-          fetchGame();
+          refreshGame();
         });
     }, 600);
   }
@@ -137,7 +124,7 @@ export default function GameDetailPage() {
     try {
       await gamesService.register(id);
       showToast('¡Te anotaste correctamente!');
-      fetchGame();
+      refreshGame();
     } catch (e) {
       setRegError(getApiError(e));
     } finally {
@@ -149,7 +136,7 @@ export default function GameDetailPage() {
     if (!id) return;
     try {
       await gamesService.updateRegistration(id, regId, { [field]: !currentValue });
-      fetchGame();
+      refreshGame();
     } catch (e) {
       setError(getApiError(e));
     }
@@ -159,7 +146,7 @@ export default function GameDetailPage() {
     if (!id) return;
     try {
       await gamesService.removeRegistration(id, userId || 'guest', regId);
-      fetchGame();
+      refreshGame();
     } catch (e) {
       setError(getApiError(e));
     }
@@ -169,7 +156,7 @@ export default function GameDetailPage() {
     if (!id) return;
     try {
       await gamesService.promote(id, regId);
-      fetchGame();
+      refreshGame();
     } catch (e) {
       setError(getApiError(e));
     }
@@ -179,7 +166,7 @@ export default function GameDetailPage() {
     if (!id) return;
     try {
       await gamesService.demote(id, regId);
-      fetchGame();
+      refreshGame();
     } catch (e) {
       setError(getApiError(e));
     }
@@ -190,17 +177,7 @@ export default function GameDetailPage() {
     try {
       await gamesService.cancel(id, reason);
       setShowCancel(false);
-      fetchGame();
-    } catch (e) {
-      setError(getApiError(e));
-    }
-  }
-
-  async function loadAvailableMembers() {
-    if (!id) return;
-    try {
-      const { data } = await gamesService.getAvailableMembers(id);
-      setAvailableMembers(data);
+      refreshGame();
     } catch (e) {
       setError(getApiError(e));
     }
@@ -211,7 +188,7 @@ export default function GameDetailPage() {
     try {
       await gamesService.confirmRegistration(id);
       showToast('¡Confirmaste tu asistencia!');
-      fetchGame();
+      refreshGame();
     } catch (e) {
       setRegError(getApiError(e));
     }
@@ -222,35 +199,15 @@ export default function GameDetailPage() {
     try {
       await gamesService.confirmRegistrationById(id, regId);
       showToast('Confirmación registrada');
-      fetchGame();
+      refreshGame();
     } catch (e) {
       setError(getApiError(e));
     }
   }
 
-  async function loadAudit() {
-    if (!id) return;
-    setAuditLoading(true);
-    try {
-      const { data } = await gamesService.getAudit(id);
-      setAuditLogs(data);
-      setShowAudit(true);
-    } catch (e) {
-      setError(getApiError(e));
-    } finally {
-      setAuditLoading(false);
-    }
+  function loadAudit() {
+    setShowAudit(true);
   }
-
-  useEffect(() => {
-    if (game?.status === 'completed' && id) {
-      setReportLoading(true);
-      gamesService.getReport(id)
-        .then(({ data }) => setCompletionReport(data.report))
-        .catch(() => setCompletionReport(null))
-        .finally(() => setReportLoading(false));
-    }
-  }, [game?.status, id]);
 
   if (loading) {
     return (
@@ -264,7 +221,9 @@ export default function GameDetailPage() {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
         <div style={{ textAlign: 'center' }}>
-          <p style={{ color: '#ff6b6b' }}>{error || 'Partido no encontrado'}</p>
+          <p style={{ color: '#ff6b6b' }}>
+            {error || (loadError ? getApiError(loadError) : '') || 'Partido no encontrado'}
+          </p>
           <Link to="/" className="btn" style={{ marginTop: 12 }}>Volver</Link>
         </div>
       </div>
@@ -643,7 +602,7 @@ export default function GameDetailPage() {
           open={showComplete}
           onClose={() => setShowComplete(false)}
           gameId={id}
-          onCompleted={fetchGame}
+          onCompleted={refreshGame}
         />
       )}
 
@@ -657,7 +616,7 @@ export default function GameDetailPage() {
           isGameManager={isGameManager}
           proxyLimitReached={proxyLimitReached}
           maxProxyRegistrations={game.maxProxyRegistrations}
-          onSuccess={() => { fetchGame(); loadAvailableMembers(); }}
+          onSuccess={refreshGame}
         />
       )}
     </>

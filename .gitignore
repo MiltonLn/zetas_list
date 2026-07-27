@@ -11,6 +11,9 @@ dist/
 whatsapp-session/
 backend/whatsapp-session/
 
+# Test coverage reports
+coverage/
+
 # Build artifacts
 frontend/dist/
 backend/dist/
