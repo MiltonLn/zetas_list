@@ -1057,6 +1057,23 @@ describe('GamesService', () => {
       );
     });
 
+    it('anuncia por WhatsApp cuando el usuario confirma desde la app', async () => {
+      const pendingReg = makeReg({
+        pendingConfirmation: true,
+        user: { name: 'Carlos Pérez', alias: 'Carlos' },
+      });
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(pendingReg);
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
+      mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 1 });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.confirmRegistration('game-1', 'user-1');
+
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
+        '✅ *Carlos* confirmó su asistencia 🏐',
+      );
+    });
+
     it('confirma invitados del usuario junto con su propio registro', async () => {
       const pendingReg = makeReg({ pendingConfirmation: true });
       const guestReg = { id: 'guest-reg-1', gameId: 'game-1', isGuest: true, guestName: 'Topota', pendingConfirmation: true, registeredById: 'user-1', registeredBy: { name: 'Milton' } };
@@ -1750,16 +1767,51 @@ describe('GamesService', () => {
       );
     });
 
-    it('actualiza el campo paid y llama a audit.log', async () => {
+    it('al desmarcar attended también desmarca paid y audita ambos cambios', async () => {
+      const reg = makeReg({ attended: true, paid: true });
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(reg);
+      mockPrisma.gameRegistration.update.mockResolvedValue({ ...reg, attended: false, paid: false });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.updateRegistration('reg-1', { attended: false }, 'admin-1', 'game-1');
+
+      expect(mockPrisma.gameRegistration.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { attended: false, paid: false },
+        }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'attendance_toggled' }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'payment_toggled',
+          details: { paid: false, automatic: true },
+        }),
+      );
+    });
+
+    it('al marcar paid también marca attended y audita ambos cambios', async () => {
       const reg = makeReg();
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(reg);
-      mockPrisma.gameRegistration.update.mockResolvedValue({ ...reg, paid: true });
+      mockPrisma.gameRegistration.update.mockResolvedValue({ ...reg, paid: true, attended: true });
       jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.updateRegistration('reg-1', { paid: true }, 'admin-1', 'game-1');
 
+      expect(mockPrisma.gameRegistration.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { paid: true, attended: true },
+        }),
+      );
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'payment_toggled' }),
+      );
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'attendance_toggled',
+          details: { attended: true, automatic: true },
+        }),
       );
     });
   });

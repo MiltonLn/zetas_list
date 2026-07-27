@@ -270,6 +270,30 @@ describe('MessageHandlerService — handleMessage', () => {
       await service.handleMessage('111', '@Z lista', 'group-1');
       expect(mockWp.sendToGroup).toHaveBeenCalledWith('📋 Lista...');
     });
+
+    it('carga el alias de miembros e invitadores para formatear la lista', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.formatListForWhatsapp.mockReturnValue('📋 Lista...');
+
+      await service.handleMessage('111', '@Z lista', 'group-1');
+
+      expect(mockPrisma.game.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: {
+            registrations: expect.objectContaining({
+              include: {
+                user: {
+                  select: expect.objectContaining({ alias: true }),
+                },
+                registeredBy: {
+                  select: expect.objectContaining({ alias: true }),
+                },
+              },
+            }),
+          },
+        }),
+      );
+    });
   });
 
   // ─── terminar ──────────────────────────────────────────────────────────────
@@ -874,7 +898,12 @@ describe('MessageHandlerService — handleMessage', () => {
       mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: true, confirmedGuests: [] });
 
       await service.handleMessage('111', '@Z confirmar', 'group-1');
-      expect(mockGames.confirmRegistration).toHaveBeenCalledWith('game-1', 'user-1');
+      expect(mockGames.confirmRegistration).toHaveBeenCalledWith(
+        'game-1',
+        'user-1',
+        'user-1',
+        { silent: true },
+      );
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('confirmó su asistencia'));
     });
 
@@ -931,7 +960,12 @@ describe('MessageHandlerService — handleMessage', () => {
 
       await service.handleMessage('111', '@Z confirmar @222', 'group-1', ['222@s.whatsapp.net']);
 
-      expect(mockGames.confirmRegistration).toHaveBeenCalledWith('game-1', 'user-2', 'user-1');
+      expect(mockGames.confirmRegistration).toHaveBeenCalledWith(
+        'game-1',
+        'user-2',
+        'user-1',
+        { silent: true },
+      );
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('confirmó la asistencia de Juan'));
     });
 
@@ -1315,7 +1349,12 @@ describe('MessageHandlerService — handleMessage', () => {
       mockGames.confirmRegistration.mockResolvedValue({ game: makeActiveGame(), confirmedOwn: false, confirmedGuests: [] });
 
       await service.handleMessage('111', '@Z confirmar @222', 'group-1', ['222@s.whatsapp.net']);
-      expect(mockGames.confirmRegistration).toHaveBeenCalledWith('game-1', 'user-2', 'user-1');
+      expect(mockGames.confirmRegistration).toHaveBeenCalledWith(
+        'game-1',
+        'user-2',
+        'user-1',
+        { silent: true },
+      );
     });
 
     it('member sigue sin poder terminar el partido', async () => {

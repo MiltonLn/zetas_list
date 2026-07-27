@@ -498,18 +498,24 @@ export class GamesService {
     return registration;
   }
 
-  async confirmRegistration(gameId: string, userId: string, actorId: string = userId): Promise<{ game: any; confirmedOwn: boolean; confirmedGuests: string[] }> {
+  async confirmRegistration(
+    gameId: string,
+    userId: string,
+    actorId: string = userId,
+    options: { silent?: boolean } = {},
+  ): Promise<{ game: any; confirmedOwn: boolean; confirmedGuests: string[] }> {
     const confirmed = await this.prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
 
         const ownReg = await tx.gameRegistration.findFirst({
           where: { gameId, userId, pendingConfirmation: true },
+          include: { user: { select: { name: true, alias: true } } },
         });
 
         const guestRegs = await tx.gameRegistration.findMany({
           where: { gameId, registeredById: userId, isGuest: true, pendingConfirmation: true },
-          include: { registeredBy: { select: { name: true } } },
+          include: { registeredBy: { select: { name: true, alias: true } } },
         });
 
         const allPending = [...(ownReg ? [ownReg] : []), ...guestRegs];
@@ -523,6 +529,11 @@ export class GamesService {
         return {
           confirmedOwn: !!ownReg,
           confirmedGuests: guestRegs.map((r) => r.guestName || 'Invitado'),
+          confirmedByName: ownReg?.user
+            ? userDisplayName(ownReg.user)
+            : guestRegs[0]?.registeredBy
+              ? userDisplayName(guestRegs[0].registeredBy)
+              : 'Jugador',
         };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -542,7 +553,27 @@ export class GamesService {
 
     const updated = await this.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
-    return { game: updated, ...confirmed };
+
+    if (!options.silent) {
+      const parts: string[] = [];
+      if (confirmed.confirmedOwn) parts.push('su asistencia');
+      if (confirmed.confirmedGuests.length > 0) {
+        const guestNames = confirmed.confirmedGuests.join(', ');
+        parts.push(confirmed.confirmedOwn ? `la de ${guestNames}` : `asistencia de ${guestNames}`);
+      }
+      const message = actorId === userId
+        ? `✅ *${confirmed.confirmedByName}* confirmó ${parts.join(' y ')} 🏐`
+        : `✅ Un admin confirmó la asistencia de *${confirmed.confirmedByName}* 🏐`;
+      this.whatsapp
+        .sendToGroup(message)
+        .catch((e) => this.logger.warn('WhatsApp send failed', e));
+    }
+
+    return {
+      game: updated,
+      confirmedOwn: confirmed.confirmedOwn,
+      confirmedGuests: confirmed.confirmedGuests,
+    };
   }
 
   /**
@@ -769,17 +800,30 @@ export class GamesService {
     const reg = await this.prisma.gameRegistration.findFirst({ where: { id: regId, gameId } });
     if (!reg) throw new NotRegisteredException();
 
+    const attendanceWasAutomatic = dto.paid === true && dto.attended === undefined && !reg.attended;
+    const paymentWasAutomatic = dto.attended === false && dto.paid === undefined && reg.paid;
+    let updateData: UpdateRegistrationDto = dto;
+    if (dto.paid === true) {
+      updateData = { ...dto, attended: true };
+    } else if (dto.attended === false) {
+      updateData = { ...dto, paid: false };
+    }
+
     const updated = await this.prisma.gameRegistration.update({
       where: { id: regId, gameId },
-      data: dto,
+      data: updateData,
       include: REGISTRATION_INCLUDE,
     });
 
-    if (dto.attended !== undefined) {
-      await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'attendance_toggled', details: { attended: dto.attended } });
+    if (attendanceWasAutomatic) {
+      await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'attendance_toggled', details: { attended: true, automatic: true } });
+    } else if (dto.attended !== undefined) {
+      await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'attendance_toggled', details: { attended: updateData.attended } });
     }
-    if (dto.paid !== undefined) {
-      await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'payment_toggled', details: { paid: dto.paid } });
+    if (paymentWasAutomatic) {
+      await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'payment_toggled', details: { paid: false, automatic: true } });
+    } else if (dto.paid !== undefined) {
+      await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'payment_toggled', details: { paid: updateData.paid } });
     }
     if (dto.note !== undefined) {
       await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'note_updated', details: { note: dto.note } });
