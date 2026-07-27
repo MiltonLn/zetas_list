@@ -498,18 +498,24 @@ export class GamesService {
     return registration;
   }
 
-  async confirmRegistration(gameId: string, userId: string, actorId: string = userId): Promise<{ game: any; confirmedOwn: boolean; confirmedGuests: string[] }> {
+  async confirmRegistration(
+    gameId: string,
+    userId: string,
+    actorId: string = userId,
+    options: { silent?: boolean } = {},
+  ): Promise<{ game: any; confirmedOwn: boolean; confirmedGuests: string[] }> {
     const confirmed = await this.prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
 
         const ownReg = await tx.gameRegistration.findFirst({
           where: { gameId, userId, pendingConfirmation: true },
+          include: { user: { select: { name: true, alias: true } } },
         });
 
         const guestRegs = await tx.gameRegistration.findMany({
           where: { gameId, registeredById: userId, isGuest: true, pendingConfirmation: true },
-          include: { registeredBy: { select: { name: true } } },
+          include: { registeredBy: { select: { name: true, alias: true } } },
         });
 
         const allPending = [...(ownReg ? [ownReg] : []), ...guestRegs];
@@ -523,6 +529,11 @@ export class GamesService {
         return {
           confirmedOwn: !!ownReg,
           confirmedGuests: guestRegs.map((r) => r.guestName || 'Invitado'),
+          confirmedByName: ownReg?.user
+            ? userDisplayName(ownReg.user)
+            : guestRegs[0]?.registeredBy
+              ? userDisplayName(guestRegs[0].registeredBy)
+              : 'Jugador',
         };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -542,7 +553,27 @@ export class GamesService {
 
     const updated = await this.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
-    return { game: updated, ...confirmed };
+
+    if (!options.silent) {
+      const parts: string[] = [];
+      if (confirmed.confirmedOwn) parts.push('su asistencia');
+      if (confirmed.confirmedGuests.length > 0) {
+        const guestNames = confirmed.confirmedGuests.join(', ');
+        parts.push(confirmed.confirmedOwn ? `la de ${guestNames}` : `asistencia de ${guestNames}`);
+      }
+      const message = actorId === userId
+        ? `✅ *${confirmed.confirmedByName}* confirmó ${parts.join(' y ')} 🏐`
+        : `✅ Un admin confirmó la asistencia de *${confirmed.confirmedByName}* 🏐`;
+      this.whatsapp
+        .sendToGroup(message)
+        .catch((e) => this.logger.warn('WhatsApp send failed', e));
+    }
+
+    return {
+      game: updated,
+      confirmedOwn: confirmed.confirmedOwn,
+      confirmedGuests: confirmed.confirmedGuests,
+    };
   }
 
   /**

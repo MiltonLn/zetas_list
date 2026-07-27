@@ -402,7 +402,12 @@ export class MessageHandlerService {
           continue;
         }
         try {
-          await this.games.confirmRegistration(ctx.activeGame.id, targetUser.id, ctx.user!.id);
+          await this.games.confirmRegistration(
+            ctx.activeGame.id,
+            targetUser.id,
+            ctx.user!.id,
+            { silent: true },
+          );
           confirmedNames.push(userDisplayName(targetUser));
         } catch (e: unknown) {
           if (e instanceof NoPendingConfirmationException) {
@@ -421,7 +426,12 @@ export class MessageHandlerService {
     }
 
     try {
-      const result = await this.games.confirmRegistration(ctx.activeGame.id, ctx.user!.id);
+      const result = await this.games.confirmRegistration(
+        ctx.activeGame.id,
+        ctx.user!.id,
+        ctx.user!.id,
+        { silent: true },
+      );
       const parts: string[] = [];
       if (result.confirmedOwn) parts.push('su asistencia');
       if (result.confirmedGuests.length > 0) {

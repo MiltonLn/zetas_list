@@ -1057,6 +1057,23 @@ describe('GamesService', () => {
       );
     });
 
+    it('anuncia por WhatsApp cuando el usuario confirma desde la app', async () => {
+      const pendingReg = makeReg({
+        pendingConfirmation: true,
+        user: { name: 'Carlos Pérez', alias: 'Carlos' },
+      });
+      mockPrisma.gameRegistration.findFirst.mockResolvedValue(pendingReg);
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
+      mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 1 });
+      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+
+      await service.confirmRegistration('game-1', 'user-1');
+
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(
+        '✅ *Carlos* confirmó su asistencia 🏐',
+      );
+    });
+
     it('confirma invitados del usuario junto con su propio registro', async () => {
       const pendingReg = makeReg({ pendingConfirmation: true });
       const guestReg = { id: 'guest-reg-1', gameId: 'game-1', isGuest: true, guestName: 'Topota', pendingConfirmation: true, registeredById: 'user-1', registeredBy: { name: 'Milton' } };
