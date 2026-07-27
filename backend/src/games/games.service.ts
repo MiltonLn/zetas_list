@@ -867,7 +867,7 @@ export class GamesService {
         },
         include: REGISTRATION_INCLUDE,
       });
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     await this.audit.log({
       gameId,
