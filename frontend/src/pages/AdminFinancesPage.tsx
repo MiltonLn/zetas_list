@@ -674,3 +674,6 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
     </Modal>
   );
 }
+
+// Default export as well so App.tsx can lazy-load it like every other page.
+export default AdminFinancesPage;
