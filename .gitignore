@@ -21,3 +21,9 @@ backend/prisma/migrations/**/migration_lock.toml
 # Logs
 *.log
 npm-debug.log*
+
+# Promo video project (local only, ships large media)
+video/
+
+# Supplier order exports
+frontend/public/camisetas/pedido-*.csv
