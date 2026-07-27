@@ -1,10 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  ConflictException,
-  BadRequestException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { Role, UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -14,6 +8,15 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { assertShirtNumberAvailable } from './shirt-number.util';
 import { BCRYPT_ROUNDS, DEFAULT_PASSWORD } from './users.constants';
+import {
+  BanReasonRequiredException,
+  CannotChangeOwnRoleException,
+  CannotEditOtherProfileException,
+  OnlyAdminCanChangeNameException,
+  PhoneTakenException,
+  UsernameTakenException,
+  UserNotFoundException,
+} from './exceptions';
 
 /** A participant as reported by the WhatsApp group metadata. */
 export interface WhatsappParticipant {
@@ -64,11 +67,9 @@ export class UsersService {
       where: { OR: [{ username }, { phone: normalizedPhone }] },
     });
     if (existing) {
-      throw new ConflictException(
-        existing.username === username
-          ? 'El nombre de usuario ya existe'
-          : 'El número de teléfono ya está registrado',
-      );
+      throw existing.username === username
+        ? new UsernameTakenException()
+        : new PhoneTakenException();
     }
 
     const rawPassword = dto.password || DEFAULT_PASSWORD;
@@ -192,7 +193,7 @@ export class UsersService {
       where: { id },
       select: USER_PUBLIC_SELECT,
     });
-    if (!user) throw new NotFoundException('Usuario no encontrado');
+    if (!user) throw new UserNotFoundException();
     return user;
   }
 
@@ -228,11 +229,11 @@ export class UsersService {
     const existing = await this.findOne(id);
 
     if (actorRole !== Role.admin && actorId !== id) {
-      throw new ForbiddenException('Solo puedes editar tu propio perfil');
+      throw new CannotEditOtherProfileException();
     }
 
     if (dto.name !== undefined && actorRole !== Role.admin) {
-      throw new ForbiddenException('Solo un administrador puede cambiar el nombre real.');
+      throw new OnlyAdminCanChangeNameException();
     }
 
     if (typeof dto.shirtNumber === 'number') {
@@ -274,7 +275,7 @@ export class UsersService {
     await this.findOne(id);
 
     if (dto.status === UserStatus.banned && !dto.reason) {
-      throw new BadRequestException('Se requiere una razón para banear al usuario');
+      throw new BanReasonRequiredException();
     }
 
     const updated = await this.prisma.user.update({
@@ -318,7 +319,7 @@ export class UsersService {
     const user = await this.findOne(id);
 
     if (user.id === actorId) {
-      throw new BadRequestException('No puedes cambiar tu propio rol');
+      throw new CannotChangeOwnRoleException();
     }
 
     const updated = await this.prisma.user.update({

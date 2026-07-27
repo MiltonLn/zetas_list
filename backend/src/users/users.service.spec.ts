@@ -1,8 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { Role } from '@prisma/client';
 import { UsersService } from './users.service';
+import {
+  PhoneTakenException,
+  ShirtNumberTakenException,
+  UsernameTakenException,
+} from './exceptions';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -69,9 +73,9 @@ describe('UsersService', () => {
     };
     const actorId = 'admin-1';
 
-    it('lanza ConflictException si el username ya existe', async () => {
+    it('lanza UsernameTakenException si el username ya existe', async () => {
       mockPrisma.user.findFirst.mockResolvedValue({ id: 'existing', username: 'jperez', phone: '999' });
-      await expect(service.create(baseDto as any, actorId)).rejects.toThrow(ConflictException);
+      await expect(service.create(baseDto as any, actorId)).rejects.toThrow(UsernameTakenException);
     });
 
     it('el mensaje de conflicto de username es específico', async () => {
@@ -79,9 +83,9 @@ describe('UsersService', () => {
       await expect(service.create(baseDto as any, actorId)).rejects.toThrow('nombre de usuario');
     });
 
-    it('lanza ConflictException si el teléfono ya existe', async () => {
+    it('lanza PhoneTakenException si el teléfono ya existe', async () => {
       mockPrisma.user.findFirst.mockResolvedValue({ id: 'x', username: 'otherone', phone: '3001234567' });
-      await expect(service.create(baseDto as any, actorId)).rejects.toThrow(ConflictException);
+      await expect(service.create(baseDto as any, actorId)).rejects.toThrow(PhoneTakenException);
     });
 
     it('el mensaje de conflicto de teléfono es específico', async () => {
@@ -273,7 +277,7 @@ describe('UsersService', () => {
 
       await expect(
         service.update('user-1', { shirtNumber: 7 } as any, 'user-1', Role.member),
-      ).rejects.toThrow(ConflictException);
+      ).rejects.toThrow(ShirtNumberTakenException);
     });
   });
 
