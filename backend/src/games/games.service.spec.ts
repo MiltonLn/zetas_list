@@ -1763,4 +1763,103 @@ describe('GamesService', () => {
       );
     });
   });
+
+  // ─── formatTeamsForWhatsapp ───────────────────────────────────────────────
+
+  describe('formatTeamsForWhatsapp', () => {
+    function makeTeamsGame() {
+      return makeGame({
+        registrations: [
+          makeReg({ id: 'r1', teamNumber: 1, user: { id: 'u1', name: 'Ana', alias: null, positions: ['armador'] } }),
+          makeReg({ id: 'r2', teamNumber: 1, userId: 'u2', user: { id: 'u2', name: 'Beto Ruiz', alias: 'Beto', positions: ['central'] } }),
+          makeReg({ id: 'r3', teamNumber: 2, userId: 'u3', user: { id: 'u3', name: 'Carla', alias: null, positions: ['armador', 'opuesto'] } }),
+          makeReg({ id: 'r4', teamNumber: 2, userId: null, isGuest: true, guestName: 'Invitado X', user: null }),
+          makeReg({ id: 'r5', teamNumber: null, userId: 'u5', user: { id: 'u5', name: 'SinEquipo', alias: null, positions: [] } }),
+          makeReg({ id: 'r6', isWaitingList: true, teamNumber: null, userId: 'u6', user: { id: 'u6', name: 'EnEspera', alias: null, positions: [] } }),
+        ],
+      });
+    }
+
+    it('agrupa jugadores por equipo con encabezados', () => {
+      const msg = service.formatTeamsForWhatsapp(makeTeamsGame() as any);
+      expect(msg).toContain('*Equipo 1:*');
+      expect(msg).toContain('*Equipo 2:*');
+      expect(msg).toContain('Ana');
+      expect(msg).toContain('Carla');
+    });
+
+    it('usa el alias cuando existe', () => {
+      const msg = service.formatTeamsForWhatsapp(makeTeamsGame() as any);
+      expect(msg).toContain('Beto');
+      expect(msg).not.toContain('Beto Ruiz');
+    });
+
+    it('marca a los armadores con 🎯 (incluye multi-posición)', () => {
+      const msg = service.formatTeamsForWhatsapp(makeTeamsGame() as any);
+      const lines = msg.split('\n');
+      expect(lines.find((l) => l.includes('Ana'))).toContain('🎯');
+      expect(lines.find((l) => l.includes('Carla'))).toContain('🎯');
+      expect(lines.find((l) => l.includes('Beto'))).not.toContain('🎯');
+    });
+
+    it('marca invitados con 👤 y no los cuenta como armadores', () => {
+      const msg = service.formatTeamsForWhatsapp(makeTeamsGame() as any);
+      const guestLine = msg.split('\n').find((l) => l.includes('Invitado X'));
+      expect(guestLine).toContain('👤');
+      expect(guestLine).not.toContain('🎯');
+    });
+
+    it('excluye jugadores sin equipo y la lista de espera', () => {
+      const msg = service.formatTeamsForWhatsapp(makeTeamsGame() as any);
+      expect(msg).not.toContain('SinEquipo');
+      expect(msg).not.toContain('EnEspera');
+    });
+
+    it('no incluye valores de habilidad en el mensaje', () => {
+      const msg = service.formatTeamsForWhatsapp(makeTeamsGame() as any);
+      expect(msg).not.toMatch(/skill/i);
+      expect(msg).not.toMatch(/\d\.\d/);
+    });
+
+    it('lanza TeamsNotGeneratedException si no hay equipos asignados', () => {
+      const game = makeGame({ registrations: [makeReg({ teamNumber: null })] });
+      expect(() => service.formatTeamsForWhatsapp(game as any)).toThrow('Aún no se han generado los equipos');
+    });
+  });
+
+  // ─── sendTeamsToWhatsapp ──────────────────────────────────────────────────
+
+  describe('sendTeamsToWhatsapp', () => {
+    it('envía el mensaje al grupo y audita teams_sent', async () => {
+      const game = makeGame({
+        registrations: [
+          makeReg({ id: 'r1', teamNumber: 1, user: { id: 'u1', name: 'Ana', alias: null, positions: ['armador'] } }),
+        ],
+      });
+      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+      mockWhatsapp.sendToGroup.mockResolvedValue(true);
+
+      const result = await service.sendTeamsToWhatsapp('game-1', 'admin-1');
+
+      expect(result.sent).toBe(true);
+      expect(mockWhatsapp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('*Equipo 1:*'));
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'teams_sent', actorId: 'admin-1' }),
+      );
+    });
+
+    it('reporta sent=false si WhatsApp falla sin lanzar excepción', async () => {
+      const game = makeGame({
+        registrations: [
+          makeReg({ id: 'r1', teamNumber: 1, user: { id: 'u1', name: 'Ana', alias: null, positions: ['armador'] } }),
+        ],
+      });
+      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+      mockWhatsapp.sendToGroup.mockRejectedValue(new Error('WhatsApp down'));
+
+      const result = await service.sendTeamsToWhatsapp('game-1', 'admin-1');
+
+      expect(result.sent).toBe(false);
+    });
+  });
 });

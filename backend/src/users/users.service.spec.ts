@@ -242,6 +242,58 @@ describe('UsersService', () => {
       ).rejects.toThrow('Solo un administrador puede cambiar el nombre real.');
     });
 
+    it('impide a un miembro calificar su propia habilidad', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(makeCreatedUser({ id: 'user-1' }));
+
+      await expect(
+        service.update('user-1', { skillLevel: 5.0 } as any, 'user-1', Role.member),
+      ).rejects.toThrow('Solo un administrador puede calificar la habilidad');
+    });
+
+    it('impide a un ayudante calificar la habilidad de otro', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(makeCreatedUser({ id: 'user-1' }));
+
+      await expect(
+        service.update('user-1', { skillLevel: 3.0 } as any, 'user-1', Role.ayudante),
+      ).rejects.toThrow('Solo un administrador puede calificar la habilidad');
+    });
+
+    it('permite a un admin calificar la habilidad de un jugador', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(makeCreatedUser({ id: 'user-1' }));
+      mockPrisma.user.update.mockResolvedValue(makeCreatedUser({ skillLevel: 4.5 }));
+
+      await service.update('user-1', { skillLevel: 4.5 } as any, 'admin-1', Role.admin);
+
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ skillLevel: 4.5 }),
+        }),
+      );
+    });
+
+    it('convierte skillLevel Decimal de Prisma a número en la respuesta de admin', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(makeCreatedUser({ id: 'user-1' }));
+      // Prisma devuelve Decimal para columnas DECIMAL: simulamos con un objeto convertible.
+      mockPrisma.user.update.mockResolvedValue(makeCreatedUser({ skillLevel: { toString: () => '4.5' } }));
+
+      const result = await service.update('user-1', { skillLevel: 4.5 } as any, 'admin-1', Role.admin);
+
+      expect((result as unknown as { skillLevel: number | null }).skillLevel).toBe(4.5);
+    });
+
+    it('guarda posiciones múltiples', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(makeCreatedUser({ id: 'user-1' }));
+      mockPrisma.user.update.mockResolvedValue(makeCreatedUser({ positions: ['armador', 'central'] }));
+
+      await service.update('user-1', { positions: ['armador', 'central'] } as any, 'user-1', Role.member);
+
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ positions: ['armador', 'central'] }),
+        }),
+      );
+    });
+
     it('llama a audit.log con "user_updated"', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(makeCreatedUser());
       mockPrisma.user.update.mockResolvedValue(makeCreatedUser());

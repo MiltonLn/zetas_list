@@ -6,7 +6,7 @@ import { UsersService } from '../users/users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { FinancesService } from '../finances/finances.service';
 import { Role } from '@prisma/client';
-import { AlreadyRegisteredException, ProxyLimitExceededException } from '../games/exceptions';
+import { AlreadyRegisteredException, ProxyLimitExceededException, TeamsNotGeneratedException } from '../games/exceptions';
 
 const mockWp = { sendToGroup: jest.fn(), sendMessage: jest.fn(), isConnected: jest.fn() };
 const mockGames = {
@@ -19,6 +19,7 @@ const mockGames = {
   promoteNext: jest.fn(),
   retryFromWaitingList: jest.fn(),
   formatListForWhatsapp: jest.fn(),
+  formatTeamsForWhatsapp: jest.fn(),
   buildCounts: jest.fn().mockReturnValue('📊 *1/18* cupos ocupados (17 disponibles)'),
   buildGameLink: jest.fn().mockReturnValue(''),
 };
@@ -1343,6 +1344,57 @@ describe('MessageHandlerService — handleMessage', () => {
       await service.handleMessage('111', '@Z confirmar @222', 'group-1', ['222@s.whatsapp.net']);
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('Solo los administradores'));
       expect(mockGames.confirmRegistration).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── @Z equipos ─────────────────────────────────────────────────────────────
+
+  describe('@Z equipos', () => {
+    beforeEach(() => jest.clearAllMocks());
+
+    it.each([
+      ['@Z equipos'],
+      ['@Z equipo'],
+      ['@Z teams'],
+      ['@z equipos'],
+    ])('reconoce el alias "%s"', async (cmd) => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findOne.mockResolvedValue(makeActiveGame());
+      mockGames.formatTeamsForWhatsapp.mockReturnValue('🏐 *Equipos*\n');
+
+      await service.handleMessage('111', cmd, 'group-1');
+
+      expect(mockGames.formatTeamsForWhatsapp).toHaveBeenCalled();
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith('🏐 *Equipos*\n');
+    });
+
+    it('responde sin lista si no hay juego abierto', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(null);
+
+      await service.handleMessage('111', '@Z equipos', 'group-1');
+
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('No hay ninguna lista abierta'));
+      expect(mockGames.formatTeamsForWhatsapp).not.toHaveBeenCalled();
+    });
+
+    it('avisa al usuario si los equipos aún no se generaron', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findOne.mockResolvedValue(makeActiveGame());
+      mockGames.formatTeamsForWhatsapp.mockImplementation(() => { throw new TeamsNotGeneratedException(); });
+
+      await service.handleMessage('111', '@Z equipos', 'group-1');
+
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(expect.stringContaining('no se han generado los equipos'));
+    });
+
+    it('no requiere que el usuario tenga cuenta registrada', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(makeActiveGame());
+      mockGames.findOne.mockResolvedValue(makeActiveGame());
+      mockGames.formatTeamsForWhatsapp.mockReturnValue('msg');
+
+      await service.handleMessage('999999999', '@Z equipos', 'group-1');
+
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith('msg');
     });
   });
 });

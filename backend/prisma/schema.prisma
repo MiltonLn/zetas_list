@@ -90,6 +90,8 @@ enum AuditAction {
   order_created
   order_updated
   order_status_changed
+  teams_generated
+  teams_sent
 }
 
 enum TransactionType {
@@ -111,7 +113,8 @@ model User {
   phone        String     @unique
   whatsappLid  String?    @unique
   role         Role       @default(member)
-  position     Position?
+  positions    Position[] @default([])
+  skillLevel   Decimal?   @db.Decimal(2, 1)
   gender       Gender?
   heightCm     Int?
   birthDate    DateTime?
@@ -188,6 +191,7 @@ model GameRegistration {
   confirmationDeadline DateTime?
   confirmationDeclined Boolean   @default(false)
   originalWaitPosition Int?
+  teamNumber           Int?
   registeredAt         DateTime  @default(now())
   registeredById       String
 

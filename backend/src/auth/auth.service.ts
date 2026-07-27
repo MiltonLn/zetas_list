@@ -60,7 +60,7 @@ export class AuthService {
         name: user.name,
         role: user.role,
         phone: user.phone,
-        position: user.position,
+        positions: user.positions,
         gender: user.gender,
         photoUrl: user.photoUrl,
         mustChangePassword: user.mustChangePassword,

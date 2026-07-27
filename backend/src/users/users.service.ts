@@ -21,7 +21,7 @@ const USER_PUBLIC_SELECT = {
   alias: true,
   phone: true,
   role: true,
-  position: true,
+  positions: true,
   gender: true,
   heightCm: true,
   birthDate: true,
@@ -34,6 +34,18 @@ const USER_PUBLIC_SELECT = {
   createdAt: true,
   updatedAt: true,
 };
+
+// skillLevel is deliberately excluded from USER_PUBLIC_SELECT: only admins may
+// see it. Admin-only queries use this extended select and convert the Prisma
+// Decimal to a plain number for JSON.
+const USER_ADMIN_SELECT = {
+  ...USER_PUBLIC_SELECT,
+  skillLevel: true,
+};
+
+function toAdminUser<T extends { skillLevel: unknown }>(user: T): Omit<T, 'skillLevel'> & { skillLevel: number | null } {
+  return { ...user, skillLevel: user.skillLevel != null ? Number(user.skillLevel) : null };
+}
 
 @Injectable()
 export class UsersService {
@@ -70,7 +82,8 @@ export class UsersService {
         alias: dto.alias?.trim() || null,
         phone: normalizedPhone,
         role: dto.role ?? Role.member,
-        position: dto.position,
+        positions: dto.positions,
+        skillLevel: dto.skillLevel,
         gender: dto.gender,
         heightCm: dto.heightCm,
         birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
@@ -78,7 +91,8 @@ export class UsersService {
         bio: dto.bio,
         mustChangePassword,
       },
-      select: USER_PUBLIC_SELECT,
+      // Create is an admin-only route, so returning skillLevel is safe.
+      select: USER_ADMIN_SELECT,
     });
 
     await this.audit.log({
@@ -88,11 +102,12 @@ export class UsersService {
       details: { username: user.username, role: user.role },
     });
 
-    return user;
+    return toAdminUser(user);
   }
 
   async findAll(search?: string) {
-    return this.prisma.user.findMany({
+    // Admin-only route: includes skillLevel.
+    const users = await this.prisma.user.findMany({
       where: search
         ? {
             OR: [
@@ -102,9 +117,10 @@ export class UsersService {
             ],
           }
         : undefined,
-      select: USER_PUBLIC_SELECT,
+      select: USER_ADMIN_SELECT,
       orderBy: { name: 'asc' },
     });
+    return users.map(toAdminUser);
   }
 
   async findOne(id: string) {
@@ -155,6 +171,10 @@ export class UsersService {
       throw new ForbiddenException('Solo un administrador puede cambiar el nombre real.');
     }
 
+    if (dto.skillLevel !== undefined && actorRole !== Role.admin) {
+      throw new ForbiddenException('Solo un administrador puede calificar la habilidad de un jugador.');
+    }
+
     if (typeof dto.shirtNumber === 'number') {
       await assertShirtNumberAvailable(this.prisma, {
         number: dto.shirtNumber,
@@ -168,7 +188,8 @@ export class UsersService {
       data: {
         name: dto.name,
         alias: dto.alias !== undefined ? (dto.alias.trim() || null) : undefined,
-        position: dto.position,
+        positions: dto.positions,
+        skillLevel: dto.skillLevel,
         gender: dto.gender,
         heightCm: dto.heightCm,
         birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
@@ -177,7 +198,7 @@ export class UsersService {
         shirtSize: dto.shirtSize,
         shirtNumber: dto.shirtNumber,
       },
-      select: USER_PUBLIC_SELECT,
+      select: actorRole === Role.admin ? USER_ADMIN_SELECT : USER_PUBLIC_SELECT,
     });
 
     await this.audit.log({
@@ -187,7 +208,7 @@ export class UsersService {
       details: dto as Record<string, unknown>,
     });
 
-    return updated;
+    return 'skillLevel' in updated ? toAdminUser(updated as typeof updated & { skillLevel: unknown }) : updated;
   }
 
   async updateStatus(id: string, dto: UpdateStatusDto, actorId: string) {

@@ -227,6 +227,18 @@ export class GamesController {
     return this.gamesService.setFineExempt(id, regId, dto.exempt, user.id);
   }
 
+  @Roles(Role.admin)
+  @Post(':id/teams/generate')
+  generateTeams(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.gamesService.generateTeams(id, user.id);
+  }
+
+  @Roles(Role.admin)
+  @Post(':id/teams/send-whatsapp')
+  sendTeamsToWhatsapp(@Param('id') id: string, @CurrentUser() user: JwtUser) {
+    return this.gamesService.sendTeamsToWhatsapp(id, user.id);
+  }
+
   @Get(':id/report')
   getReport(@Param('id') id: string) {
     return this.gamesService.getStoredReport(id);

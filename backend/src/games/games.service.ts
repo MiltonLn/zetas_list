@@ -31,7 +31,9 @@ import {
   CannotRemoveOtherException,
   NoOneInWaitListException,
   UserHasUnpaidFinesException,
+  TeamsNotGeneratedException,
 } from './exceptions';
+import { generateBalancedTeams, TeamPlayer, Rng } from './teams.utils';
 import {
   displayName,
   userDisplayName,
@@ -1488,6 +1490,129 @@ export class GamesService {
       lines.push('_Sin anotados aún_');
     }
 
+    lines.push(buildGameLink(game.id));
+
+    return lines.join('\n');
+  }
+
+  // ─── TEAMS ────────────────────────────────────────────────────────────────
+
+  /**
+   * Generates balanced teams from the main list and persists the assignment
+   * as `teamNumber` on each registration. Regenerating overwrites the previous
+   * assignment. Admin-only (enforced at the controller).
+   */
+  async generateTeams(gameId: string, actorId: string, rng?: Rng) {
+    const teams = await this.prisma.$transaction(
+      async (tx) => {
+        const game = await tx.$queryRaw<Array<{ id: string; status: string; modalidad: Modalidad }>>`
+          SELECT id, status, modalidad FROM games WHERE id = ${gameId} FOR UPDATE
+        `;
+        if (!game.length) throw new GameNotFoundException();
+        const g = game[0];
+        if (g.status !== 'registration_open' && g.status !== 'in_progress') {
+          throw new GameNotOpenException();
+        }
+
+        // Internal-only include: skillLevel never travels in REGISTRATION_INCLUDE
+        // (game responses are visible to all members), but the algorithm needs it.
+        const mainList = await tx.gameRegistration.findMany({
+          where: { gameId, isWaitingList: false },
+          orderBy: { position: 'asc' },
+          include: {
+            user: { select: { id: true, name: true, alias: true, positions: true, skillLevel: true } },
+            registeredBy: { select: { id: true, name: true, alias: true } },
+          },
+        });
+
+        const players: TeamPlayer[] = mainList.map((r) => ({
+          registrationId: r.id,
+          displayName: displayName(r),
+          isGuest: r.isGuest,
+          skillLevel: r.user?.skillLevel != null ? Number(r.user.skillLevel) : null,
+          positions: r.user?.positions ?? [],
+        }));
+
+        const generated = generateBalancedTeams(players, g.modalidad, rng);
+
+        for (const team of generated) {
+          await tx.gameRegistration.updateMany({
+            where: { gameId, id: { in: team.players.map((p) => p.registrationId) } },
+            data: { teamNumber: team.teamNumber },
+          });
+        }
+        const assignedIds = generated.flatMap((t) => t.players.map((p) => p.registrationId));
+        await tx.gameRegistration.updateMany({
+          where: { gameId, id: { notIn: assignedIds } },
+          data: { teamNumber: null },
+        });
+
+        return generated;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    await this.audit.log({
+      gameId,
+      actorId,
+      action: 'teams_generated',
+      details: {
+        teams: teams.map((t) => ({ teamNumber: t.teamNumber, players: t.players.map((p) => p.displayName) })),
+      },
+    });
+
+    this.logger.log(
+      `[TEAMS] game=${gameId} | generated=${teams.length} teams | sizes=${teams.map((t) => t.players.length).join(',')}`,
+    );
+
+    const updated = await this.findOne(gameId);
+    this.events.emit({ gameId, type: 'update', data: updated });
+    return updated;
+  }
+
+  async sendTeamsToWhatsapp(gameId: string, actorId: string) {
+    const game = await this.findOne(gameId);
+    const message = this.formatTeamsForWhatsapp(game);
+
+    const sent = await this.whatsapp
+      .sendToGroup(message)
+      .catch((e) => {
+        this.logger.warn('WhatsApp send failed', e);
+        return false;
+      });
+
+    await this.audit.log({
+      gameId,
+      actorId,
+      action: 'teams_sent',
+      details: { sent },
+    });
+
+    return { sent };
+  }
+
+  formatTeamsForWhatsapp(game: Awaited<ReturnType<typeof this.findOne>>) {
+    const assigned = game.registrations.filter((r) => !r.isWaitingList && r.teamNumber != null);
+    if (assigned.length === 0) throw new TeamsNotGeneratedException();
+
+    const teamNumbers = [...new Set(assigned.map((r) => r.teamNumber as number))].sort((a, b) => a - b);
+
+    const lines: string[] = [`🏐 *Equipos — ${game.title}*`, ''];
+
+    for (const n of teamNumbers) {
+      const members = assigned.filter((r) => r.teamNumber === n);
+      lines.push(`*Equipo ${n}:*`);
+      members.forEach((r, i) => {
+        const isSetter = !r.isGuest && (r.user?.positions ?? []).includes('armador');
+        const name = r.isGuest
+          ? `${r.guestName || 'Invitado'} 👤`
+          : displayName(r);
+        lines.push(`${i + 1}. ${name}${isSetter ? ' 🎯' : ''}`);
+      });
+      lines.push('');
+    }
+
+    lines.push('_🎯 = armador_');
     lines.push(buildGameLink(game.id));
 
     return lines.join('\n');

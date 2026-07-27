@@ -29,6 +29,7 @@ import { GameAuditModal } from '../components/GameAuditModal';
 import { GameCancelModal } from '../components/GameCancelModal';
 import { GameCompleteModal } from '../components/GameCompleteModal';
 import { RegisterOtherModal } from '../components/RegisterOtherModal';
+import { TeamsModal } from '../components/TeamsModal';
 import { showToast } from '../utils/toast';
 import { getApiError } from '../services/api';
 import { formatReportLine } from '../utils/format-report';
@@ -61,6 +62,8 @@ export default function GameDetailPage() {
 
   const [availableMembers, setAvailableMembers] = useState<Array<{ id: string; name: string; phone: string; username: string }>>([]);
   const [showRegisterOther, setShowRegisterOther] = useState(false);
+
+  const [showTeams, setShowTeams] = useState(false);
 
   const reorderTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mainListRef = useRef(mainList);
@@ -276,6 +279,7 @@ export default function GameDetailPage() {
   const hasPendingConfirmation = allRegs.some(
     (r) => r.userId === user?.id && r.pendingConfirmation,
   );
+  const hasTeams = mainList.some((r) => r.teamNumber != null);
 
   const paidMain = mainList.filter((r) => r.paid).length;
   const paidWait = waitList.filter((r) => r.paid).length;
@@ -341,6 +345,18 @@ export default function GameDetailPage() {
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2da44e', display: 'inline-block', animation: 'pulse 2s infinite' }} />
               En vivo
             </span>
+          )}
+          {(hasTeams || (isAdmin && isOpen)) && (
+            <button
+              onClick={() => setShowTeams(true)}
+              style={{
+                marginLeft: 'auto', background: 'none', border: '1px solid #2a2f5a',
+                borderRadius: 8, padding: '5px 12px', color: '#6e8efb',
+                cursor: 'pointer', fontSize: 12, fontWeight: 600,
+              }}
+            >
+              🏐 {hasTeams ? 'Ver equipos' : 'Generar equipos'}
+            </button>
           )}
         </div>
 
@@ -654,6 +670,18 @@ export default function GameDetailPage() {
           onSuccess={() => { fetchGame(); loadAvailableMembers(); }}
         />
       )}
+
+      <TeamsModal
+        open={showTeams}
+        onClose={() => setShowTeams(false)}
+        game={game}
+        isAdmin={isAdmin}
+        onGameUpdate={(updated) => {
+          setGame(updated);
+          setMainList(updated.registrations.filter((r) => !r.isWaitingList).sort((a, b) => a.position - b.position));
+          setWaitList(updated.registrations.filter((r) => r.isWaitingList).sort((a, b) => a.position - b.position));
+        }}
+      />
     </>
   );
 }

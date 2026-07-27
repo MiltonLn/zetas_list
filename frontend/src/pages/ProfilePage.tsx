@@ -5,7 +5,8 @@ import { usersService } from '../services/users.service';
 import type { UpdateUserPayload } from '../services/users.service';
 import { authService } from '../services/auth.service';
 import type { User, Position, Gender, ShirtSize } from '../types';
-import { POSITION_LABELS, GENDER_LABELS, SHIRT_SIZES } from '../types';
+import { GENDER_LABELS, SHIRT_SIZES } from '../types';
+import { PositionsField } from '../components/PositionsField';
 import { PageHeader } from '../components/PageHeader';
 import { Avatar } from '../components/Avatar';
 import { ImageCropModal } from '../components/ImageCropModal';
@@ -25,7 +26,7 @@ export default function ProfilePage() {
   const [name, setName] = useState('');
   const [alias, setAlias] = useState('');
   const [bio, setBio] = useState('');
-  const [position, setPosition] = useState<Position | ''>('');
+  const [positions, setPositions] = useState<Position[]>([]);
   const [gender, setGender] = useState<Gender | ''>('');
   const [heightCm, setHeightCm] = useState('');
   const [birthDate, setBirthDate] = useState('');
@@ -51,7 +52,7 @@ export default function ProfilePage() {
         setName(data.name);
         setAlias(data.alias || '');
         setBio(data.bio || '');
-        setPosition((data.position as Position) || '');
+        setPositions(data.positions || []);
         setGender((data.gender as Gender) || '');
         setHeightCm(data.heightCm?.toString() || '');
         setBirthDate(data.birthDate ? data.birthDate.slice(0, 10) : '');
@@ -76,7 +77,7 @@ export default function ProfilePage() {
         ...(isAdmin ? { name } : {}),
         alias: alias || '',
         bio: bio || undefined,
-        position: position || undefined,
+        positions,
         gender: (gender as Gender) || undefined,
         heightCm: heightCm ? parseInt(heightCm) : undefined,
         birthDate: birthDate || undefined,
@@ -251,40 +252,31 @@ export default function ProfilePage() {
               </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>
-                  Posición
-                </label>
-                <select
-                  className="zetas-input"
-                  value={position}
-                  onChange={(e) => setPosition(e.target.value as Position | '')}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <option value="">Sin especificar</option>
-                  {Object.entries(POSITION_LABELS).map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
-                  ))}
-                </select>
-              </div>
+            <div>
+              <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>
+                Posiciones
+              </label>
+              <PositionsField value={positions} onChange={setPositions} />
+              <p style={{ color: '#7c8db5', fontSize: 11, margin: '4px 0 0' }}>
+                Puedes seleccionar más de una posición.
+              </p>
+            </div>
 
-              <div>
-                <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>
-                  Género
-                </label>
-                <select
-                  className="zetas-input"
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value as Gender | '')}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <option value="">Sin especificar</option>
-                  {Object.entries(GENDER_LABELS).map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
-                  ))}
-                </select>
-              </div>
+            <div>
+              <label style={{ display: 'block', color: '#7c8db5', fontSize: 13, marginBottom: 5 }}>
+                Género
+              </label>
+              <select
+                className="zetas-input"
+                value={gender}
+                onChange={(e) => setGender(e.target.value as Gender | '')}
+                style={{ cursor: 'pointer' }}
+              >
+                <option value="">Sin especificar</option>
+                {Object.entries(GENDER_LABELS).map(([v, l]) => (
+                  <option key={v} value={v}>{l}</option>
+                ))}
+              </select>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

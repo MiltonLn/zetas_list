@@ -94,3 +94,27 @@ export class UserHasUnpaidFinesException extends ForbiddenException {
     super('No puedes anotarte porque tienes multas/deudas pendientes. Contacta a un admin para ponerte al día.');
   }
 }
+
+export class UnratedPlayersException extends BadRequestException {
+  constructor(names: string[]) {
+    super(`No se pueden generar equipos: hay jugadores sin calificación de habilidad: ${names.join(', ')}.`);
+  }
+}
+
+export class NotEnoughPlayersException extends BadRequestException {
+  constructor(minimum: number) {
+    super(`No hay suficientes jugadores en la lista principal para formar equipos (mínimo ${minimum}).`);
+  }
+}
+
+export class NotEnoughSettersException extends BadRequestException {
+  constructor(needed: number, available: number) {
+    super(`No hay suficientes armadores para formar los equipos: se necesitan ${needed} y hay ${available}.`);
+  }
+}
+
+export class TeamsNotGeneratedException extends BadRequestException {
+  constructor() {
+    super('Aún no se han generado los equipos para este partido.');
+  }
+}

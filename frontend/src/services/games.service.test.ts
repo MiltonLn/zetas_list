@@ -85,6 +85,27 @@ describe('gamesService', () => {
     });
   });
 
+  describe('generateTeams', () => {
+    it('calls POST /games/:id/teams/generate', async () => {
+      mockApi.post.mockResolvedValue({ data: {} });
+
+      await gamesService.generateTeams('g1');
+
+      expect(mockApi.post).toHaveBeenCalledWith('/games/g1/teams/generate');
+    });
+  });
+
+  describe('sendTeamsWhatsapp', () => {
+    it('calls POST /games/:id/teams/send-whatsapp', async () => {
+      mockApi.post.mockResolvedValue({ data: { sent: true } });
+
+      const result = await gamesService.sendTeamsWhatsapp('g1');
+
+      expect(mockApi.post).toHaveBeenCalledWith('/games/g1/teams/send-whatsapp');
+      expect(result.data.sent).toBe(true);
+    });
+  });
+
   describe('list', () => {
     it('forwards query params', async () => {
       mockApi.get.mockResolvedValue({ data: { data: [], total: 0, page: 1, limit: 10 } });

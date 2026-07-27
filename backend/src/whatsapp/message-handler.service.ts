@@ -16,6 +16,7 @@ import {
   ProxyLimitExceededException,
   InactiveUserException,
   MustBeRegisteredFirstException,
+  TeamsNotGeneratedException,
 } from '../games/exceptions';
 import { extractPhoneFromJid } from './utils/jid-utils';
 import { userDisplayName } from '../games/games.utils';
@@ -60,6 +61,7 @@ const CMD_FINANCES = /^@z\s+(finanzas|presupuesto|plata|dinero|caja|lucas|fondos
 const CMD_FINED = /^@z\s+(multados|deudores|morosos|multas|deudas)\b/i;
 const CMD_PAYMENT = /^@z\s+(llave|pago|pagos|transferencia|nequi)\b/i;
 const CMD_ALIASES = /^@z\s+(alias|variantes|sinonimos|alternativas)\b/i;
+const CMD_TEAMS   = /^@z\s+(equipos|teams|equipo)\b/i;
 const CMD_IS_BOT_MENTION = /^@z\b/i;
 
 const MSG_NO_ACTIVE_GAME = 'No hay ninguna lista abierta en el momento 🤷';
@@ -95,6 +97,7 @@ export class MessageHandlerService {
   ) {
     this.commands = [
       { regex: CMD_LIST,    requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: (ctx) => this.handleList(ctx) },
+      { regex: CMD_TEAMS,   requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: (ctx) => this.handleTeams(ctx) },
       { regex: CMD_HELP,    requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleHelp() },
       { regex: CMD_ALIASES, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleAliases() },
       { regex: CMD_RULES,   requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.handleRules() },
@@ -216,6 +219,24 @@ export class MessageHandlerService {
     await this.wp.sendToGroup(list);
   }
 
+  private async handleTeams(ctx: CommandContext): Promise<void> {
+    if (!ctx.activeGame) {
+      await this.wp.sendToGroup(MSG_NO_ACTIVE_GAME);
+      return;
+    }
+    try {
+      const game = await this.games.findOne(ctx.activeGame.id);
+      const message = this.games.formatTeamsForWhatsapp(game);
+      await this.wp.sendToGroup(message);
+    } catch (e: unknown) {
+      if (e instanceof TeamsNotGeneratedException) {
+        await this.wp.sendToGroup(`⚠️ Aún no se han generado los equipos para este partido. Un admin debe generarlos desde la app.`);
+        return;
+      }
+      throw e;
+    }
+  }
+
   private async handleHelp(): Promise<void> {
     await this.wp.sendToGroup(
       `🤖 *Comandos del Bot Zetas*\n\n` +
@@ -228,6 +249,7 @@ export class MessageHandlerService {
       `• *${BOT_MENTION} invitar Nombre, Nombre2* — Anotar uno o varios invitados externos\n\n` +
       `📋 *Consulta:*\n` +
       `• *${BOT_MENTION} lista* — Ver la lista actual y cupos\n` +
+      `• *${BOT_MENTION} equipos* — Ver los equipos del partido actual\n` +
       `• *${BOT_MENTION} reglas* — Ver las reglas del grupo\n` +
       `• *${BOT_MENTION} finanzas* — Ver el presupuesto del grupo\n` +
       `• *${BOT_MENTION} multados* — Ver personas con multas pendientes\n\n` +
@@ -256,6 +278,8 @@ export class MessageHandlerService {
       `confirmar · confirmo · confirma · listo · acepto\n\n` +
       `📋 *Ver lista:*\n` +
       `lista · cupos · quiénes van · cuántos · cómo vamos\n\n` +
+      `🏐 *Ver equipos:*\n` +
+      `equipos · equipo · teams\n\n` +
       `⬆️ *Promover de espera:*\n` +
       `promover · subir · jalar · meter\n\n` +
       `🎟️ *Invitar externos (uno o varios, separados por coma):*\n` +
