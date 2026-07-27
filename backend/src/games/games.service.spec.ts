@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { GameStatus, Modalidad, Prisma, Role } from '@prisma/client';
 import { GamesService } from './games.service';
-import { displayName, userDisplayName } from './games.utils';
+import { ACTIVE_GAME_STATUSES, displayName, userDisplayName } from './games.utils';
 import { formatCutoffTime } from './games.utils';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -1045,6 +1045,44 @@ describe('GamesService', () => {
           where: expect.objectContaining({
             id: { notIn: ['user-1', 'user-2'] },
           }),
+        }),
+      );
+    });
+  });
+
+  // ─── findActiveGame ───────────────────────────────────────────────────────
+
+  describe('findActiveGame', () => {
+    it('busca el juego abierto o en curso más reciente', async () => {
+      const game = makeGame();
+      mockPrisma.game.findFirst.mockResolvedValue(game);
+
+      const result = await service.findActiveGame();
+
+      expect(result).toBe(game);
+      expect(mockPrisma.game.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { status: { in: [...ACTIVE_GAME_STATUSES] } },
+          orderBy: { createdAt: 'desc' },
+        }),
+      );
+    });
+
+    it('carga el alias de miembros e invitadores (necesario para @Z lista)', async () => {
+      mockPrisma.game.findFirst.mockResolvedValue(null);
+
+      await service.findActiveGame();
+
+      expect(mockPrisma.game.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: {
+            registrations: expect.objectContaining({
+              include: expect.objectContaining({
+                user: { select: expect.objectContaining({ alias: true }) },
+                registeredBy: { select: expect.objectContaining({ alias: true }) },
+              }),
+            }),
+          },
         }),
       );
     });

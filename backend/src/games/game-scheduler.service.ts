@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GamesService } from './games.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { GameStatus } from '@prisma/client';
+import { ACTIVE_GAME_STATUSES } from './games.utils';
 import { runWithLogContext, newReqId } from '../common/logging/log-context';
 
 @Injectable()
@@ -81,7 +82,7 @@ export class GameSchedulerService {
   async checkGuestCutoff() {
     const activeGames = await this.prisma.game.findMany({
       where: {
-        status: { in: [GameStatus.registration_open, GameStatus.in_progress] },
+        status: { in: [...ACTIVE_GAME_STATUSES] },
         cutoffNotified: false,
       },
     });
