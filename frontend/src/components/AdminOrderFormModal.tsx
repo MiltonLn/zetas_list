@@ -4,6 +4,7 @@ import { usersService } from '../services/users.service';
 import type { CatalogProduct, Order, ShirtSize, User } from '../types';
 import { getApiError } from '../services/api';
 import { Spinner } from './Spinner';
+import { formatCurrency } from '../utils/currency';
 
 interface CartLine {
   key: number;
@@ -29,7 +30,6 @@ function emptyLine(): CartLine {
   return { key: nextKey(), productId: '', variantId: '', size: '', quantityStr: '1', customName: '' };
 }
 
-const money = (n: number) => `$${n.toLocaleString('es-CO')}`;
 
 export function AdminOrderFormModal({ order, onClose, onSaved }: Props) {
   const isEdit = !!order;
@@ -412,7 +412,7 @@ export function AdminOrderFormModal({ order, onClose, onSaved }: Props) {
             {/* Total */}
             {totalAmount > 0 && (
               <p style={{ color: '#e8eaf6', fontWeight: 700, fontSize: 15, marginBottom: 16 }}>
-                Total: {money(totalAmount)}
+                Total: {formatCurrency(totalAmount)}
               </p>
             )}
 

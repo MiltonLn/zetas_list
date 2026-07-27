@@ -1,10 +1,12 @@
 import { useState, useMemo } from 'react';
 import { Avatar, resolvePhotoUrl } from './Avatar';
 import { POSITION_LABELS, GENDER_LABELS } from '../types';
+import { displayName } from '../utils/display-name';
 import type { Position, Gender } from '../types';
 
 export interface ProfileUser {
   name: string;
+  alias?: string | null;
   username: string;
   phone: string;
   position?: Position;
@@ -74,10 +76,15 @@ export function PlayerProfileModal({ user: u, listInfo, onClose }: Props) {
               onClick={() => u.photoUrl && setFullPhoto(resolvePhotoUrl(u.photoUrl))}
               style={{ cursor: u.photoUrl ? 'pointer' : 'default' }}
             >
-              <Avatar name={u.name} photoUrl={u.photoUrl} size={88} />
+              <Avatar name={displayName(u)} photoUrl={u.photoUrl} size={88} />
             </div>
             <div style={{ textAlign: 'center' }}>
-              <p style={{ color: '#e8eaf6', fontSize: 18, fontWeight: 700, margin: 0 }}>{u.name}</p>
+              <p style={{ color: '#e8eaf6', fontSize: 18, fontWeight: 700, margin: 0 }}>{displayName(u)}</p>
+              {/* Real name as a subtitle: the list only ever shows the alias, so
+                  this modal is where you find out who it actually is. */}
+              {displayName(u) !== u.name && (
+                <p style={{ color: '#a0aec0', fontSize: 13, margin: '2px 0 0' }}>{u.name}</p>
+              )}
               <p style={{ color: '#7c8db5', fontSize: 13, margin: '4px 0 0' }}>@{u.username}</p>
             </div>
             {u.bio && (

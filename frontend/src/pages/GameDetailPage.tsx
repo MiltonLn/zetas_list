@@ -33,6 +33,7 @@ import { RegisterOtherModal } from '../components/RegisterOtherModal';
 import { showToast } from '../utils/toast';
 import { getApiError } from '../services/api';
 import { formatReportLine } from '../utils/format-report';
+import { formatCurrency } from '../utils/currency';
 
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -359,7 +360,7 @@ export default function GameDetailPage() {
               { label: 'Anotados', value: `${mainList.length}/${game.maxMainSpots}` },
               { label: 'Asistieron', value: `${attended}` },
               { label: 'Pagaron', value: `${totalPaid}` },
-              { label: 'Recaudado', value: `$${recaudado.toLocaleString('es-CO')}` },
+              { label: 'Recaudado', value: formatCurrency(recaudado) },
             ].map(({ label, value }) => (
               <div key={label} style={{
                 background: '#161829', border: '1px solid #2a2f5a',

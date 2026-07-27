@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { displayName } from '../utils/display-name';
 
 interface SidebarProps {
   open: boolean;
@@ -32,6 +33,7 @@ function NavItem({
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { user, isAdmin, logout } = useAuth();
+  const shownName = user ? displayName(user) : undefined;
 
   return (
     <>
@@ -107,11 +109,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <div className="sidebar-footer">
           <div className="sidebar-user">
             <div className="sidebar-avatar">
-              {user?.name?.[0]?.toUpperCase() ?? '?'}
+              {shownName?.[0]?.toUpperCase() ?? '?'}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ color: '#e8eaf6', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {user?.name}
+                {shownName}
               </div>
               <div style={{ color: '#7c8db5', fontSize: 11 }}>
                 @{user?.username}
