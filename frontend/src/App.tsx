@@ -17,18 +17,18 @@ import { FinancesDashboardPage } from './pages/FinancesDashboardPage';
 import { AdminFinancesPage } from './pages/AdminFinancesPage';
 import CamisetasPage from './pages/CamisetasPage';
 import { AdminOrdersPage } from './pages/AdminOrdersPage';
+import { ADMIN_ONLY, GAME_MANAGERS } from './utils/roles';
+import type { Role } from './types';
 
-function AuthenticatedApp({ children }: { children: React.ReactNode }) {
+function AuthenticatedApp({
+  children,
+  allowedRoles,
+}: {
+  children: React.ReactNode;
+  allowedRoles?: readonly Role[];
+}) {
   return (
-    <PrivateRoute>
-      <AppLayout>{children}</AppLayout>
-    </PrivateRoute>
-  );
-}
-
-function AdminApp({ children }: { children: React.ReactNode }) {
-  return (
-    <PrivateRoute adminOnly>
+    <PrivateRoute allowedRoles={allowedRoles}>
       <AppLayout>{children}</AppLayout>
     </PrivateRoute>
   );
@@ -75,33 +75,33 @@ export default function App() {
           <Route
             path="/admin/users"
             element={
-              <AdminApp>
+              <AuthenticatedApp allowedRoles={ADMIN_ONLY}>
                 <AdminUsersPage />
-              </AdminApp>
+              </AuthenticatedApp>
             }
           />
           <Route
             path="/admin/games/new"
             element={
-              <AdminApp>
+              <AuthenticatedApp allowedRoles={ADMIN_ONLY}>
                 <CreateGamePage />
-              </AdminApp>
+              </AuthenticatedApp>
             }
           />
           <Route
             path="/admin/legacy-parser"
             element={
-              <AdminApp>
+              <AuthenticatedApp allowedRoles={GAME_MANAGERS}>
                 <LegacyParserPage />
-              </AdminApp>
+              </AuthenticatedApp>
             }
           />
           <Route
             path="/admin/finances"
             element={
-              <AdminApp>
+              <AuthenticatedApp allowedRoles={ADMIN_ONLY}>
                 <AdminFinancesPage />
-              </AdminApp>
+              </AuthenticatedApp>
             }
           />
           <Route
@@ -123,9 +123,9 @@ export default function App() {
           <Route
             path="/admin/camisetas"
             element={
-              <AdminApp>
+              <AuthenticatedApp allowedRoles={ADMIN_ONLY}>
                 <AdminOrdersPage />
-              </AdminApp>
+              </AuthenticatedApp>
             }
           />
           <Route path="*" element={<Navigate to="/" replace />} />

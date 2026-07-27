@@ -1,13 +1,16 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Spinner } from './Spinner';
+import { hasRole } from '../utils/roles';
+import type { Role } from '../types';
 
 interface PrivateRouteProps {
   children: React.ReactNode;
-  adminOnly?: boolean;
+  /** Omit to allow any authenticated user. */
+  allowedRoles?: readonly Role[];
 }
 
-export function PrivateRoute({ children, adminOnly = false }: PrivateRouteProps) {
+export function PrivateRoute({ children, allowedRoles }: PrivateRouteProps) {
   const { user, loading } = useAuth();
   const { pathname } = useLocation();
 
@@ -23,7 +26,9 @@ export function PrivateRoute({ children, adminOnly = false }: PrivateRouteProps)
   if (user.mustChangePassword && pathname !== '/change-password') {
     return <Navigate to="/change-password" replace />;
   }
-  if (adminOnly && user.role !== 'admin') return <Navigate to="/" replace />;
+  if (allowedRoles && !hasRole(user.role, allowedRoles)) {
+    return <Navigate to="/" replace />;
+  }
 
   return <>{children}</>;
 }
