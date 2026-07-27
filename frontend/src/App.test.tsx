@@ -23,6 +23,10 @@ describe('App routing', () => {
   it('carga una ruta pública sin sesión', async () => {
     window.history.pushState({}, '', '/reglas');
     render(<App />);
-    expect(await screen.findByText(/Reglas/i)).toBeInTheDocument();
+    // Match the page's own heading, not the fetched markdown: both contain
+    // "Reglas" and a loose matcher resolves to whichever renders first.
+    expect(
+      await screen.findByRole('heading', { name: 'Reglas del Grupo 2026' }),
+    ).toBeInTheDocument();
   });
 });
