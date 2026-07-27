@@ -20,6 +20,7 @@ import {
 import { extractPhoneFromJid } from './utils/jid-utils';
 import { userDisplayName } from '../games/games.utils';
 import { isExpectedBusinessError } from '../common/errors/is-expected-error';
+import { env } from '../config/env';
 import {
   runWithLogContext,
   setLogContext,
@@ -319,10 +320,9 @@ export class MessageHandlerService {
   }
 
   private async handlePayment(): Promise<void> {
-    const brebKey = process.env.BREB_KEY ?? '@MLR608';
     await this.wp.sendToGroup(
       `💳 *Medio de pago*\n\n` +
-      `Bre-B: *${brebKey}*`,
+      `Bre-B: *${env.BREB_KEY}*`,
     );
   }
 

@@ -16,6 +16,7 @@ import {
   resolveNonBotMentions,
   phoneToJid,
 } from '../utils/jid-utils';
+import { env, isProduction } from '../../config/env';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -33,7 +34,7 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
   // Dedicated, quiet logger for Baileys internals. Override with WA_LOG_LEVEL
   // (e.g. 'debug') only when troubleshooting the WhatsApp connection itself.
   private readonly baileysLogger = pino({
-    level: process.env.WA_LOG_LEVEL || 'warn',
+    level: env.WA_LOG_LEVEL,
   });
   private sock: any = null;
   private connected = false;
@@ -50,7 +51,7 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
   private lidMapBuilding = false;
 
   constructor(private readonly prisma: PrismaService) {
-    this.groupId = process.env.WHATSAPP_GROUP_ID || '';
+    this.groupId = env.WHATSAPP_GROUP_ID;
   }
 
   setMessageHandler(handler: MessageHandlerService) {
@@ -123,7 +124,7 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
 
       this.sock = makeWASocket({
         auth: state,
-        printQRInTerminal: process.env.NODE_ENV !== 'production',
+        printQRInTerminal: !isProduction,
         // Baileys' default logger dumps Signal session internals (including
         // private keys). We pin it to warn to keep our logs clean and avoid
         // leaking key material.

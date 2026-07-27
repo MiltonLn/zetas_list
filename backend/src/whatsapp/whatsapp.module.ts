@@ -10,8 +10,9 @@ import { GamesModule } from '../games/games.module';
 import { UsersModule } from '../users/users.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { FinancesModule } from '../finances/finances.module';
+import { env } from '../config/env';
 
-const isBaileys = process.env.WHATSAPP_MODE === 'baileys';
+const isBaileys = env.WHATSAPP_MODE === 'baileys';
 const providerClass = isBaileys ? BaileysProvider : CliSimulatorProvider;
 
 @Module({
@@ -20,7 +21,7 @@ const providerClass = isBaileys ? BaileysProvider : CliSimulatorProvider;
     forwardRef(() => UsersModule),
     PrismaModule,
     FinancesModule,
-    JwtModule.register({ secret: process.env.JWT_SECRET }),
+    JwtModule.register({ secret: env.JWT_SECRET }),
   ],
   controllers: isBaileys ? [WhatsappController] : [],
   providers: [

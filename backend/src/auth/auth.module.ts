@@ -5,12 +5,13 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
+import { env } from '../config/env';
 
 @Module({
   imports: [
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'dev-secret-change-me',
+      secret: env.JWT_SECRET,
       signOptions: { expiresIn: '15m' },
     }),
     forwardRef(() => WhatsappModule),
