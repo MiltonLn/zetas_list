@@ -8,6 +8,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { GameEventsService } from './game-events.service';
 import { FinancesService } from '../finances/finances.service';
+import { GameQueryService } from './game-query.service';
+import { ConfirmationService } from './confirmation.service';
 import { notificationHarness } from './testing/notifier-harness';
 
 const mockPrisma = {
@@ -95,6 +97,9 @@ function makeGame(overrides: Partial<any> = {}) {
 
 describe('GamesService', () => {
   let service: GamesService;
+  // findOne now lives in GameQueryService; GamesService only delegates to it,
+  // so the many tests that stub the post-write reload spy on the owner.
+  let query: GameQueryService;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -110,6 +115,8 @@ describe('GamesService', () => {
       imports: harness.imports,
       providers: [
         GamesService,
+        GameQueryService,
+        ConfirmationService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: AuditService, useValue: mockAudit },
         { provide: GameEventsService, useValue: mockEvents },
@@ -121,6 +128,7 @@ describe('GamesService', () => {
     await module.init();
 
     service = module.get<GamesService>(GamesService);
+    query = module.get<GameQueryService>(GameQueryService);
   });
 
   // ─── generateReport ────────────────────────────────────────────────────────
@@ -348,7 +356,7 @@ describe('GamesService', () => {
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 5 } });
       const created = makeReg({ position: 6 });
       txMock.gameRegistration.create.mockResolvedValue(created);
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await expect(
         service.register('game-1', 'target-user', 'admin-user'),
@@ -371,7 +379,7 @@ describe('GamesService', () => {
           registeredBy: { id: 'admin-user', name: 'Milton', username: 'milton' },
         }),
       );
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.register('game-1', 'target-user', 'admin-user');
 
@@ -393,7 +401,7 @@ describe('GamesService', () => {
       txMock.gameRegistration.count.mockResolvedValue(0);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
       txMock.gameRegistration.create.mockResolvedValue(makeReg());
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.register('game-1', 'target-user', 'admin-user');
 
@@ -407,18 +415,18 @@ describe('GamesService', () => {
 
   describe('complete', () => {
     it('lanza BadRequestException si el juego ya está completado', async () => {
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame({ status: GameStatus.completed }) as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame({ status: GameStatus.completed }) as any);
       await expect(service.complete('game-1', 'actor-1')).rejects.toThrow(BadRequestException);
     });
 
     it('lanza BadRequestException si el juego está cancelado', async () => {
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame({ status: GameStatus.cancelled }) as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame({ status: GameStatus.cancelled }) as any);
       await expect(service.complete('game-1', 'actor-1')).rejects.toThrow(BadRequestException);
     });
 
     it('actualiza el estado a completed y llama audit', async () => {
       const game = makeGame({ status: GameStatus.registration_open, vigilante: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(game as any);
       const updated = { ...game, status: GameStatus.completed };
       mockPrisma.game.update.mockResolvedValue(updated);
 
@@ -429,7 +437,7 @@ describe('GamesService', () => {
 
     it('devuelve el reporte junto al juego', async () => {
       const game = makeGame({ status: GameStatus.registration_open, vigilante: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(game as any);
       mockPrisma.game.update.mockResolvedValue({ ...game, status: GameStatus.completed });
 
       const result = await service.complete('game-1', 'actor-1');
@@ -439,7 +447,7 @@ describe('GamesService', () => {
 
     it('envía reporte a WhatsApp cuando NO es silent', async () => {
       const game = makeGame({ status: GameStatus.registration_open, vigilante: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(game as any);
       mockPrisma.game.update.mockResolvedValue({ ...game, status: GameStatus.completed });
 
       await service.complete('game-1', 'actor-1');
@@ -448,7 +456,7 @@ describe('GamesService', () => {
 
     it('NO envía WhatsApp cuando es silent', async () => {
       const game = makeGame({ status: GameStatus.registration_open, vigilante: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(game as any);
       mockPrisma.game.update.mockResolvedValue({ ...game, status: GameStatus.completed });
 
       await service.complete('game-1', 'actor-1', { silent: true });
@@ -457,7 +465,7 @@ describe('GamesService', () => {
 
     it('persiste completionReport en prisma.game.update', async () => {
       const game = makeGame({ status: GameStatus.registration_open, vigilante: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(game as any);
       mockPrisma.game.update.mockResolvedValue({ ...game, status: GameStatus.completed });
 
       const result = await service.complete('game-1', 'actor-1', { silent: true });
@@ -498,7 +506,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.delete.mockResolvedValue({});
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
       const game = makeGame();
-      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(game as any);
       jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
 
       await expect(
@@ -511,7 +519,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
       mockPrisma.gameRegistration.delete.mockResolvedValue({});
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
       jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
 
       await expect(
@@ -524,7 +532,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
       mockPrisma.gameRegistration.delete.mockResolvedValue({});
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
       jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
 
       await service.removeRegistration('game-1', 'user-1', 'user-1', Role.member, { silent: true });
@@ -536,7 +544,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
       mockPrisma.gameRegistration.delete.mockResolvedValue({});
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
       const autoPromoteSpy = jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
 
       await service.removeRegistration('game-1', 'user-1', 'user-1', Role.member);
@@ -548,7 +556,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
       mockPrisma.gameRegistration.delete.mockResolvedValue({});
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
       const autoPromoteSpy = jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
 
       await service.removeRegistration('game-1', 'user-1', 'user-1', Role.member);
@@ -560,7 +568,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
       mockPrisma.gameRegistration.delete.mockResolvedValue({});
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 2 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
       jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
 
       await service.removeRegistration('game-1', 'user-1', 'user-1', Role.member, { silent: true });
@@ -582,7 +590,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.delete.mockResolvedValue({});
       mockPrisma.gameRegistration.deleteMany.mockResolvedValue({ count: 2 });
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
       jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
 
       await service.removeRegistration('game-1', 'user-1', 'user-1', Role.member, { silent: true });
@@ -597,7 +605,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(guestReg);
       mockPrisma.gameRegistration.delete.mockResolvedValue({});
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
       jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
 
       await service.removeRegistration('game-1', 'guest', 'actor-admin', Role.admin, { regId: 'reg-1', silent: true });
@@ -615,7 +623,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.delete.mockResolvedValue({});
       mockPrisma.gameRegistration.deleteMany.mockResolvedValue({ count: 1 });
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
       jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
 
       await service.removeRegistration('game-1', 'user-1', 'user-1', Role.member);
@@ -630,7 +638,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
       mockPrisma.gameRegistration.delete.mockResolvedValue({});
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
       jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
 
       await service.removeRegistration('game-1', 'user-1', 'user-1', Role.member);
@@ -643,7 +651,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
       mockPrisma.gameRegistration.delete.mockResolvedValue({});
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
       jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
 
       await service.removeRegistration('game-1', 'user-1', 'admin-1', Role.admin);
@@ -656,7 +664,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
       mockPrisma.gameRegistration.delete.mockResolvedValue({});
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
       const autoPromoteSpy = jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
 
       await service.removeRegistration('game-1', 'user-1', 'user-1', Role.member);
@@ -671,7 +679,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(guestReg);
       mockPrisma.gameRegistration.delete.mockResolvedValue({});
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
       jest.spyOn(service, 'autoPromoteIfNeeded').mockResolvedValue(undefined);
 
       await expect(
@@ -734,7 +742,7 @@ describe('GamesService', () => {
           }),
         ],
       });
-      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(game as any);
 
       const result = await service.previewReport('game-1');
 
@@ -758,7 +766,7 @@ describe('GamesService', () => {
           }),
         ],
       });
-      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(game as any);
 
       const result = await service.previewReport('game-1');
 
@@ -774,7 +782,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(makeReg());
       mockPrisma.gameRegistration.update.mockResolvedValue({});
       const game = makeGame();
-      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(game as any);
 
       const result = await service.setFineExempt('game-1', 'reg-1', true, 'actor-1');
 
@@ -825,13 +833,13 @@ describe('GamesService', () => {
         status: GameStatus.registration_open,
       });
       const game = makeGame({ vigilante: 0, registrations: [] });
-      jest.spyOn(service, 'findOne').mockResolvedValue(game as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(game as any);
 
       const result = await service.getStoredReport('game-1');
 
       expect(typeof result.report).toBe('string');
       expect(result.report.length).toBeGreaterThan(0);
-      expect(service.findOne).toHaveBeenCalledWith('game-1');
+      expect(query.findOne).toHaveBeenCalledWith('game-1');
     });
 
     it('lanza NotFoundException si el partido no existe', async () => {
@@ -868,7 +876,7 @@ describe('GamesService', () => {
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 10 } });
       const promoted = makeReg({ isWaitingList: false, position: 11, fromWaitList: true });
       txMock.gameRegistration.update.mockResolvedValue(promoted);
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.promote('game-1', 'reg-1', 'actor-1');
 
@@ -928,7 +936,7 @@ describe('GamesService', () => {
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 3 } });
       const demoted = makeReg({ isWaitingList: true, position: 4, fromWaitList: false });
       txMock.gameRegistration.update.mockResolvedValue(demoted);
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.demote('game-1', 'reg-1', 'actor-1');
 
@@ -1045,7 +1053,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(pendingReg);
       mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 1 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       const result = await service.confirmRegistration('game-1', 'user-1');
 
@@ -1069,7 +1077,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(pendingReg);
       mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 1 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.confirmRegistration('game-1', 'user-1');
 
@@ -1084,7 +1092,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(pendingReg);
       mockPrisma.gameRegistration.findMany.mockResolvedValue([guestReg]);
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 2 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       const result = await service.confirmRegistration('game-1', 'user-1');
 
@@ -1097,7 +1105,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(null);
       mockPrisma.gameRegistration.findMany.mockResolvedValue([guestReg]);
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({ count: 1 });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       const result = await service.confirmRegistration('game-1', 'user-1');
 
@@ -1261,7 +1269,7 @@ describe('GamesService', () => {
       txMock.gameRegistration.findMany.mockResolvedValue([waiter]);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 16 } });
       txMock.gameRegistration.update.mockResolvedValue(waiter);
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.autoPromoteIfNeeded('game-1');
 
@@ -1281,7 +1289,7 @@ describe('GamesService', () => {
       txMock.gameRegistration.findMany.mockResolvedValue([waiter]);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 16 } });
       txMock.gameRegistration.update.mockResolvedValue(waiter);
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.autoPromoteIfNeeded('game-1');
 
@@ -1401,7 +1409,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findUnique.mockResolvedValue(reg);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 3 } });
       txMock.gameRegistration.findFirst.mockResolvedValue(null);
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.handleConfirmationTimeout('reg-1');
 
@@ -1422,7 +1430,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findUnique.mockResolvedValue(reg);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 5 } });
       txMock.gameRegistration.findFirst.mockResolvedValue(null);
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.handleConfirmationTimeout('reg-1');
 
@@ -1440,7 +1448,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findUnique.mockResolvedValue(reg);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
       txMock.gameRegistration.findFirst.mockResolvedValue(null);
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.handleConfirmationTimeout('reg-1');
 
@@ -1459,7 +1467,7 @@ describe('GamesService', () => {
       });
       txMock.gameRegistration.findFirst.mockResolvedValue(nextWaiter);
       txMock.gameRegistration.update.mockResolvedValue({});
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.handleConfirmationTimeout('reg-timeout');
 
@@ -1486,7 +1494,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findUnique.mockResolvedValue(reg);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
       txMock.gameRegistration.findFirst.mockResolvedValue(null);
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.handleConfirmationTimeout('reg-1');
 
@@ -1507,7 +1515,7 @@ describe('GamesService', () => {
       mockPrisma.game.findUnique.mockResolvedValue(makeGame({ status: GameStatus.registration_open }));
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 3 } });
       txMock.gameRegistration.findFirst.mockResolvedValue(null);
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.handleConfirmationTimeout('reg-1');
 
@@ -1525,7 +1533,7 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.findUnique.mockResolvedValue(reg);
       mockPrisma.game.findUnique.mockResolvedValue(makeGame({ status: GameStatus.registration_open }));
       mockPrisma.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(null);
 
       // Simula que dentro de la transacción el registro YA fue procesado por otra llamada concurrente
@@ -1639,7 +1647,7 @@ describe('GamesService', () => {
   describe('reorder', () => {
     it('ejecuta la reordenação dentro de uma transação', async () => {
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({});
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.reorder('game-1', { mainList: ['r1', 'r2'], waitList: [] }, 'admin-1');
 
@@ -1648,7 +1656,7 @@ describe('GamesService', () => {
 
     it('asigna posiciones consecutivas a cada lista', async () => {
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({});
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.reorder('game-1', { mainList: ['r1', 'r2', 'r3'], waitList: ['w1'] }, 'admin-1');
 
@@ -1665,7 +1673,7 @@ describe('GamesService', () => {
 
     it('llama a audit.log con "player_reordered"', async () => {
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({});
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.reorder('game-1', { mainList: [], waitList: [] }, 'admin-1');
 
@@ -1679,21 +1687,21 @@ describe('GamesService', () => {
 
   describe('cancel', () => {
     it('lanza BadRequestException si el partido ya está completado', async () => {
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame({ status: GameStatus.completed }) as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame({ status: GameStatus.completed }) as any);
       await expect(service.cancel('game-1', { reason: '' }, 'admin-1')).rejects.toThrow(
         BadRequestException,
       );
     });
 
     it('lanza BadRequestException si el partido ya está cancelado', async () => {
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame({ status: GameStatus.cancelled }) as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame({ status: GameStatus.cancelled }) as any);
       await expect(service.cancel('game-1', { reason: '' }, 'admin-1')).rejects.toThrow(
         BadRequestException,
       );
     });
 
     it('cambia el estado a cancelled', async () => {
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame({ status: GameStatus.registration_open }) as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame({ status: GameStatus.registration_open }) as any);
       const cancelled = makeGame({ status: GameStatus.cancelled });
       mockPrisma.game.update.mockResolvedValue(cancelled);
 
@@ -1708,7 +1716,7 @@ describe('GamesService', () => {
     });
 
     it('llama a audit.log con "game_cancelled"', async () => {
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
       mockPrisma.game.update.mockResolvedValue(makeGame({ status: GameStatus.cancelled }));
 
       await service.cancel('game-1', { reason: 'Test' }, 'admin-1');
@@ -1719,7 +1727,7 @@ describe('GamesService', () => {
     });
 
     it('envía mensaje de WhatsApp al cancelar', async () => {
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame({ title: 'Voley VIE' }) as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame({ title: 'Voley VIE' }) as any);
       mockPrisma.game.update.mockResolvedValue(makeGame({ status: GameStatus.cancelled }));
       mockWhatsapp.sendToGroup.mockResolvedValue(true);
 
@@ -1756,7 +1764,7 @@ describe('GamesService', () => {
       const reg = makeReg();
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(reg);
       mockPrisma.gameRegistration.update.mockResolvedValue({ ...reg, attended: true });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.updateRegistration('reg-1', { attended: true }, 'admin-1', 'game-1');
 
@@ -1775,7 +1783,7 @@ describe('GamesService', () => {
       const reg = makeReg({ attended: true, paid: true });
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(reg);
       mockPrisma.gameRegistration.update.mockResolvedValue({ ...reg, attended: false, paid: false });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.updateRegistration('reg-1', { attended: false }, 'admin-1', 'game-1');
 
@@ -1799,7 +1807,7 @@ describe('GamesService', () => {
       const reg = makeReg();
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(reg);
       mockPrisma.gameRegistration.update.mockResolvedValue({ ...reg, paid: true, attended: true });
-      jest.spyOn(service, 'findOne').mockResolvedValue(makeGame() as any);
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       await service.updateRegistration('reg-1', { paid: true }, 'admin-1', 'game-1');
 

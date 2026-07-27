@@ -1,12 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma, Role, GameStatus, Modalidad } from '@prisma/client';
+import { Prisma, Role, GameStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GAME_MANAGERS } from '../common/constants/roles';
 import { AuditService } from '../audit/audit.service';
 import { GameEventsService } from './game-events.service';
 import { FinancesService } from '../finances/finances.service';
 import { GameNotifier } from './events/game-notifier.service';
-import { NotifiableTarget } from './events/game-events';
+import { toNotifiableTarget } from './events/notifiable-target';
+import { GameQueryService } from './game-query.service';
+import { withGameLock } from './transaction.util';
+import { ConfirmationService } from './confirmation.service';
 import { CreateGameDto } from './dto/create-game.dto';
 import { CancelGameDto } from './dto/cancel-game.dto';
 import { UpdateRegistrationDto } from './dto/update-registration.dto';
@@ -23,7 +26,6 @@ import {
   MustBeRegisteredFirstException,
   ProxyLimitExceededException,
   NotRegisteredException,
-  NoPendingConfirmationException,
   CannotRemoveOtherException,
   NoOneInWaitListException,
   UserHasUnpaidFinesException,
@@ -39,7 +41,6 @@ import {
   REGISTRATION_INCLUDE,
   DEFAULT_SPOTS,
   CONFIRMATION_TIMEOUT_MS,
-  NEXT_CONFIRM_TIMEOUT_MS,
   DEFAULT_PRICE_PER_PLAYER,
   DEFAULT_VIGILANTE,
   DEFAULT_GUEST_CUTOFF,
@@ -49,21 +50,6 @@ import {
 
 export { displayName, MODALIDAD_LABEL } from './games.utils';
 
-/** Guests have no account, so notifications reach them via their inviter. */
-function toNotifiableTarget(reg: {
-  isGuest: boolean;
-  user?: { name: string; alias?: string | null; phone?: string | null; whatsappLid?: string | null } | null;
-  registeredBy?: { name: string; alias?: string | null; phone?: string | null; whatsappLid?: string | null } | null;
-}): NotifiableTarget | null {
-  const contact = reg.isGuest ? reg.registeredBy : reg.user;
-  if (!contact) return null;
-  return {
-    displayName: userDisplayName(contact),
-    phone: contact.phone,
-    whatsappLid: contact.whatsappLid,
-  };
-}
-
 @Injectable()
 export class GamesService {
   constructor(
@@ -72,6 +58,8 @@ export class GamesService {
     private events: GameEventsService,
     private notifier: GameNotifier,
     private finances: FinancesService,
+    private query: GameQueryService,
+    private confirmation: ConfirmationService,
   ) {}
 
   private readonly logger = new Logger(GamesService.name);
@@ -82,6 +70,31 @@ export class GamesService {
 
   buildGameLink(gameId: string): string {
     return buildGameLink(gameId);
+  }
+
+  // ─── FACADE ───────────────────────────────────────────────────────────────
+  //
+  // GamesService stays the single entry point for controllers and the WhatsApp
+  // handler; the behaviour now lives in the focused services below.
+
+  findAll(...args: Parameters<GameQueryService['findAll']>) {
+    return this.query.findAll(...args);
+  }
+
+  findOne(id: string) {
+    return this.query.findOne(id);
+  }
+
+  confirmRegistration(...args: Parameters<ConfirmationService['confirmRegistration']>) {
+    return this.confirmation.confirmRegistration(...args);
+  }
+
+  confirmRegistrationById(...args: Parameters<ConfirmationService['confirmRegistrationById']>) {
+    return this.confirmation.confirmRegistrationById(...args);
+  }
+
+  handleConfirmationTimeout(regId: string) {
+    return this.confirmation.handleConfirmationTimeout(regId);
   }
 
   // ─── CRUD ──────────────────────────────────────────────────────────────────
@@ -144,80 +157,6 @@ export class GamesService {
       this.notifier.announceRegistrationOpened({ game });
     }
 
-    return game;
-  }
-
-  async findAll(
-    role: Role,
-    filters?: {
-      status?: GameStatus;
-      excludeStatus?: GameStatus[];
-      modalidad?: Modalidad;
-      search?: string;
-      dateFrom?: string;
-      dateTo?: string;
-      page?: number;
-      limit?: number;
-    },
-  ) {
-    if (role !== Role.admin) {
-      const active = await this.prisma.game.findFirst({
-        where: {
-          status: { in: [GameStatus.registration_open, GameStatus.in_progress] },
-        },
-        include: { registrations: { include: REGISTRATION_INCLUDE, orderBy: { position: 'asc' } } },
-        orderBy: { createdAt: 'desc' },
-      });
-      return { data: active ? [active] : [], total: active ? 1 : 0, page: 1, limit: 1 };
-    }
-
-    const page = filters?.page ?? 1;
-    const limit = filters?.limit ?? 20;
-    const skip = (page - 1) * limit;
-
-    const where: Prisma.GameWhereInput = {};
-    if (filters?.status) where.status = filters.status;
-    else if (filters?.excludeStatus?.length) where.status = { notIn: filters.excludeStatus };
-    if (filters?.modalidad) where.modalidad = filters.modalidad;
-    if (filters?.search) {
-      where.title = { contains: filters.search, mode: 'insensitive' };
-    }
-    if (filters?.dateFrom || filters?.dateTo) {
-      where.gameDate = {
-        ...(filters.dateFrom ? { gte: new Date(filters.dateFrom + 'T00:00:00') } : {}),
-        ...(filters.dateTo ? { lte: new Date(filters.dateTo + 'T23:59:59') } : {}),
-      };
-    }
-
-    const [data, total] = await Promise.all([
-      this.prisma.game.findMany({
-        where,
-        include: {
-          createdBy: { select: { id: true, name: true } },
-          _count: { select: { registrations: true } },
-        },
-        orderBy: { gameDate: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.game.count({ where }),
-    ]);
-
-    return { data, total, page, limit };
-  }
-
-  async findOne(id: string) {
-    const game = await this.prisma.game.findUnique({
-      where: { id },
-      include: {
-        createdBy: { select: { id: true, name: true } },
-        registrations: {
-          include: REGISTRATION_INCLUDE,
-          orderBy: [{ isWaitingList: 'asc' }, { position: 'asc' }],
-        },
-      },
-    });
-    if (!game) throw new GameNotFoundException();
     return game;
   }
 
@@ -387,7 +326,7 @@ export class GamesService {
       details: { position: registration.position, isWaitingList: registration.isWaitingList, pendingConfirmation: registration.pendingConfirmation },
     });
 
-    const updated = await this.findOne(gameId);
+    const updated = await this.query.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
 
     if (!options?.silent) {
@@ -482,7 +421,7 @@ export class GamesService {
       details: { guestName: trimmedName, position: registration.position, isWaitingList: registration.isWaitingList },
     });
 
-    const updated = await this.findOne(gameId);
+    const updated = await this.query.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
 
     if (!options?.silent) {
@@ -500,174 +439,46 @@ export class GamesService {
     return registration;
   }
 
-  async confirmRegistration(
-    gameId: string,
-    userId: string,
-    actorId: string = userId,
-    options: { silent?: boolean } = {},
-  ): Promise<{ game: any; confirmedOwn: boolean; confirmedGuests: string[] }> {
-    const confirmed = await this.prisma.$transaction(
-      async (tx) => {
-        await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
-
-        const ownReg = await tx.gameRegistration.findFirst({
-          where: { gameId, userId, pendingConfirmation: true },
-          include: { user: { select: { name: true, alias: true } } },
-        });
-
-        const guestRegs = await tx.gameRegistration.findMany({
-          where: { gameId, registeredById: userId, isGuest: true, pendingConfirmation: true },
-          include: { registeredBy: { select: { name: true, alias: true } } },
-        });
-
-        const allPending = [...(ownReg ? [ownReg] : []), ...guestRegs];
-        if (allPending.length === 0) throw new NoPendingConfirmationException();
-
-        await tx.gameRegistration.updateMany({
-          where: { id: { in: allPending.map((r) => r.id) } },
-          data: { pendingConfirmation: false, confirmationDeadline: null },
-        });
-
-        return {
-          confirmedOwn: !!ownReg,
-          confirmedGuests: guestRegs.map((r) => r.guestName || 'Invitado'),
-          confirmedByName: ownReg?.user
-            ? userDisplayName(ownReg.user)
-            : guestRegs[0]?.registeredBy
-              ? userDisplayName(guestRegs[0].registeredBy)
-              : 'Jugador',
-        };
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
-
-    await this.audit.log({
-      gameId,
-      actorId,
-      targetUserId: userId,
-      action: 'confirmation_received',
-      details: { confirmedOwn: confirmed.confirmedOwn, confirmedGuests: confirmed.confirmedGuests, onBehalf: actorId !== userId },
-    });
-
-    this.logger.log(
-      `[CONFIRM] game=${gameId} | user=${userId} | own=${confirmed.confirmedOwn} | guests=${confirmed.confirmedGuests.length} | onBehalf=${actorId !== userId}`,
-    );
-
-    const updated = await this.findOne(gameId);
-    this.events.emit({ gameId, type: 'update', data: updated });
-
-    if (!options.silent) {
-      this.notifier.announceAttendanceConfirmed({
-        confirmedByName: confirmed.confirmedByName,
-        confirmedOwn: confirmed.confirmedOwn,
-        confirmedGuests: confirmed.confirmedGuests,
-        onBehalf: actorId !== userId,
-      });
-    }
-
-    return {
-      game: updated,
-      confirmedOwn: confirmed.confirmedOwn,
-      confirmedGuests: confirmed.confirmedGuests,
-    };
-  }
-
-  /**
-   * Confirma un registro puntual por su id. Pensado para la acción de admin desde
-   * la UI: funciona tanto para miembros (autopromoción) como para invitados, que
-   * no tienen `userId` propio y por eso no pueden confirmarse por usuario.
-   */
-  async confirmRegistrationById(gameId: string, regId: string, actorId: string): Promise<{ game: any; name: string }> {
-    const confirmed = await this.prisma.$transaction(
-      async (tx) => {
-        await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
-
-        const reg = await tx.gameRegistration.findFirst({
-          where: { id: regId, gameId, pendingConfirmation: true },
-          include: { user: { select: { name: true, alias: true } } },
-        });
-        if (!reg) throw new NoPendingConfirmationException();
-
-        await tx.gameRegistration.update({
-          where: { id: reg.id },
-          data: { pendingConfirmation: false, confirmationDeadline: null },
-        });
-
-        return {
-          name: reg.isGuest ? reg.guestName || 'Invitado' : (reg.user ? userDisplayName(reg.user) : 'Jugador'),
-          userId: reg.userId as string | null,
-        };
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
-
-    await this.audit.log({
-      gameId,
-      actorId,
-      targetUserId: confirmed.userId ?? undefined,
-      action: 'confirmation_received',
-      details: { confirmedRegId: regId, onBehalf: true },
-    });
-
-    const actor = await this.prisma.user.findUnique({ where: { id: actorId }, select: { name: true, alias: true } });
-
-    this.logger.log(`[CONFIRM] game=${gameId} | reg=${regId} | confirmed=${confirmed.name} | by=${actor?.name || actorId} | onBehalf=true`);
-
-    const updated = await this.findOne(gameId);
-    this.events.emit({ gameId, type: 'update', data: updated });
-
-    this.notifier.announceAttendanceConfirmedByStaff({
-      actorName: actor ? userDisplayName(actor) : 'Un admin',
-      playerName: confirmed.name,
-    });
-
-    return { game: updated, name: confirmed.name };
-  }
-
   async retryFromWaitingList(gameId: string, userId: string) {
-    const result = await this.prisma.$transaction(
-      async (tx) => {
-        await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
+    const result = await withGameLock(this.prisma, gameId, async (tx) => {
 
-        const reg = await tx.gameRegistration.findFirst({
-          where: { gameId, userId, isWaitingList: true, confirmationDeclined: true },
+      const reg = await tx.gameRegistration.findFirst({
+        where: { gameId, userId, isWaitingList: true, confirmationDeclined: true },
+      });
+      if (!reg) return { found: false, promoted: false, regId: null as string | null };
+
+      await tx.gameRegistration.update({
+        where: { id: reg.id },
+        data: { confirmationDeclined: false },
+      });
+
+      const game = await tx.game.findUnique({ where: { id: gameId } });
+      if (!game) return { found: true, promoted: false, regId: reg.id };
+
+      const mainCount = await tx.gameRegistration.count({
+        where: { gameId, isWaitingList: false },
+      });
+
+      if (mainCount < game.maxMainSpots) {
+        const maxPos = await tx.gameRegistration.aggregate({
+          where: { gameId, isWaitingList: false },
+          _max: { position: true },
         });
-        if (!reg) return { found: false, promoted: false, regId: null as string | null };
 
         await tx.gameRegistration.update({
           where: { id: reg.id },
-          data: { confirmationDeclined: false },
+          data: {
+            isWaitingList: false,
+            position: (maxPos._max.position ?? 0) + 1,
+            fromWaitList: true,
+          },
         });
 
-        const game = await tx.game.findUnique({ where: { id: gameId } });
-        if (!game) return { found: true, promoted: false, regId: reg.id };
+        return { found: true, promoted: true, regId: reg.id };
+      }
 
-        const mainCount = await tx.gameRegistration.count({
-          where: { gameId, isWaitingList: false },
-        });
-
-        if (mainCount < game.maxMainSpots) {
-          const maxPos = await tx.gameRegistration.aggregate({
-            where: { gameId, isWaitingList: false },
-            _max: { position: true },
-          });
-
-          await tx.gameRegistration.update({
-            where: { id: reg.id },
-            data: {
-              isWaitingList: false,
-              position: (maxPos._max.position ?? 0) + 1,
-              fromWaitList: true,
-            },
-          });
-
-          return { found: true, promoted: true, regId: reg.id };
-        }
-
-        return { found: true, promoted: false, regId: reg.id };
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
+      return { found: true, promoted: false, regId: reg.id };
+    });
 
     if (!result.found) return { promoted: false, game: null };
 
@@ -681,68 +492,64 @@ export class GamesService {
       });
     }
 
-    const updated = await this.findOne(gameId);
+    const updated = await this.query.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
     return { promoted: result.promoted, game: updated };
   }
 
   async removeRegistration(gameId: string, userId: string, actorId: string, actorRole: Role, options?: { silent?: boolean; regId?: string }) {
-    const { reg, orphanedGuests, wasMainList, userName } = await this.prisma.$transaction(
-      async (tx) => {
-        await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
+    const { reg, orphanedGuests, wasMainList, userName } = await withGameLock(this.prisma, gameId, async (tx) => {
 
-        const foundReg = options?.regId
-          ? await tx.gameRegistration.findFirst({
-              where: { id: options.regId, gameId },
-              include: { user: { select: { name: true } }, registeredBy: { select: { name: true } } },
-            })
-          : await tx.gameRegistration.findFirst({
-              where: { gameId, userId },
-              include: { user: { select: { name: true } }, registeredBy: { select: { name: true } } },
-            });
-        if (!foundReg) throw new NotRegisteredException();
-
-        const regOwnerId = foundReg.userId ?? foundReg.registeredById;
-        if (!GAME_MANAGERS.includes(actorRole) && actorId !== regOwnerId) {
-          throw new CannotRemoveOtherException();
-        }
-
-        const orphans = foundReg.userId
-          ? await tx.gameRegistration.findMany({
-              where: { gameId, isGuest: true, registeredById: foundReg.userId },
-              select: { id: true, guestName: true, position: true, isWaitingList: true },
-            })
-          : [];
-
-        await tx.gameRegistration.delete({ where: { id: foundReg.id } });
-
-        await tx.gameRegistration.updateMany({
-          where: { gameId, isWaitingList: foundReg.isWaitingList, position: { gt: foundReg.position } },
-          data: { position: { decrement: 1 } },
-        });
-
-        if (orphans.length > 0) {
-          await tx.gameRegistration.deleteMany({
-            where: { id: { in: orphans.map((g) => g.id) } },
+      const foundReg = options?.regId
+        ? await tx.gameRegistration.findFirst({
+            where: { id: options.regId, gameId },
+            include: { user: { select: { name: true } }, registeredBy: { select: { name: true } } },
+          })
+        : await tx.gameRegistration.findFirst({
+            where: { gameId, userId },
+            include: { user: { select: { name: true } }, registeredBy: { select: { name: true } } },
           });
-          const sorted = [...orphans].sort((a, b) => b.position - a.position);
-          for (const guest of sorted) {
-            await tx.gameRegistration.updateMany({
-              where: { gameId, isWaitingList: guest.isWaitingList, position: { gt: guest.position } },
-              data: { position: { decrement: 1 } },
-            });
-          }
-        }
+      if (!foundReg) throw new NotRegisteredException();
 
-        return {
-          reg: foundReg,
-          orphanedGuests: orphans,
-          wasMainList: !foundReg.isWaitingList,
-          userName: displayName(foundReg),
-        };
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
+      const regOwnerId = foundReg.userId ?? foundReg.registeredById;
+      if (!GAME_MANAGERS.includes(actorRole) && actorId !== regOwnerId) {
+        throw new CannotRemoveOtherException();
+      }
+
+      const orphans = foundReg.userId
+        ? await tx.gameRegistration.findMany({
+            where: { gameId, isGuest: true, registeredById: foundReg.userId },
+            select: { id: true, guestName: true, position: true, isWaitingList: true },
+          })
+        : [];
+
+      await tx.gameRegistration.delete({ where: { id: foundReg.id } });
+
+      await tx.gameRegistration.updateMany({
+        where: { gameId, isWaitingList: foundReg.isWaitingList, position: { gt: foundReg.position } },
+        data: { position: { decrement: 1 } },
+      });
+
+      if (orphans.length > 0) {
+        await tx.gameRegistration.deleteMany({
+          where: { id: { in: orphans.map((g) => g.id) } },
+        });
+        const sorted = [...orphans].sort((a, b) => b.position - a.position);
+        for (const guest of sorted) {
+          await tx.gameRegistration.updateMany({
+            where: { gameId, isWaitingList: guest.isWaitingList, position: { gt: guest.position } },
+            data: { position: { decrement: 1 } },
+          });
+        }
+      }
+
+      return {
+        reg: foundReg,
+        orphanedGuests: orphans,
+        wasMainList: !foundReg.isWaitingList,
+        userName: displayName(foundReg),
+      };
+    });
 
     await this.audit.log({
       gameId,
@@ -761,7 +568,7 @@ export class GamesService {
       `[REMOVE] game=${gameId} | player=${userName} | wasWaiting=${reg.isWaitingList} | byAdmin=${actorId !== (reg.userId ?? reg.registeredById)} | removedGuests=${orphanedGuests.length}`,
     );
 
-    const updated = await this.findOne(gameId);
+    const updated = await this.query.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
 
     if (!options?.silent) {
@@ -818,7 +625,7 @@ export class GamesService {
       await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'note_updated', details: { note: dto.note } });
     }
 
-    const fullGame = await this.findOne(gameId);
+    const fullGame = await this.query.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: fullGame });
     return updated;
   }
@@ -826,8 +633,7 @@ export class GamesService {
   // ─── PROMOTION ────────────────────────────────────────────────────────────
 
   async promote(gameId: string, regId: string, actorId: string | null, options?: { silent?: boolean }) {
-    const promoted = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
+    const promoted = await withGameLock(this.prisma, gameId, async (tx) => {
 
       const reg = await tx.gameRegistration.findFirst({
         where: { id: regId, gameId, isWaitingList: true },
@@ -866,7 +672,7 @@ export class GamesService {
       details: { newPosition: promoted.position },
     });
 
-    const updated = await this.findOne(gameId);
+    const updated = await this.query.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
 
     if (!options?.silent) {
@@ -881,8 +687,7 @@ export class GamesService {
   }
 
   async promoteNext(gameId: string, actorId: string) {
-    const firstInWait = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
+    const firstInWait = await withGameLock(this.prisma, gameId, async (tx) => {
 
       const game = await tx.game.findUniqueOrThrow({ where: { id: gameId } });
       const mainCount = await tx.gameRegistration.count({
@@ -901,7 +706,7 @@ export class GamesService {
         throw new NoOneInWaitListException();
       }
       return first;
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    });
 
     const updated = await this.promote(gameId, firstInWait.id, actorId, { silent: true });
     const promotedName = displayName(firstInWait);
@@ -909,8 +714,7 @@ export class GamesService {
   }
 
   async demote(gameId: string, regId: string, actorId: string) {
-    const demoted = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
+    const demoted = await withGameLock(this.prisma, gameId, async (tx) => {
 
       const reg = await tx.gameRegistration.findFirst({
         where: { id: regId, gameId, isWaitingList: false },
@@ -936,7 +740,7 @@ export class GamesService {
         },
         include: REGISTRATION_INCLUDE,
       });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    });
 
     await this.audit.log({
       gameId,
@@ -946,7 +750,7 @@ export class GamesService {
       details: { newPosition: demoted.position },
     });
 
-    const updated = await this.findOne(gameId);
+    const updated = await this.query.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
 
     this.notifier.announcePlayerDemoted({
@@ -970,66 +774,62 @@ export class GamesService {
     // Using a single serializable transaction guarantees no two concurrent
     // calls double-fill the same spots (the FOR UPDATE row-lock on the game
     // row serializes concurrent calls).
-    const promotedList = await this.prisma.$transaction(
-      async (tx) => {
-        await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
+    const promotedList = await withGameLock(this.prisma, gameId, async (tx) => {
 
-        const mainCount = await tx.gameRegistration.count({
-          where: { gameId, isWaitingList: false },
-        });
-        const spotsAvailable = game.maxMainSpots - mainCount;
-        if (spotsAvailable <= 0) {
-          this.logger.log(`[AUTO_PROMOTE] game=${gameId} | mainCount=${mainCount}/${game.maxMainSpots} | FULL, no promotion`);
-          return [];
-        }
+      const mainCount = await tx.gameRegistration.count({
+        where: { gameId, isWaitingList: false },
+      });
+      const spotsAvailable = game.maxMainSpots - mainCount;
+      if (spotsAvailable <= 0) {
+        this.logger.log(`[AUTO_PROMOTE] game=${gameId} | mainCount=${mainCount}/${game.maxMainSpots} | FULL, no promotion`);
+        return [];
+      }
 
-        const eligibleWaiters = await tx.gameRegistration.findMany({
-          where: {
-            gameId,
-            isWaitingList: true,
-            confirmationDeclined: false,
-            ...(beforeCutoff ? { isGuest: false } : {}),
+      const eligibleWaiters = await tx.gameRegistration.findMany({
+        where: {
+          gameId,
+          isWaitingList: true,
+          confirmationDeclined: false,
+          ...(beforeCutoff ? { isGuest: false } : {}),
+        },
+        orderBy: { position: 'asc' },
+        take: spotsAvailable,
+        include: REGISTRATION_INCLUDE,
+      });
+
+      if (eligibleWaiters.length === 0) {
+        this.logger.log(`[AUTO_PROMOTE] game=${gameId} | mainCount=${mainCount}/${game.maxMainSpots} | beforeCutoff=${beforeCutoff} | No eligible waiters found`);
+        return [];
+      }
+
+      const maxPosResult = await tx.gameRegistration.aggregate({
+        where: { gameId, isWaitingList: false },
+        _max: { position: true },
+      });
+      let nextPos = (maxPosResult._max.position ?? 0) + 1;
+
+      const confirmDeadline = new Date(Date.now() + CONFIRMATION_TIMEOUT_MS);
+      const results: Array<{ reg: (typeof eligibleWaiters)[0]; originalPos: number; confirmDeadline: Date }> = [];
+
+      for (const waiter of eligibleWaiters) {
+        const originalPos = waiter.position as number;
+        const updatedReg = await tx.gameRegistration.update({
+          where: { id: waiter.id },
+          data: {
+            isWaitingList: false,
+            position: nextPos++,
+            fromWaitList: true,
+            pendingConfirmation: true,
+            confirmationDeadline: confirmDeadline,
+            originalWaitPosition: originalPos,
           },
-          orderBy: { position: 'asc' },
-          take: spotsAvailable,
           include: REGISTRATION_INCLUDE,
         });
+        results.push({ reg: updatedReg, originalPos, confirmDeadline });
+      }
 
-        if (eligibleWaiters.length === 0) {
-          this.logger.log(`[AUTO_PROMOTE] game=${gameId} | mainCount=${mainCount}/${game.maxMainSpots} | beforeCutoff=${beforeCutoff} | No eligible waiters found`);
-          return [];
-        }
-
-        const maxPosResult = await tx.gameRegistration.aggregate({
-          where: { gameId, isWaitingList: false },
-          _max: { position: true },
-        });
-        let nextPos = (maxPosResult._max.position ?? 0) + 1;
-
-        const confirmDeadline = new Date(Date.now() + CONFIRMATION_TIMEOUT_MS);
-        const results: Array<{ reg: (typeof eligibleWaiters)[0]; originalPos: number; confirmDeadline: Date }> = [];
-
-        for (const waiter of eligibleWaiters) {
-          const originalPos = waiter.position as number;
-          const updatedReg = await tx.gameRegistration.update({
-            where: { id: waiter.id },
-            data: {
-              isWaitingList: false,
-              position: nextPos++,
-              fromWaitList: true,
-              pendingConfirmation: true,
-              confirmationDeadline: confirmDeadline,
-              originalWaitPosition: originalPos,
-            },
-            include: REGISTRATION_INCLUDE,
-          });
-          results.push({ reg: updatedReg, originalPos, confirmDeadline });
-        }
-
-        return results;
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
+      return results;
+    });
 
     if (promotedList.length === 0) return;
 
@@ -1044,7 +844,7 @@ export class GamesService {
       });
     }
 
-    const updated = await this.findOne(gameId);
+    const updated = await this.query.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
 
     for (const p of promotedList) {
@@ -1063,172 +863,10 @@ export class GamesService {
     });
   }
 
-  async handleConfirmationTimeout(regId: string) {
-    const reg = await this.prisma.gameRegistration.findUnique({
-      where: { id: regId },
-      include: REGISTRATION_INCLUDE,
-    });
-    if (!reg || !reg.pendingConfirmation) return;
-
-    const game = await this.prisma.game.findUnique({ where: { id: reg.gameId } });
-    if (!game || (game.status !== 'registration_open' && game.status !== 'in_progress')) {
-      await this.prisma.gameRegistration.update({
-        where: { id: regId },
-        data: { pendingConfirmation: false, confirmationDeadline: null },
-      });
-      return;
-    }
-
-    // Antes del corte los invitados no son elegibles para tomar un cupo: la
-    // promoción en cascada debe saltarlos y subir al siguiente miembro (o a
-    // nadie), igual que autoPromoteIfNeeded.
-    const beforeCutoff = isBeforeCutoff(game.guestCutoffTime, game.gameDate);
-
-    // Demotion and next-promote in a single serializable transaction
-    const result = await this.prisma.$transaction(
-      async (tx) => {
-        await tx.$queryRaw`SELECT id FROM games WHERE id = ${reg.gameId} FOR UPDATE`;
-
-        const freshReg = await tx.gameRegistration.findUnique({
-          where: { id: regId },
-          select: { pendingConfirmation: true },
-        });
-        if (!freshReg?.pendingConfirmation) return null;
-
-        // Compute returnPos inside transaction
-        const currentMaxResult = await tx.gameRegistration.aggregate({
-          where: { gameId: reg.gameId, isWaitingList: true },
-          _max: { position: true },
-        });
-        const maxPos = currentMaxResult._max.position ?? 0;
-        const returnPos = reg.originalWaitPosition != null
-          ? Math.min(reg.originalWaitPosition, maxPos + 1)
-          : maxPos + 1;
-
-        await tx.gameRegistration.updateMany({
-          where: { gameId: reg.gameId, isWaitingList: true, position: { gte: returnPos } },
-          data: { position: { increment: 1 } },
-        });
-
-        await tx.gameRegistration.update({
-          where: { id: regId },
-          data: {
-            isWaitingList: true,
-            position: returnPos,
-            pendingConfirmation: false,
-            confirmationDeadline: null,
-            originalWaitPosition: null,
-            fromWaitList: false,
-            confirmationDeclined: true,
-          },
-        });
-
-        // Find and promote next waiter within the same transaction. Before the
-        // cutoff, guests are skipped (members have priority for freed spots).
-        const nextInWait = await tx.gameRegistration.findFirst({
-          where: {
-            gameId: reg.gameId,
-            isWaitingList: true,
-            confirmationDeclined: false,
-            id: { not: regId },
-            ...(beforeCutoff ? { isGuest: false } : {}),
-          },
-          orderBy: { position: 'asc' },
-          include: REGISTRATION_INCLUDE,
-        });
-
-        if (nextInWait) {
-          const nextOriginalPos = nextInWait.position;
-          // Esta promoción ocurre porque el candidato anterior dejó vencer su
-          // ventana: es la continuación de la misma "línea" que arrancó cuando se
-          // liberó el cupo. Las continuaciones reciben la ventana corta; solo la
-          // primera promoción de un cupo recién liberado (autoPromoteIfNeeded)
-          // recibe CONFIRMATION_TIMEOUT_MS (15 min).
-          const nextDeadline = new Date(Date.now() + NEXT_CONFIRM_TIMEOUT_MS);
-
-          const maxMainPos = await tx.gameRegistration.aggregate({
-            where: { gameId: reg.gameId, isWaitingList: false },
-            _max: { position: true },
-          });
-
-          await tx.gameRegistration.update({
-            where: { id: nextInWait.id },
-            data: {
-              isWaitingList: false,
-              position: (maxMainPos._max.position ?? 0) + 1,
-              fromWaitList: true,
-              pendingConfirmation: true,
-              confirmationDeadline: nextDeadline,
-              originalWaitPosition: nextOriginalPos,
-            },
-          });
-
-          return { returnPos, nextInWait, nextDeadline, nextOriginalPos };
-        }
-
-        return { returnPos, nextInWait: null, nextDeadline: null, nextOriginalPos: null };
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-    );
-
-    if (!result) return;
-
-    await this.audit.log({
-      gameId: reg.gameId,
-      actorId: null,
-      targetUserId: reg.userId ?? undefined,
-      action: 'confirmation_expired',
-      details: { returnedToPosition: result.returnPos },
-    });
-
-    const name = displayName(reg);
-    const updated = await this.findOne(reg.gameId);
-    this.events.emit({ gameId: reg.gameId, type: 'update', data: updated });
-
-    this.logger.log(
-      `[CONFIRM_TIMEOUT] game=${reg.gameId} | reg=${regId} | player=${name} | isGuest=${reg.isGuest} | returnedToPos=${result.returnPos}`,
-    );
-
-    this.notifier.announceConfirmationExpired({
-      playerName: name,
-      returnedToPosition: result.returnPos,
-      game: updated,
-    });
-
-    if (!result.nextInWait) {
-      this.logger.log(`[CONFIRM_TIMEOUT] game=${reg.gameId} | no eligible waiter -> spot left free`);
-      this.notifier.announceWaitlistExhausted();
-      return;
-    }
-
-    await this.audit.log({
-      gameId: reg.gameId,
-      actorId: null,
-      targetUserId: result.nextInWait.userId ?? undefined,
-      action: 'confirmation_requested',
-      details: { deadline: result.nextDeadline!.toISOString() },
-    });
-
-    const nextName = displayName(result.nextInWait);
-    const finalUpdated = await this.findOne(reg.gameId);
-    this.events.emit({ gameId: reg.gameId, type: 'update', data: finalUpdated });
-
-    this.logger.log(
-      `[CONFIRM_TIMEOUT] game=${reg.gameId} | cascade promoted=${nextName} | isGuest=${result.nextInWait.isGuest} | fromWaitPos=${result.nextOriginalPos} | confirmWindow=5min`,
-    );
-
-    this.notifier.announcePlayersAutoPromoted({
-      promoted: [{ playerName: nextName, target: toNotifiableTarget(result.nextInWait) }],
-      confirmWindowMinutes: NEXT_CONFIRM_TIMEOUT_MS / 60_000,
-      game: finalUpdated,
-    });
-  }
-
   // ─── REORDER / CANCEL / COMPLETE ─────────────────────────────────────────
 
   async reorder(gameId: string, dto: ReorderDto, actorId: string) {
-    await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
+    await withGameLock(this.prisma, gameId, async (tx) => {
 
       for (let i = 0; i < dto.mainList.length; i++) {
         await tx.gameRegistration.updateMany({
@@ -1242,7 +880,7 @@ export class GamesService {
           data: { position: i + 1, isWaitingList: true },
         });
       }
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    });
 
     await this.audit.log({
       gameId,
@@ -1251,13 +889,13 @@ export class GamesService {
       details: { mainListCount: dto.mainList.length, waitListCount: dto.waitList.length },
     });
 
-    const updated = await this.findOne(gameId);
+    const updated = await this.query.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
     return updated;
   }
 
   async cancel(gameId: string, dto: CancelGameDto, actorId: string) {
-    const game = await this.findOne(gameId);
+    const game = await this.query.findOne(gameId);
     if (game.status === GameStatus.completed || game.status === GameStatus.cancelled) {
       throw new GameAlreadyCompletedException();
     }
@@ -1276,7 +914,7 @@ export class GamesService {
   }
 
   async complete(gameId: string, actorId: string, options?: { silent?: boolean }) {
-    const game = await this.findOne(gameId);
+    const game = await this.query.findOne(gameId);
 
     if (game.status === GameStatus.completed) throw new GameAlreadyCompletedException();
     if (game.status === GameStatus.cancelled) throw new GameCancelledException();
@@ -1321,7 +959,7 @@ export class GamesService {
   // ─── REPORTING ────────────────────────────────────────────────────────────
 
   async previewReport(gameId: string) {
-    const game = await this.findOne(gameId);
+    const game = await this.query.findOne(gameId);
     const report = this.generateReport(game);
     const fineable = game.registrations
       .filter((r) => !r.attended && !r.isWaitingList)
@@ -1341,7 +979,7 @@ export class GamesService {
     await this.prisma.gameRegistration.update({ where: { id: regId }, data: { fineExempt: exempt } });
     await this.audit.log({ gameId, actorId, targetUserId: reg.userId ?? undefined, action: 'fine_exemption_toggled', details: { fineExempt: exempt } });
 
-    const updated = await this.findOne(gameId);
+    const updated = await this.query.findOne(gameId);
     this.events.emit({ gameId, type: 'update', data: updated });
     return updated;
   }
@@ -1354,7 +992,7 @@ export class GamesService {
     if (!game) throw new GameNotFoundException();
 
     if (game.completionReport) return { report: game.completionReport };
-    const full = await this.findOne(gameId);
+    const full = await this.query.findOne(gameId);
     return { report: this.generateReport(full) };
   }
 

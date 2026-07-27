@@ -4,12 +4,21 @@ import { GamesController } from './games.controller';
 import { GameEventsService } from './game-events.service';
 import { GameSchedulerService } from './game-scheduler.service';
 import { GameNotifier } from './events/game-notifier.service';
+import { GameQueryService } from './game-query.service';
+import { ConfirmationService } from './confirmation.service';
 import { AuditModule } from '../audit/audit.module';
 import { FinancesModule } from '../finances/finances.module';
 
 @Module({
   imports: [AuditModule, FinancesModule],
-  providers: [GamesService, GameEventsService, GameSchedulerService, GameNotifier],
+  providers: [
+    GamesService,
+    GameEventsService,
+    GameSchedulerService,
+    GameNotifier,
+    GameQueryService,
+    ConfirmationService,
+  ],
   controllers: [GamesController],
   exports: [GamesService, GameEventsService],
 })

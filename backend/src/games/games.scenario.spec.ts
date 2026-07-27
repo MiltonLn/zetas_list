@@ -13,6 +13,8 @@ import { GamesService } from './games.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { GameEventsService } from './game-events.service';
+import { GameQueryService } from './game-query.service';
+import { ConfirmationService } from './confirmation.service';
 import { notificationHarness } from './testing/notifier-harness';
 import { FinancesService } from '../finances/finances.service';
 import { GameNotOpenException, NoPendingConfirmationException } from './exceptions';
@@ -65,6 +67,8 @@ async function setup(opts: { members: number; maxMainSpots?: number; gameDate?: 
     imports: harness.imports,
     providers: [
       GamesService,
+      GameQueryService,
+      ConfirmationService,
       { provide: PrismaService, useValue: prisma },
       { provide: AuditService, useValue: audit },
       { provide: GameEventsService, useValue: events },
