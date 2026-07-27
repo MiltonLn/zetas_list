@@ -15,6 +15,9 @@ backend/whatsapp-session/
 frontend/dist/
 backend/dist/
 
+# Test coverage reports
+coverage/
+
 # Logs
 *.log
 npm-debug.log*

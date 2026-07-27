@@ -1,14 +1,12 @@
 // Sentry must be initialized before any other import.
 import './instrument';
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
-import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import * as cookieParser from 'cookie-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { AppModule } from './app.module';
+import { configureApp } from './app-config';
 import { env, isProduction } from './config/env';
 
 async function bootstrap() {
@@ -21,24 +19,10 @@ async function bootstrap() {
   app.useLogger(app.get(Logger));
   console.log('[STARTUP] App creada, configurando middlewares...');
 
-  app.use(cookieParser());
+  configureApp(app);
 
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads/',
-  });
-
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
-
-  app.useGlobalFilters(new AllExceptionsFilter());
-
-  app.setGlobalPrefix('api', {
-    exclude: ['/health'],
   });
 
   app.enableCors({

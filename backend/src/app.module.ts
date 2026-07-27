@@ -4,6 +4,7 @@ import {
   NestModule,
 } from '@nestjs/common';
 import { SentryModule } from '@sentry/nestjs/setup';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
@@ -27,6 +28,7 @@ import { isProduction } from './config/env';
   imports: [
     SentryModule.forRoot(),
     LoggerModule.forRoot(buildLoggerConfig()),
+    EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 300 }]),
     ...(isProduction
