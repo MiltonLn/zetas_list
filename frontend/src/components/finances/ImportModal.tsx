@@ -1,29 +1,27 @@
 import { useState } from 'react';
 import { Modal } from '../Modal';
-import { financesService } from '../../services/finances.service';
+import type { ImportPayload } from '../../services/finances.service';
 import { getApiError } from '../../services/api';
 import { showToast } from '../../utils/toast';
+import { useImportFinancesMutation } from '../../hooks/useFinancesQuery';
 
 export function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [jsonText, setJsonText] = useState('');
-  const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ transactionsCreated: number; finesCreated: number; errors: string[] } | null>(null);
+  const importFinances = useImportFinancesMutation();
 
   const handleImport = async () => {
-    setImporting(true);
     try {
-      const payload = JSON.parse(jsonText);
-      const res = await financesService.importData(payload);
-      setResult(res.data);
-      showToast(`Importados: ${res.data.transactionsCreated} transacciones, ${res.data.finesCreated} multas`, 'success');
+      const payload = JSON.parse(jsonText) as ImportPayload;
+      const imported = await importFinances.mutateAsync(payload);
+      setResult(imported);
+      showToast(`Importados: ${imported.transactionsCreated} transacciones, ${imported.finesCreated} multas`, 'success');
     } catch (e) {
       if (e instanceof SyntaxError) {
         showToast('JSON inválido', 'error');
       } else {
         showToast(getApiError(e), 'error');
       }
-    } finally {
-      setImporting(false);
     }
   };
 
@@ -57,8 +55,8 @@ export function ImportModal({ onClose, onImported }: { onClose: () => void; onIm
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button type="button" className="btn" onClick={result ? onImported : onClose}>{result ? 'Cerrar' : 'Cancelar'}</button>
         {!result && (
-          <button className="btn btn-primary" onClick={handleImport} disabled={importing || !jsonText.trim()}>
-            {importing ? 'Importando...' : 'Importar'}
+          <button className="btn btn-primary" onClick={handleImport} disabled={importFinances.isPending || !jsonText.trim()}>
+            {importFinances.isPending ? 'Importando...' : 'Importar'}
           </button>
         )}
       </div>

@@ -36,6 +36,7 @@ function makeReg(overrides: Partial<GameRegistration> = {}): GameRegistration {
     attended: false,
     paid: false,
     fromWaitList: false,
+    fineExempt: false,
     isGuest: false,
     pendingConfirmation: false,
     confirmationDeclined: false,
@@ -64,6 +65,12 @@ describe('SortableRegistrationRow', () => {
   it('muestra el nombre del jugador', () => {
     render(<SortableRegistrationRow {...baseProps} />);
     expect(screen.getAllByText('Carlos').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('renderiza un fallback explícito si la relación user es null', () => {
+    render(<SortableRegistrationRow {...baseProps} reg={makeReg({ user: null })} />);
+
+    expect(screen.getAllByText('?').length).toBeGreaterThanOrEqual(1);
   });
 
   it('muestra botones de admin cuando NO es readonly', () => {

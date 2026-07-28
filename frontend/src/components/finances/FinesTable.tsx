@@ -4,11 +4,12 @@ import { PAGE_SIZE } from './constants';
 import { formatCurrency, formatDate } from '../../utils/currency';
 import type { Fine } from '../../services/finances.service';
 
-export function FinesTable({ fines, onEdit, onDelete, onMarkPaid }: {
+export function FinesTable({ fines, onEdit, onDelete, onMarkPaid, isDeleteArmed }: {
   fines: Fine[];
   onEdit: (f: Fine) => void;
   onDelete: (id: string) => void;
   onMarkPaid: (id: string) => void;
+  isDeleteArmed: (id: string) => boolean;
 }) {
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'paid'>('all');
   const [sortCol, setSortCol] = useState<'date' | 'amount' | 'name' | 'status'>('date');
@@ -98,7 +99,14 @@ export function FinesTable({ fines, onEdit, onDelete, onMarkPaid }: {
                       <button className="btn btn-success" style={{ fontSize: 11, padding: '2px 8px', marginRight: 4 }} onClick={() => onMarkPaid(f.id)}>Pagar</button>
                     )}
                     <button className="btn" style={{ fontSize: 11, padding: '2px 8px', marginRight: 4 }} onClick={() => onEdit(f)}>Editar</button>
-                    <button className="btn" style={{ fontSize: 11, padding: '2px 8px', color: '#ef5350' }} onClick={() => onDelete(f.id)}>Eliminar</button>
+                    <button
+                      className="btn"
+                      style={{ fontSize: 11, padding: '2px 8px', color: '#ef5350' }}
+                      aria-label={isDeleteArmed(f.id) ? `Confirmar eliminación de multa de ${f.user?.name || f.userName || 'usuario'}` : `Eliminar multa de ${f.user?.name || f.userName || 'usuario'}`}
+                      onClick={() => onDelete(f.id)}
+                    >
+                      {isDeleteArmed(f.id) ? '¿Seguro?' : 'Eliminar'}
+                    </button>
                   </td>
                 </tr>
               ))}

@@ -11,7 +11,7 @@ zetas_list/
   backend/            NestJS + Prisma + PostgreSQL
   scripts/            Codegen de tipos compartidos
   video/              Video promocional (Remotion) — no forma parte de la app
-  .github/workflows/  CI pipeline (test, lint, typecheck)
+  .github/workflows/  CI pipeline (install, codegen, typecheck, lint, coverage y build)
   .husky/             Pre-commit hooks (lint de archivos staged)
   docker-compose.yml  Desarrollo local
   Dockerfile          Build de producción (multi-stage, en la raíz)
@@ -34,7 +34,8 @@ graph TB
     AuthCtx[AuthContext]
     Pages[Pages]
     Services[Services Layer]
-    SSE[useGameStream SSE]
+    Query[TanStack Query Hooks]
+    SSE[useGameStream fetch SSE]
   end
 
   subgraph server [Backend - NestJS]
@@ -57,13 +58,14 @@ graph TB
 
   App --> AuthCtx
   AuthCtx --> Pages
-  Pages --> Services
+  Pages --> Query
+  Query --> Services
   Services -->|HTTP| AuthMod
   Services -->|HTTP| GamesMod
   Services -->|HTTP| UsersMod
   Services -->|HTTP| FinMod
   Services -->|HTTP| OrdMod
-  SSE -->|EventSource| SSECtrl
+  SSE -->|fetch + Authorization| SSECtrl
 
   GamesMod --> DB
   UsersMod --> DB
@@ -96,8 +98,8 @@ graph TB
 |--------|----------------|
 | `auth` | JWT login/refresh, cambio de contraseña, recuperación vía WhatsApp. `JwtUser` interface tipada en todos los controllers. |
 | `users` | CRUD de usuarios (admin), edición de perfil (self), subida de foto de perfil (multer). |
-| `games` | Partidos, registro con race-condition safety (serializable transactions), SSE en tiempo real, generación de reportes, mensajes WhatsApp. |
-| `whatsapp` | Bot Z — comandos `@Z anotame`, `@Z lista`, `@Z terminar`, `@Z salirme`. Proveedores: Baileys (producción) y CLI simulator (desarrollo). |
+| `games` | `GamesService` coordina `RegistrationService`, `WaitlistService`, `ConfirmationService`, `GameLifecycleService` y `GameQueryService`; transacciones serializables, SSE, scheduler y notificaciones quedan en servicios dedicados. |
+| `whatsapp` | `MessageHandlerService` despacha lectura a `InfoCommandsService` y mutaciones a `MutatingCommandsService`; listeners consumen eventos de dominio y providers Baileys/CLI aíslan el transporte. |
 | `audit` | Log inmutable de todas las mutaciones sobre partidos y usuarios. |
 | `prisma` | Servicio global de base de datos con client singleton. |
 
@@ -139,13 +141,27 @@ sequenceDiagram
 ## Real-time (SSE)
 
 ```
-GET /api/games/:id/stream  →  EventSource en el frontend
+GET /api/games/:id/stream  →  fetch streaming en el frontend
 Cada mutación al partido  →  GameEventsService.emit()
 Frontend escucha          →  re-fetch del partido completo
 Heartbeat cada 30s        →  mantiene conexión viva
 Reconexión automática     →  exponential backoff hasta 30s
-Token JWT                 →  pasado como query param (?token=...)
+Token JWT                 →  header Authorization: Bearer (nunca en URL)
 ```
+
+`useGameStream` parsea frames SSE (incluidos `\r\n` y múltiples líneas `data:`),
+aborta el reader al desmontar y reconecta con backoff exponencial acotado.
+
+---
+
+## Estado remoto y cache frontend
+
+Los hooks `use*Query` y `use*Mutations` encapsulan TanStack Query. Las claves
+centralizadas en `lib/query-client.ts` evitan caches divergentes. Una mutación
+invalida el detalle y las listas relacionadas; los eventos SSE invalidan el
+detalle del partido para que cualquier consumidor comparta el refetch. Al
+cerrar sesión se limpia primero la cache persistida de sesión y luego los tokens,
+evitando que datos de un usuario sobrevivan al siguiente login.
 
 ---
 
@@ -284,8 +300,10 @@ make hooks           # Activa pre-commit hooks (una vez por clon)
 make migrate name=x  # Crea migración Prisma
 make seed            # Inserta datos iniciales
 make test            # Corre tests en ambos sub-proyectos
+make test-cov        # Coverage + thresholds en ambos paquetes
 make lint            # Lint en ambos sub-proyectos
 make gen-types       # Regenera los enums compartidos del frontend
+make check           # Gate completo equivalente a CI
 ```
 
 ### Volúmenes Docker
@@ -302,22 +320,31 @@ make gen-types       # Regenera los enums compartidos del frontend
 
 ```mermaid
 graph LR
-  Push[Push/PR] --> Backend[Backend Job]
+  Push[Push a main / cualquier PR] --> Backend[Backend Job]
   Push --> Frontend[Frontend Job]
 
   Backend --> B_Install[npm ci]
-  B_Install --> B_Types[tsc --noEmit]
+  B_Install --> B_Prisma[prisma generate]
+  B_Prisma --> B_Types[tsc --noEmit]
   B_Types --> B_Lint[ESLint]
-  B_Lint --> B_Test[Jest - 481 tests]
+  B_Lint --> B_Test[Jest test:cov]
+  B_Test --> B_Artifact[upload backend/coverage siempre]
+  B_Artifact --> B_Build[npm run build]
 
   Frontend --> F_Install[npm ci]
-  F_Install --> F_Gen[Check tipos generados]
-  F_Gen --> F_Types[tsc -b --noEmit]
+  F_Install --> F_Gen[gen:api-types:check]
+  F_Gen --> F_CodegenTests[node --test fixtures codegen]
+  F_CodegenTests --> F_Types[tsc -b --noEmit]
   F_Types --> F_Lint[ESLint]
-  F_Lint --> F_Test[Vitest - 118 tests]
+  F_Lint --> F_Test[Vitest test:cov]
+  F_Test --> F_Artifact[upload frontend/coverage siempre]
+  F_Artifact --> F_Build[npm run build]
 ```
 
 - **Trigger**: push a `main` y todos los PRs.
+- **Permisos**: solo lectura de contenidos; runs anteriores del mismo ref/PR se cancelan.
+- **Runtime**: Node 20, lockfiles instalados exclusivamente con `npm ci`.
+- **Artifacts**: coverage backend/frontend se publica aun si falla un gate y se retiene 14 días.
 - **Sin Docker/Postgres**: todos los tests son unitarios con mocks.
 - **Pre-commit hooks**: lint solo de los archivos staged (`.husky/pre-commit`).
 - **Drift de tipos**: el job de frontend falla si `api-types.gen.ts` no coincide
@@ -327,23 +354,23 @@ graph LR
 
 ## Testing
 
-481 tests en el backend (Jest) y 118 en el frontend (Vitest). Ninguno necesita
-Docker ni Postgres.
+Las suites de Jest y Vitest corren sin Docker ni Postgres. El número de pruebas
+y la cobertura vigentes se publican en la salida de CI; ambos paquetes aplican
+umbrales globales mediante `test:cov`.
 
-| Suite | Tests | Cubre |
-|-------|-------|-------|
-| `whatsapp/message-handler.service.spec.ts` | 175 | regexes de comandos, dispatch, cada handler |
-| `games/games.service.spec.ts` | 129 | registro, promoción, confirmaciones, reporte |
-| `users/users.service.spec.ts` | 37 | CRUD, contraseña por defecto, import de WhatsApp |
-| `games/games.scenario.spec.ts` | 26 | flujos stateful de punta a punta (ver abajo) |
-| `orders/orders.service.spec.ts` | 23 | pedidos, variantes, tallas, estados |
-| `auth/auth.service.spec.ts` | 20 | login, refresh, changePassword, recoverPassword |
-| `finances/finances.service.spec.ts` | 19 | transacciones, multas, dashboard |
-| `whatsapp/utils/jid-utils.spec.ts` | 19 | parsing de JIDs y menciones de Baileys |
-| `games/game-scheduler.service.spec.ts` | 18 | apertura por cron, cutoff, timeouts |
-| `config/env.spec.ts` | 8 | validación del schema de variables de entorno |
-| `users/birthday-scheduler.service.spec.ts` | 7 | felicitaciones de cumpleaños |
-| Frontend (10 archivos) | 118 | parser, servicios y componentes con Testing Library |
+| Área | Cobertura principal |
+|------|---------------------|
+| WhatsApp | regexes de comandos, dispatch, handlers, listeners y utilidades de JID |
+| Partidos | registro, promoción, confirmaciones, reportes, scheduler y escenarios stateful |
+| Usuarios y auth | CRUD, permisos, contraseñas, login, refresh y cumpleaños |
+| Pedidos y finanzas | catálogo, pedidos, estados, transacciones, multas y dashboard |
+| HTTP | rutas principales, validación de DTOs y autorización con JWT/roles |
+| Frontend | parser, servicios, hooks, componentes y flujos de páginas con Testing Library |
+
+Las suites `src/test/e2e/*.spec.ts` prueban el wiring HTTP de auth, permisos y
+controllers con la aplicación Nest en memoria; no requieren Postgres ni Docker.
+El codegen tiene fixtures independientes para enums, nullability, tipos de fecha,
+JSON, omisiones sensibles y escalares Prisma no soportados.
 
 Los tests unitarios mockean `PrismaService`, `AuditService`, `GameEventsService`,
 `WhatsappService`, `FinancesService` y `JwtService` vía `@nestjs/testing`.

@@ -17,6 +17,7 @@ import { GameQueryService } from './game-query.service';
 import { ConfirmationService } from './confirmation.service';
 import { WaitlistService } from './waitlist.service';
 import { GameLifecycleService } from './game-lifecycle.service';
+import { RegistrationService } from './registration.service';
 import { notificationHarness } from './testing/notifier-harness';
 import { FinancesService } from '../finances/finances.service';
 import { GameNotOpenException, NoPendingConfirmationException } from './exceptions';
@@ -73,6 +74,7 @@ async function setup(opts: { members: number; maxMainSpots?: number; gameDate?: 
       ConfirmationService,
       WaitlistService,
       GameLifecycleService,
+      RegistrationService,
       { provide: PrismaService, useValue: prisma },
       { provide: AuditService, useValue: audit },
       { provide: GameEventsService, useValue: events },
@@ -144,6 +146,34 @@ describe('GamesService — escenarios reales (stateful)', () => {
       expect(promoted).toBeDefined();
       expect(promoted?.pendingConfirmation).toBe(true);
       expect(promoted?.isWaitingList).toBe(false);
+    });
+  });
+
+  describe('Escenario 1b: invitado desborda a espera', () => {
+    it('conserva mainListHasBeenFull al registrar el invitado', async () => {
+      const { service, prisma, members, gameId } = await setup({
+        members: 1,
+        maxMainSpots: 1,
+      });
+
+      await service.register(gameId, members[0].id, members[0].id, {
+        silent: true,
+      });
+      await service.registerGuest(gameId, 'Invitado en espera', members[0].id, {
+        silent: true,
+      });
+
+      const { main, wait } = lists(prisma, gameId);
+      expect(main).toHaveLength(1);
+      expect(wait).toHaveLength(1);
+      expect(wait[0]).toEqual(
+        expect.objectContaining({
+          isGuest: true,
+          guestName: 'Invitado en espera',
+          isWaitingList: true,
+        }),
+      );
+      expect(prisma.getGame(gameId)?.mainListHasBeenFull).toBe(true);
     });
   });
 

@@ -106,3 +106,131 @@ export const FINE_STATUS_VALUES = [
   'paid',
 ] as const;
 export type FineStatus = (typeof FINE_STATUS_VALUES)[number];
+
+export interface UserBase {
+  id: string;
+  username: string;
+  name: string;
+  alias: string | null;
+  phone: string;
+  role: Role;
+  position: Position | null;
+  gender: Gender | null;
+  heightCm: number | null;
+  birthDate: string | null;
+  photoUrl: string | null;
+  bio: string | null;
+  shirtSize: ShirtSize | null;
+  shirtNumber: number | null;
+  status: UserStatus;
+  banReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GameBase {
+  id: string;
+  title: string;
+  modalidad: Modalidad;
+  gameDate: string;
+  startTime: string;
+  registrationOpenAt: string;
+  maxMainSpots: number;
+  pricePerPlayer: number;
+  vigilante: number;
+  status: GameStatus;
+  cancellationReason: string | null;
+  completionReport: string | null;
+  guestCutoffTime: string;
+  maxProxyRegistrations: number;
+  mainListHasBeenFull: boolean;
+  cutoffNotified: boolean;
+  fineAmountNoShow: number;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GameRegistrationBase {
+  id: string;
+  gameId: string;
+  userId: string | null;
+  position: number;
+  isWaitingList: boolean;
+  attended: boolean;
+  paid: boolean;
+  note: string | null;
+  fromWaitList: boolean;
+  fineExempt: boolean;
+  isGuest: boolean;
+  guestName: string | null;
+  pendingConfirmation: boolean;
+  confirmationDeadline: string | null;
+  confirmationDeclined: boolean;
+  originalWaitPosition: number | null;
+  registeredAt: string;
+  registeredById: string;
+}
+
+export interface AuditLogBase {
+  id: string;
+  gameId: string | null;
+  actorId: string | null;
+  targetUserId: string | null;
+  action: AuditAction;
+  details: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface FinanceTransactionBase {
+  id: string;
+  type: TransactionType;
+  date: string;
+  amount: number;
+  description: string;
+  gameId: string | null;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FineBase {
+  id: string;
+  userId: string | null;
+  userName: string | null;
+  date: string;
+  amount: number;
+  reason: string;
+  status: FineStatus;
+  paidAt: string | null;
+  gameId: string | null;
+  gameRegistrationId: string | null;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrderBase {
+  id: string;
+  userId: string;
+  status: OrderStatus;
+  totalAmount: number;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrderItemBase {
+  id: string;
+  orderId: string;
+  productId: string;
+  productName: string;
+  variantId: string;
+  variantName: string;
+  size: ShirtSize | null;
+  quantity: number;
+  customName: string | null;
+  customNumber: number | null;
+  unitPrice: number;
+  lineTotal: number;
+}

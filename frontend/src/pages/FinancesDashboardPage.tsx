@@ -1,20 +1,23 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
 import { FinanceSummary } from '../components/FinanceSummary';
 import { Pagination } from '../components/Pagination';
-import { financesService, type DashboardData, type FinanceTransaction } from '../services/finances.service';
+import { useFinancesDashboardQuery, useTransactionsQuery } from '../hooks/useFinancesQuery';
+import type { FinanceTransaction } from '../services/finances.service';
 import { getApiError } from '../services/api';
 import { formatCurrency, formatDate, formatSignedCurrency } from '../utils/currency';
 
 const PAGE_SIZE = 10;
+const EMPTY_TRANSACTIONS: FinanceTransaction[] = [];
 
 export function FinancesDashboardPage() {
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [year, setYear] = useState(new Date().getFullYear());
+  const dashboardQuery = useFinancesDashboardQuery(year);
+  const transactionsQuery = useTransactionsQuery(year);
+  const dashboard = dashboardQuery.data;
+  const transactions = transactionsQuery.data ?? EMPTY_TRANSACTIONS;
+  const error = dashboardQuery.error ?? transactionsQuery.error;
   const [txFilter, setTxFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [txSortCol, setTxSortCol] = useState<'date' | 'description' | 'amount'>('date');
   const [txSortDir, setTxSortDir] = useState<'asc' | 'desc'>('desc');
@@ -23,27 +26,6 @@ export function FinancesDashboardPage() {
   const [fineSortCol, setFineSortCol] = useState<'name' | 'amount' | 'date'>('date');
   const [fineSortDir, setFineSortDir] = useState<'asc' | 'desc'>('asc');
   const [finePage, setFinePage] = useState(1);
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const [dashRes, txRes] = await Promise.all([
-        financesService.getDashboard(year),
-        financesService.getTransactions(year),
-      ]);
-      setDashboard(dashRes.data);
-      setTransactions(txRes.data);
-    } catch (e) {
-      setError(getApiError(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [year]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
 
   useEffect(() => { setTxPage(1); }, [txFilter, txSortCol, txSortDir]);
   useEffect(() => { setFinePage(1); }, [fineSortCol, fineSortDir]);
@@ -97,14 +79,14 @@ export function FinancesDashboardPage() {
     color: active ? '#6e8efb' : undefined,
   });
 
-  if (loading) return <Spinner />;
+  if (dashboardQuery.isPending || transactionsQuery.isPending) return <Spinner />;
 
   if (error) {
     return (
       <>
         <PageHeader title="Finanzas" />
         <div className="page-wrapper" style={{ maxWidth: 900 }}>
-          <div className="card" style={{ padding: 20, textAlign: 'center', color: '#ef5350' }}>{error}</div>
+          <div className="card" style={{ padding: 20, textAlign: 'center', color: '#ef5350' }}>{getApiError(error)}</div>
         </div>
       </>
     );

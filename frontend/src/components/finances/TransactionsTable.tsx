@@ -4,10 +4,11 @@ import { PAGE_SIZE } from './constants';
 import { formatCurrency, formatDate } from '../../utils/currency';
 import type { FinanceTransaction } from '../../services/finances.service';
 
-export function TransactionsTable({ transactions, onEdit, onDelete }: {
+export function TransactionsTable({ transactions, onEdit, onDelete, isDeleteArmed }: {
   transactions: FinanceTransaction[];
   onEdit: (tx: FinanceTransaction) => void;
   onDelete: (id: string) => void;
+  isDeleteArmed: (id: string) => boolean;
 }) {
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [sortCol, setSortCol] = useState<'date' | 'amount' | 'description' | 'type'>('date');
@@ -92,7 +93,14 @@ export function TransactionsTable({ transactions, onEdit, onDelete }: {
                   <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 500 }}>{formatCurrency(tx.amount)}</td>
                   <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                     <button className="btn" style={{ fontSize: 11, padding: '2px 8px', marginRight: 4 }} onClick={() => onEdit(tx)}>Editar</button>
-                    <button className="btn" style={{ fontSize: 11, padding: '2px 8px', color: '#ef5350' }} onClick={() => onDelete(tx.id)}>Eliminar</button>
+                    <button
+                      className="btn"
+                      style={{ fontSize: 11, padding: '2px 8px', color: '#ef5350' }}
+                      aria-label={isDeleteArmed(tx.id) ? `Confirmar eliminación de ${tx.description}` : `Eliminar ${tx.description}`}
+                      onClick={() => onDelete(tx.id)}
+                    >
+                      {isDeleteArmed(tx.id) ? '¿Seguro?' : 'Eliminar'}
+                    </button>
                   </td>
                 </tr>
               ))}

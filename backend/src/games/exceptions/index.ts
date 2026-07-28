@@ -35,6 +35,18 @@ export class GameNotOpenException extends BadRequestException {
   }
 }
 
+export class InvalidGuestNameException extends BadRequestException {
+  constructor() {
+    super('El nombre del invitado es obligatorio');
+  }
+}
+
+export class InvalidRegistrationOrderException extends BadRequestException {
+  constructor() {
+    super('El orden debe incluir exactamente una vez todos los registros del partido');
+  }
+}
+
 export class GameFullException extends BadRequestException {
   constructor() {
     super('La lista principal ya está llena');

@@ -5,6 +5,7 @@ import { GamesService } from '../games/games.service';
 import { UsersService } from '../users/users.service';
 import { FinancesService } from '../finances/finances.service';
 import { InfoCommandsService } from './commands/info-commands.service';
+import { MutatingCommandsService } from './commands/mutating-commands.service';
 import { Role } from '@prisma/client';
 import { AlreadyRegisteredException, ProxyLimitExceededException } from '../games/exceptions';
 
@@ -19,7 +20,6 @@ const mockGames = {
   complete: jest.fn(),
   promoteNext: jest.fn(),
   retryFromWaitingList: jest.fn(),
-  formatListForWhatsapp: jest.fn(),
   buildCounts: jest.fn().mockReturnValue('📊 *1/18* cupos ocupados (17 disponibles)'),
   buildGameLink: jest.fn().mockReturnValue(''),
 };
@@ -239,6 +239,7 @@ describe('MessageHandlerService — handleMessage', () => {
         // Real InfoCommandsService: these tests assert on the copy the bot sends
         // for read-only commands, so mocking it would test nothing.
         InfoCommandsService,
+        MutatingCommandsService,
         { provide: WHATSAPP_PROVIDER, useValue: mockWp },
         { provide: GamesService, useValue: mockGames },
         { provide: UsersService, useValue: mockUsers },
@@ -267,10 +268,10 @@ describe('MessageHandlerService — handleMessage', () => {
 
     it('envía la lista formateada cuando hay juego activo', async () => {
       mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
-      mockGames.formatListForWhatsapp.mockReturnValue('📋 Lista...');
-
       await service.handleMessage('111', '@Z lista', 'group-1');
-      expect(mockWp.sendToGroup).toHaveBeenCalledWith('📋 Lista...');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('Volley 6x6'),
+      );
     });
 
     // The alias-loading contract now lives with the query itself, in
@@ -363,7 +364,13 @@ describe('MessageHandlerService — handleMessage', () => {
       );
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.retryFromWaitingList.mockResolvedValue({ promoted: true, game: makeActiveGame() });
-      mockGames.findOne.mockResolvedValue(makeActiveGame([{ user: { id: 'user-1' }, isWaitingList: false, position: 5 }]));
+      mockGames.findOne
+        .mockResolvedValueOnce(
+          makeActiveGame([{ user: { id: 'user-1' }, isWaitingList: true, confirmationDeclined: true, position: 1 }]),
+        )
+        .mockResolvedValueOnce(
+          makeActiveGame([{ user: { id: 'user-1' }, isWaitingList: false, position: 5 }]),
+        );
 
       await service.handleMessage('111', '@Z anotame', 'group-1');
 
@@ -372,9 +379,11 @@ describe('MessageHandlerService — handleMessage', () => {
     });
 
     it('un registro activo normal sí responde "ya estás anotado"', async () => {
-      mockGames.findActiveGame.mockResolvedValue(
-        makeActiveGame([{ user: { id: 'user-1' }, isWaitingList: false, confirmationDeclined: false, position: 3 }]),
-      );
+      const game = makeActiveGame([
+        { user: { id: 'user-1' }, isWaitingList: false, confirmationDeclined: false, position: 3 },
+      ]);
+      mockGames.findActiveGame.mockResolvedValue(game);
+      mockGames.findOne.mockResolvedValue(game);
       mockUsers.findByPhone.mockResolvedValue(makeUser());
 
       await service.handleMessage('111', '@Z anotame', 'group-1');
@@ -519,6 +528,7 @@ describe('MessageHandlerService — handleMessage', () => {
         { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
       ]);
       mockGames.findActiveGame.mockResolvedValue(game);
+      mockGames.findOne.mockResolvedValue(game);
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 2 });
       mockGames.findOne.mockResolvedValue(game);
@@ -536,6 +546,7 @@ describe('MessageHandlerService — handleMessage', () => {
         { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
       ]);
       mockGames.findActiveGame.mockResolvedValue(game);
+      mockGames.findOne.mockResolvedValue(game);
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 2 });
       mockGames.findOne.mockResolvedValue(game);
@@ -606,7 +617,11 @@ describe('MessageHandlerService — handleMessage', () => {
       mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.register.mockResolvedValue({ isWaitingList: false, position: 1 });
-      mockGames.findOne.mockResolvedValue(makeActiveGame());
+      mockGames.findOne
+        .mockResolvedValueOnce(makeActiveGame())
+        .mockResolvedValueOnce(
+          makeActiveGame([{ user: { id: 'user-1' }, isWaitingList: false, confirmationDeclined: false }]),
+        );
 
       await service.handleMessage('111', '@Z anotar @111', 'group-1', ['111@s.whatsapp.net']);
       expect(mockGames.register).toHaveBeenCalledWith('game-1', 'user-1', 'user-1', { silent: true });
@@ -623,7 +638,14 @@ describe('MessageHandlerService — handleMessage', () => {
         return Promise.resolve(null);
       });
       mockGames.register.mockResolvedValue({ isWaitingList: false, position: 2 });
-      mockGames.findOne.mockResolvedValue(makeActiveGame());
+      mockGames.findOne
+        .mockResolvedValueOnce(makeActiveGame())
+        .mockResolvedValueOnce(
+          makeActiveGame([
+            { user: { id: 'user-1' }, isWaitingList: false },
+            { user: { id: 'user-2' }, isWaitingList: false },
+          ]),
+        );
 
       await service.handleMessage('111', '@Z anótame @222', 'group-1', ['222@s.whatsapp.net']);
       expect(mockGames.register).toHaveBeenCalledWith('game-1', 'user-1', 'user-1', { silent: true });
@@ -657,7 +679,11 @@ describe('MessageHandlerService — handleMessage', () => {
         return Promise.resolve(null);
       });
       mockGames.register.mockResolvedValue({ isWaitingList: false, position: 1 });
-      mockGames.findOne.mockResolvedValue(makeActiveGame());
+      mockGames.findOne
+        .mockResolvedValueOnce(makeActiveGame())
+        .mockResolvedValueOnce(
+          makeActiveGame([{ user: { id: 'user-1' }, isWaitingList: false, confirmationDeclined: false }]),
+        );
 
       await service.handleMessage('111', '@Z anótame @999', 'group-1', ['999@s.whatsapp.net']);
       expect(mockWp.sendToGroup).toHaveBeenCalledWith(
@@ -731,6 +757,7 @@ describe('MessageHandlerService — handleMessage', () => {
         { user: { id: 'other-1', name: 'Otro', phone: '222' }, isWaitingList: false },
       ]);
       mockGames.findActiveGame.mockResolvedValue(game);
+      mockGames.findOne.mockResolvedValue(game);
       mockUsers.findByPhone.mockResolvedValue(makeUser());
 
       await service.handleMessage('111', '@Z promover', 'group-1');
@@ -753,6 +780,7 @@ describe('MessageHandlerService — handleMessage', () => {
         { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
       ]);
       mockGames.findActiveGame.mockResolvedValue(game);
+      mockGames.findOne.mockResolvedValue(game);
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       const updated = makeActiveGame();
       mockGames.promoteNext.mockResolvedValue({ updated, promotedName: 'Juan' });
@@ -766,6 +794,7 @@ describe('MessageHandlerService — handleMessage', () => {
         { user: { id: 'user-1', name: 'Test User', phone: '111' }, isWaitingList: false },
       ]);
       mockGames.findActiveGame.mockResolvedValue(game);
+      mockGames.findOne.mockResolvedValue(game);
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       const updated = makeActiveGame();
       mockGames.promoteNext.mockResolvedValue({ updated, promotedName: 'Juan' });
@@ -1076,7 +1105,9 @@ describe('MessageHandlerService — handleMessage', () => {
       );
       mockUsers.findByPhone.mockResolvedValue(makeUser());
       mockGames.registerGuest.mockResolvedValue({ isWaitingList: false, position: 3 });
-      mockGames.findOne.mockResolvedValue(makeActiveGame());
+      mockGames.findOne.mockResolvedValue(
+        makeActiveGame([{ user: { id: 'user-1' }, isWaitingList: false, confirmationDeclined: false }]),
+      );
 
       await service.handleMessage('111', '@Z anotame + Pepito', 'group-1');
 

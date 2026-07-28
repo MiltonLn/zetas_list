@@ -9,9 +9,12 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:cov": "vitest run --coverage",
     "test:watch": "vitest",
     "gen:api-types": "node ../scripts/generate-api-types.mjs",
-    "gen:api-types:check": "node ../scripts/generate-api-types.mjs --check"
+    "gen:api-types:check": "node ../scripts/generate-api-types.mjs --check",
+    "test:codegen": "node --test ../scripts/generate-api-types.test.mjs",
+    "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -35,7 +38,8 @@
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^4.7.0",
+    "@vitejs/plugin-react": "4.3.4",
+    "@vitest/coverage-v8": "^2.1.9",
     "autoprefixer": "^10.5.0",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -47,6 +51,9 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.58.2",
     "vite": "^5.4.21",
-    "vitest": "^4.1.5"
+    "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

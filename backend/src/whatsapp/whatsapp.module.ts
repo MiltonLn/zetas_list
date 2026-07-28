@@ -3,6 +3,7 @@ import { WhatsappService } from './whatsapp.service';
 import { WhatsappController } from './whatsapp.controller';
 import { MessageHandlerService } from './message-handler.service';
 import { InfoCommandsService } from './commands/info-commands.service';
+import { MutatingCommandsService } from './commands/mutating-commands.service';
 import { CliSimulatorProvider } from './providers/cli-simulator.provider';
 import { BaileysProvider } from './providers/baileys.provider';
 import { WHATSAPP_PROVIDER } from './whatsapp.interface';
@@ -32,6 +33,7 @@ const providerClass = isBaileys ? BaileysProvider : CliSimulatorProvider;
     },
     WhatsappService,
     InfoCommandsService,
+    MutatingCommandsService,
     MessageHandlerService,
     GameNotificationsListener,
     BirthdayNotificationsListener,

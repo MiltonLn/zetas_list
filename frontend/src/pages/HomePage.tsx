@@ -9,6 +9,7 @@ import { MODALIDAD_LABELS, GAME_STATUS_LABELS } from '../types';
 import { Spinner } from '../components/Spinner';
 import { StatusBadge } from '../components/StatusBadge';
 import { PageHeader } from '../components/PageHeader';
+import { Pagination } from '../components/Pagination';
 import { getApiError } from '../services/api';
 
 
@@ -62,10 +63,14 @@ export default function HomePage() {
   });
 
   const adminActive = useQuery({
-    queryKey: queryKeys.games({ page: 1, limit: 1, status: 'registration_open' }),
-    queryFn: async () =>
-      (await gamesService.list({ page: 1, limit: 1, status: 'registration_open' as GameStatus }))
-        .data.data[0] ?? null,
+    queryKey: queryKeys.games({ scope: 'admin-active' }),
+    queryFn: async () => (
+      await gamesService.list({
+        excludeStatus: 'scheduled,completed,cancelled',
+        page: 1,
+        limit: 1,
+      })
+    ).data.data[0] ?? null,
     enabled: isAdmin,
   });
 
@@ -289,28 +294,12 @@ export default function HomePage() {
                 ))}
             </div>
 
-            {/* Pagination */}
-            {totalPages > 1 && !historyLoading && (
-              <div className="pagination">
-                <button
-                  className="pagination-btn"
-                  disabled={currentPage <= 1}
-                  onClick={() => updateParam('page', String(currentPage - 1))}
-                >
-                  ← Anterior
-                </button>
-                <span className="pagination-info">
-                  Página {currentPage} de {totalPages}
-                  <span className="pagination-total"> ({total} partidos)</span>
-                </span>
-                <button
-                  className="pagination-btn"
-                  disabled={currentPage >= totalPages}
-                  onClick={() => updateParam('page', String(currentPage + 1))}
-                >
-                  Siguiente →
-                </button>
-              </div>
+            {!historyLoading && (
+              <Pagination
+                page={currentPage}
+                totalPages={totalPages}
+                onPageChange={(page) => updateParam('page', String(page))}
+              />
             )}
           </>
         )}

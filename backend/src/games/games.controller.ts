@@ -128,6 +128,7 @@ export class GamesController {
     return this.gamesService.confirmRegistrationById(id, regId, user.id);
   }
 
+  @Roles(...GAME_MANAGERS)
   @Get(':id/available-members')
   getAvailableMembers(@Param('id') id: string) {
     return this.gamesService.getAvailableMembers(id);

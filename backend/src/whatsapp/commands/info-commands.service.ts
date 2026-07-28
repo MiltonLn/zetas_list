@@ -1,9 +1,8 @@
-import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { WhatsappProvider, WHATSAPP_PROVIDER } from '../whatsapp.interface';
-import { ActiveGame, GamesService } from '../../games/games.service';
 import { FinancesService } from '../../finances/finances.service';
 import { userDisplayName } from '../../games/games.utils';
-import { isExpectedBusinessError } from '../../common/errors/is-expected-error';
+import { reportCaughtError } from '../../common/errors/report-caught-error';
 import { env } from '../../config/env';
 import {
   MSG_ALIASES,
@@ -15,6 +14,7 @@ import {
   MSG_RULES,
   buildPaymentMessage,
 } from './messages';
+import { ActiveGame, formatListForWhatsapp } from './list-formatter';
 
 /**
  * Read-only commands: they answer a question and never mutate a game. Split out
@@ -27,7 +27,6 @@ export class InfoCommandsService {
 
   constructor(
     @Inject(WHATSAPP_PROVIDER) private wp: WhatsappProvider,
-    @Inject(forwardRef(() => GamesService)) private games: GamesService,
     private finances: FinancesService,
   ) {}
 
@@ -36,7 +35,7 @@ export class InfoCommandsService {
       await this.wp.sendToGroup(MSG_NO_ACTIVE_GAME);
       return;
     }
-    await this.wp.sendToGroup(this.games.formatListForWhatsapp(activeGame));
+    await this.wp.sendToGroup(formatListForWhatsapp(activeGame));
   }
 
   async help(): Promise<void> {
@@ -82,11 +81,7 @@ export class InfoCommandsService {
 
       await this.wp.sendToGroup(lines.join('\n'));
     } catch (e) {
-      if (isExpectedBusinessError(e)) {
-        this.logger.debug(`Error al consultar multados: ${(e as Error).message}`);
-      } else {
-        this.logger.error('Error al consultar multados:', e as Error);
-      }
+      reportCaughtError(this.logger, 'Error al consultar multados', e);
       await this.wp.sendToGroup(MSG_FINED_ERROR);
     }
   }

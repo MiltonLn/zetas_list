@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import * as Sentry from '@sentry/nestjs';
 import {
   AttendanceConfirmedByStaffEvent,
   AttendanceConfirmedEvent,
@@ -107,6 +108,7 @@ export class GameNotifier {
       return await this.emitter.emitAsync(event, payload);
     } catch (e) {
       this.logger.warn(`Fallo notificando ${event}`, e as Error);
+      Sentry.captureException(e);
       return [];
     }
   }

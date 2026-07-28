@@ -6,6 +6,7 @@ import { GameNotifier } from './events/game-notifier.service';
 import { GameStatus } from '@prisma/client';
 import { ACTIVE_GAME_STATUSES } from './games.utils';
 import { runWithLogContext, newReqId } from '../common/logging/log-context';
+import { reportCaughtError } from '../common/errors/report-caught-error';
 
 @Injectable()
 export class GameSchedulerService {
@@ -42,7 +43,7 @@ export class GameSchedulerService {
         await this.games.openRegistration(game.id);
         this.logger.log(`Registro abierto para: ${game.title}`);
       } catch (e) {
-        this.logger.error(`Error abriendo registro para ${game.id}:`, e);
+        reportCaughtError(this.logger, `Error abriendo registro para ${game.id}`, e);
       }
     }
   }
@@ -70,7 +71,11 @@ export class GameSchedulerService {
           try {
             await this.games.handleConfirmationTimeout(reg.id);
           } catch (e) {
-            this.logger.error(`Error procesando timeout de confirmación ${reg.id}:`, e);
+            reportCaughtError(
+              this.logger,
+              `Error procesando timeout de confirmación ${reg.id}`,
+              e,
+            );
           }
         },
       );
@@ -112,7 +117,7 @@ export class GameSchedulerService {
         // not prematurely expire a still-pending auto-promotion.
         await this.games.autoPromoteIfNeeded(game.id, { skipMainListFullCheck: true });
       } catch (e) {
-        this.logger.error(`Error procesando cutoff para ${game.id}:`, e);
+        reportCaughtError(this.logger, `Error procesando cutoff para ${game.id}`, e);
       }
     }
   }

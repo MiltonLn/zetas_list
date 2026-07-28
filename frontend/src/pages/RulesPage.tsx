@@ -6,6 +6,7 @@ export default function RulesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Asset estático: no forma parte del estado remoto del API.
     fetch('/reglas.md')
       .then((res) => res.text())
       .then((text) => {

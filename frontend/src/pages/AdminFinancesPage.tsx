@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { FinanceSummary } from '../components/FinanceSummary';
 import { Spinner } from '../components/Spinner';
-import { financesService, type FinanceTransaction, type Fine } from '../services/finances.service';
+import type { FinanceTransaction, Fine } from '../services/finances.service';
 import { TransactionsTable } from '../components/finances/TransactionsTable';
 import { FinesTable } from '../components/finances/FinesTable';
 import { TransactionModal } from '../components/finances/TransactionModal';
@@ -10,20 +10,36 @@ import { FineModal } from '../components/finances/FineModal';
 import { ImportModal } from '../components/finances/ImportModal';
 
 
-import { usersService } from '../services/users.service';
 import { getApiError } from '../services/api';
 import { showToast } from '../utils/toast';
-import type { User } from '../types';
+import {
+  useDeleteFineMutation,
+  useDeleteTransactionMutation,
+  useFinesQuery,
+  useMarkFinePaidMutation,
+  useTransactionsQuery,
+} from '../hooks/useFinancesQuery';
+import { useUsersQuery } from '../hooks/useUsersQuery';
+import { useConfirm } from '../hooks/useConfirm';
 
 type Tab = 'transactions' | 'fines';
+const EMPTY_TRANSACTIONS: FinanceTransaction[] = [];
+const EMPTY_FINES: Fine[] = [];
 
 export function AdminFinancesPage() {
   const [tab, setTab] = useState<Tab>('transactions');
-  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
-  const [fines, setFines] = useState<Fine[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
   const [year, setYear] = useState(new Date().getFullYear());
+  const transactionsQuery = useTransactionsQuery(year);
+  const finesQuery = useFinesQuery(year);
+  const usersQuery = useUsersQuery();
+  const deleteTransaction = useDeleteTransactionMutation();
+  const deleteFine = useDeleteFineMutation();
+  const markFinePaid = useMarkFinePaidMutation();
+  const confirmDelete = useConfirm();
+  const transactions = transactionsQuery.data ?? EMPTY_TRANSACTIONS;
+  const fines = finesQuery.data ?? EMPTY_FINES;
+  const users = usersQuery.data ?? [];
+  const loading = transactionsQuery.isPending || finesQuery.isPending;
 
   const [showTxModal, setShowTxModal] = useState(false);
   const [editingTx, setEditingTx] = useState<FinanceTransaction | null>(null);
@@ -31,54 +47,28 @@ export function AdminFinancesPage() {
   const [editingFine, setEditingFine] = useState<Fine | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [txRes, finesRes] = await Promise.all([
-        financesService.getTransactions(year),
-        financesService.getFines(year),
-      ]);
-      setTransactions(txRes.data);
-      setFines(finesRes.data);
-    } catch (e) {
-      showToast(getApiError(e), 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [year]);
+  useEffect(() => {
+    const queryError = transactionsQuery.error ?? finesQuery.error;
+    if (queryError) showToast(getApiError(queryError), 'error');
+  }, [transactionsQuery.error, finesQuery.error]);
 
-  const loadUsers = useCallback(async () => {
+  const deleteTx = async (id: string) => {
     try {
-      const res = await usersService.list();
-      setUsers(res.data);
-    } catch { /* ignore */ }
-  }, []);
-
-  useEffect(() => { loadData(); }, [loadData]);
-  useEffect(() => { loadUsers(); }, [loadUsers]);
-
-  const handleDeleteTx = async (id: string) => {
-    if (!confirm('¿Eliminar esta transacción?')) return;
-    try {
-      await financesService.deleteTransaction(id);
-      setTransactions((prev) => prev.filter((t) => t.id !== id));
+      await deleteTransaction.mutateAsync(id);
       showToast('Transacción eliminada', 'success');
     } catch (e) { showToast(getApiError(e), 'error'); }
   };
 
-  const handleDeleteFine = async (id: string) => {
-    if (!confirm('¿Eliminar esta multa?')) return;
+  const deleteFineById = async (id: string) => {
     try {
-      await financesService.deleteFine(id);
-      setFines((prev) => prev.filter((f) => f.id !== id));
+      await deleteFine.mutateAsync(id);
       showToast('Multa eliminada', 'success');
     } catch (e) { showToast(getApiError(e), 'error'); }
   };
 
   const handleMarkPaid = async (id: string) => {
     try {
-      const res = await financesService.updateFine(id, { status: 'paid' });
-      setFines((prev) => prev.map((f) => f.id === id ? res.data : f));
+      await markFinePaid.mutateAsync(id);
       showToast('Multa marcada como pagada', 'success');
     } catch (e) { showToast(getApiError(e), 'error'); }
   };
@@ -87,7 +77,12 @@ export function AdminFinancesPage() {
     const totalIncome = transactions.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const totalExpenses = transactions.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
     const totalFinesPaid = fines.filter((f) => f.status === 'paid').reduce((s, f) => s + f.amount, 0);
-    return { totalIncome, totalExpenses, totalFinesPaid, balance: totalIncome - totalExpenses };
+    return {
+      totalIncome,
+      totalExpenses,
+      totalFinesPaid,
+      balance: totalIncome + totalFinesPaid - totalExpenses,
+    };
   }, [transactions, fines]);
 
   if (loading) return <Spinner />;
@@ -125,7 +120,8 @@ export function AdminFinancesPage() {
             <TransactionsTable
               transactions={transactions}
               onEdit={(tx) => { setEditingTx(tx); setShowTxModal(true); }}
-              onDelete={handleDeleteTx}
+              onDelete={(id) => confirmDelete.press(() => void deleteTx(id), `transaction:${id}`)}
+              isDeleteArmed={(id) => confirmDelete.isArmed(`transaction:${id}`)}
             />
           </>
         )}
@@ -138,7 +134,8 @@ export function AdminFinancesPage() {
             <FinesTable
               fines={fines}
               onEdit={(f) => { setEditingFine(f); setShowFineModal(true); }}
-              onDelete={handleDeleteFine}
+              onDelete={(id) => confirmDelete.press(() => void deleteFineById(id), `fine:${id}`)}
+              isDeleteArmed={(id) => confirmDelete.isArmed(`fine:${id}`)}
               onMarkPaid={handleMarkPaid}
             />
           </>
@@ -149,7 +146,7 @@ export function AdminFinancesPage() {
         <TransactionModal
           transaction={editingTx}
           onClose={() => setShowTxModal(false)}
-          onSaved={() => { setShowTxModal(false); loadData(); }}
+          onSaved={() => setShowTxModal(false)}
         />
       )}
 
@@ -158,14 +155,14 @@ export function AdminFinancesPage() {
           fine={editingFine}
           users={users}
           onClose={() => setShowFineModal(false)}
-          onSaved={() => { setShowFineModal(false); loadData(); }}
+          onSaved={() => setShowFineModal(false)}
         />
       )}
 
       {showImportModal && (
         <ImportModal
           onClose={() => setShowImportModal(false)}
-          onImported={() => { setShowImportModal(false); loadData(); }}
+          onImported={() => setShowImportModal(false)}
         />
       )}
     </>

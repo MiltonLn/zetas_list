@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { WhatsappService } from '../whatsapp.service';
 import { BirthdaysTodayEvent, UserEvent } from '../../users/events/user-events';
+import { reportCaughtError } from '../../common/errors/report-caught-error';
 
 /** Each template receives the mention string (e.g. "@573001234567" or "@573001234567, @573009876543"). */
 const TEMPLATES: Array<(mentions: string) => string> = [
@@ -37,7 +38,7 @@ export class BirthdayNotificationsListener {
     try {
       return await this.whatsapp.sendToGroup(message, { mentions: phones });
     } catch (e) {
-      this.logger.error('Error enviando felicitaciones de cumpleaños:', e);
+      reportCaughtError(this.logger, 'Error enviando felicitaciones de cumpleaños', e);
       return false;
     }
   }

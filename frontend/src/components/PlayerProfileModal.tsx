@@ -9,12 +9,12 @@ export interface ProfileUser {
   alias?: string | null;
   username: string;
   phone: string;
-  position?: Position;
-  gender?: Gender;
-  heightCm?: number;
-  birthDate?: string;
-  photoUrl?: string;
-  bio?: string;
+  position?: Position | null;
+  gender?: Gender | null;
+  heightCm?: number | null;
+  birthDate?: string | null;
+  photoUrl?: string | null;
+  bio?: string | null;
 }
 
 interface ListInfo {

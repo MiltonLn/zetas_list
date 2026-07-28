@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { FinancesService } from './finances.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { TransactionType, FineStatus } from '@prisma/client';
+import { TransactionType, FineStatus, Prisma } from '@prisma/client';
 import { NotFoundException } from '@nestjs/common';
 
 const mockPrisma = {
@@ -203,6 +203,19 @@ describe('FinancesService', () => {
     it('retorna false cuando no hay multas pendientes', async () => {
       mockPrisma.fine.count.mockResolvedValue(0);
       expect(await service.hasUnpaidFines('u1')).toBe(false);
+    });
+
+    it('usa el Prisma client recibido en vez del client por defecto', async () => {
+      const transactionClient = {
+        fine: { count: jest.fn().mockResolvedValue(1) },
+      } as unknown as Prisma.TransactionClient;
+
+      await expect(service.hasUnpaidFines('u1', transactionClient)).resolves.toBe(true);
+
+      expect(transactionClient.fine.count).toHaveBeenCalledWith({
+        where: { userId: 'u1', status: FineStatus.pending },
+      });
+      expect(mockPrisma.fine.count).not.toHaveBeenCalled();
     });
   });
 

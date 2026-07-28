@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Generates the frontend's shared domain enums from the Prisma schema, the
- * single source of truth for them.
+ * Generates the frontend's shared domain enums and scalar entity bases from
+ * the Prisma schema, the single source of truth for them.
  *
  * These literal unions used to be hand-copied into frontend/src/types.ts, so a
  * backend enum change (a new role, a new order status, a new audit action) drifted
@@ -21,7 +21,7 @@ const SCHEMA_PATH = resolve(repoRoot, 'backend/prisma/schema.prisma');
 const OUTPUT_PATH = resolve(repoRoot, 'frontend/src/api-types.gen.ts');
 
 /** Prisma enums the frontend consumes. Anything else stays backend-only. */
-const EXPORTED_ENUMS = [
+export const EXPORTED_ENUMS = [
   'Role',
   'UserStatus',
   'Position',
@@ -35,7 +35,33 @@ const EXPORTED_ENUMS = [
   'FineStatus',
 ];
 
-function parseEnums(schema) {
+/**
+ * Public scalar models consumed by the frontend. Relations are deliberately
+ * excluded by parseModels; API-specific relations remain manual in types.ts.
+ */
+export const EXPORTED_MODELS = {
+  User: {
+    outputName: 'UserBase',
+    omit: ['passwordHash', 'whatsappLid', 'mustChangePassword'],
+  },
+  Game: { outputName: 'GameBase', omit: [] },
+  GameRegistration: { outputName: 'GameRegistrationBase', omit: [] },
+  AuditLog: { outputName: 'AuditLogBase', omit: [] },
+  FinanceTransaction: { outputName: 'FinanceTransactionBase', omit: [] },
+  Fine: { outputName: 'FineBase', omit: [] },
+  Order: { outputName: 'OrderBase', omit: [] },
+  OrderItem: { outputName: 'OrderItemBase', omit: [] },
+};
+
+export const SCALAR_TYPES = {
+  String: 'string',
+  Int: 'number',
+  Boolean: 'boolean',
+  DateTime: 'string',
+  Json: 'Record<string, unknown>',
+};
+
+export function parseEnums(schema) {
   const enums = new Map();
   const enumBlock = /enum\s+(\w+)\s*\{([^}]*)\}/g;
 
@@ -50,7 +76,53 @@ function parseEnums(schema) {
   return enums;
 }
 
-function render(enums) {
+export function parseModels(schema, enumNames, exportedModels = EXPORTED_MODELS) {
+  const models = new Map();
+  // A closing brace only ends a Prisma model when it starts the line. JSON
+  // defaults such as @default("{}") may contain braces inside a field.
+  const modelBlock = /model\s+(\w+)\s*\{([\s\S]*?)^}/gm;
+
+  const blocks = [...schema.matchAll(modelBlock)];
+  const modelNames = new Set(blocks.map(([, name]) => name));
+
+  for (const [, name, body] of blocks) {
+    const fields = [];
+    for (const rawLine of body.split('\n')) {
+      const line = rawLine.replace(/\/\/.*$/, '').trim();
+      if (!line || line.startsWith('@@')) continue;
+
+      const match = line.match(/^(\w+)\s+(\w+)(\[\])?(\?)?(?:\s|$)/);
+      if (!match) continue;
+      const [, fieldName, prismaType, isList, isNullable] = match;
+      const type = SCALAR_TYPES[prismaType] ?? (enumNames.has(prismaType) ? prismaType : null);
+      if (!type) {
+        // Model-typed fields are relations, not API scalar fields.
+        if (modelNames.has(prismaType)) continue;
+        if (Object.hasOwn(exportedModels, name)) {
+          throw new Error(
+            `Tipo escalar Prisma no soportado "${prismaType}" en ${name}.${fieldName}`,
+          );
+        }
+        continue;
+      }
+
+      fields.push({
+        name: fieldName,
+        type: `${type}${isList ? '[]' : ''}${isNullable ? ' | null' : ''}`,
+      });
+    }
+    models.set(name, fields);
+  }
+
+  return models;
+}
+
+export function render(
+  enums,
+  models,
+  exportedEnums = EXPORTED_ENUMS,
+  exportedModels = EXPORTED_MODELS,
+) {
   const lines = [
     '// AUTOGENERADO — no editar a mano.',
     '// Fuente: backend/prisma/schema.prisma',
@@ -58,7 +130,7 @@ function render(enums) {
     '',
   ];
 
-  for (const name of EXPORTED_ENUMS) {
+  for (const name of exportedEnums) {
     const values = enums.get(name);
     if (!values) {
       throw new Error(`El enum "${name}" no existe en schema.prisma`);
@@ -74,12 +146,50 @@ function render(enums) {
     lines.push('');
   }
 
+  for (const [modelName, config] of Object.entries(exportedModels)) {
+    const fields = models.get(modelName);
+    if (!fields) {
+      throw new Error(`El modelo "${modelName}" no existe en schema.prisma`);
+    }
+
+    const fieldNames = new Set(fields.map((field) => field.name));
+    for (const omittedName of config.omit) {
+      if (!fieldNames.has(omittedName)) {
+        throw new Error(
+          `El campo omitido "${modelName}.${omittedName}" no existe en schema.prisma`,
+        );
+      }
+    }
+
+    const omitted = new Set(config.omit);
+    lines.push(`export interface ${config.outputName} {`);
+    for (const field of fields) {
+      if (!omitted.has(field.name)) {
+        lines.push(`  ${field.name}: ${field.type};`);
+      }
+    }
+    lines.push('}');
+    lines.push('');
+  }
+
   return lines.join('\n');
 }
 
-const generated = render(parseEnums(readFileSync(SCHEMA_PATH, 'utf8')));
+export function generate(schema) {
+  const enums = parseEnums(schema);
+  return render(enums, parseModels(schema, new Set(enums.keys())));
+}
 
-if (process.argv.includes('--check')) {
+export function run({ check = false } = {}) {
+  const schema = readFileSync(SCHEMA_PATH, 'utf8');
+  const generated = generate(schema);
+
+  if (!check) {
+    writeFileSync(OUTPUT_PATH, generated);
+    console.log(`✓ Escrito ${OUTPUT_PATH}`);
+    return;
+  }
+
   let current = '';
   try {
     current = readFileSync(OUTPUT_PATH, 'utf8');
@@ -97,7 +207,8 @@ if (process.argv.includes('--check')) {
   }
 
   console.log('✓ Los tipos generados están al día con schema.prisma');
-} else {
-  writeFileSync(OUTPUT_PATH, generated);
-  console.log(`✓ Escrito ${OUTPUT_PATH}`);
 }
+
+const isDirectRun =
+  process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+if (isDirectRun) run({ check: process.argv.includes('--check') });

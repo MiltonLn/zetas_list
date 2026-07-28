@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import CamisetasPage from './CamisetasPage';
 import { ordersService } from '../services/orders.service';
 import { usersService } from '../services/users.service';
 import type { CatalogProduct } from '../types';
+import { renderWithQueryClient } from '../test/query-wrapper';
 
 vi.mock('../services/orders.service', () => ({
   ordersService: {
@@ -52,7 +53,7 @@ const mockOrders = vi.mocked(ordersService);
 const mockUsers = vi.mocked(usersService);
 
 function renderPage() {
-  return render(
+  return renderWithQueryClient(
     <MemoryRouter>
       <CamisetasPage />
     </MemoryRouter>,

@@ -43,6 +43,16 @@ describe('Sidebar', () => {
     expect(screen.getByText('Juan Zapata')).toBeInTheDocument();
   });
 
+  it('muestra la foto vigente del usuario autenticado', () => {
+    setUser('member', { photoUrl: 'https://cdn.example/avatar.jpg' });
+    renderSidebar();
+
+    expect(screen.getByRole('img', { name: 'Juan Zapata' })).toHaveAttribute(
+      'src',
+      'https://cdn.example/avatar.jpg',
+    );
+  });
+
   it('no muestra la sección de administración a un member', () => {
     renderSidebar();
     expect(screen.getByText('Partidos')).toBeInTheDocument();

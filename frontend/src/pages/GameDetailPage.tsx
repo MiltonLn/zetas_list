@@ -1,41 +1,30 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  arrayMove,
-} from '@dnd-kit/sortable';
+import { arrayMove } from '@dnd-kit/sortable';
 import { useQuery } from '@tanstack/react-query';
 import { gamesService } from '../services/games.service';
 import type { GameRegistration } from '../types';
 import { MODALIDAD_LABELS } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { useAvailableMembers, useGameAudit, useGameQuery } from '../hooks/useGameQuery';
+import { useAvailableMembers, useGameAudit, useGameMutations, useGameQuery } from '../hooks/useGameQuery';
 import { queryKeys } from '../lib/query-client';
 import { PageHeader } from '../components/PageHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { Spinner } from '../components/Spinner';
 import { PlayerProfileModal } from '../components/PlayerProfileModal';
-import { SortableRegistrationRow } from '../components/SortableRegistrationRow';
 import { GameAuditModal } from '../components/GameAuditModal';
 import { GameCancelModal } from '../components/GameCancelModal';
 import { GameCompleteModal } from '../components/GameCompleteModal';
 import { RegisterOtherModal } from '../components/RegisterOtherModal';
 import { showToast } from '../utils/toast';
 import { getApiError } from '../services/api';
-import { formatReportLine } from '../utils/format-report';
-import { formatCurrency } from '../utils/currency';
+import {
+  CompletionReport,
+  GameSummary,
+  RegistrationActions,
+} from '../components/game-detail/GameDetailSections';
+import { GameRegistrationLists } from '../components/game-detail/GameRegistrationLists';
 
 export default function GameDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -44,8 +33,8 @@ export default function GameDetailPage() {
   const { data: game, isPending: loading, error: loadError, invalidate: refreshGame } = useGameQuery(id);
 
   const [error, setError] = useState('');
-  const [registering, setRegistering] = useState(false);
   const [regError, setRegError] = useState('');
+  const gameMutations = useGameMutations(id ?? '');
 
   // Drag-and-drop reorders optimistically and only persists after a pause, so
   // the dragged order has to live outside the query cache until it settles.
@@ -60,8 +49,10 @@ export default function GameDetailPage() {
 
   const { data: auditLogs = [], isFetching: auditLoading } = useGameAudit(id, showAudit);
 
-  const isGameOpen = game?.status === 'registration_open' || game?.status === 'in_progress';
-  const { data: availableMembers = [] } = useAvailableMembers(id, !!isGameOpen);
+  const { data: availableMembers = [] } = useAvailableMembers(
+    id,
+    showRegisterOther,
+  );
 
   const { data: completionReport = null, isPending: reportLoading } = useQuery({
     queryKey: queryKeys.gameReport(id ?? ''),
@@ -70,6 +61,9 @@ export default function GameDetailPage() {
   });
 
   const reorderTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reorderPending = useRef(false);
+  const expectedReorder = useRef<{ mainList: string[]; waitList: string[] } | null>(null);
+  const [reorderInFlight, setReorderInFlight] = useState(false);
   const mainListRef = useRef(mainList);
   const waitListRef = useRef(waitList);
 
@@ -79,19 +73,28 @@ export default function GameDetailPage() {
   useEffect(() => {
     if (!game) return;
     const byPosition = (a: GameRegistration, b: GameRegistration) => a.position - b.position;
-    setMainList(game.registrations.filter((r) => !r.isWaitingList).sort(byPosition));
-    setWaitList(game.registrations.filter((r) => r.isWaitingList).sort(byPosition));
-  }, [game]);
+    const gameMainList = game.registrations.filter((r) => !r.isWaitingList).sort(byPosition);
+    const gameWaitList = game.registrations.filter((r) => r.isWaitingList).sort(byPosition);
 
-  const sensors = useSensors(
-    useSensor(MouseSensor, {
-      activationConstraint: { distance: 8 },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 250, tolerance: 5 },
-    }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
+    if (reorderPending.current) {
+      const expected = expectedReorder.current;
+      const hasExpectedOrder = expected
+        && expected.mainList.join('\0') === gameMainList.map((r) => r.id).join('\0')
+        && expected.waitList.join('\0') === gameWaitList.map((r) => r.id).join('\0');
+      if (!hasExpectedOrder) return;
+
+      reorderPending.current = false;
+      expectedReorder.current = null;
+      setReorderInFlight(false);
+    }
+
+    setMainList(gameMainList);
+    setWaitList(gameWaitList);
+  }, [game, reorderInFlight]);
+
+  useEffect(() => () => {
+    if (reorderTimeout.current) clearTimeout(reorderTimeout.current);
+  }, []);
 
   function handleDragEnd(event: DragEndEvent, listType: 'main' | 'wait') {
     const { active, over } = event;
@@ -103,41 +106,53 @@ export default function GameDetailPage() {
     const oldIndex = list.findIndex((r) => r.id === active.id);
     const newIndex = list.findIndex((r) => r.id === over.id);
     const newList = arrayMove(list, oldIndex, newIndex);
+    const updatedMain = listType === 'main' ? newList : mainListRef.current;
+    const updatedWait = listType === 'wait' ? newList : waitListRef.current;
+    const reorderPayload = {
+      mainList: updatedMain.map((r) => r.id),
+      waitList: updatedWait.map((r) => r.id),
+    };
     setList(newList);
+    reorderPending.current = true;
+    expectedReorder.current = reorderPayload;
+    setReorderInFlight(true);
 
     if (reorderTimeout.current) clearTimeout(reorderTimeout.current);
-    reorderTimeout.current = setTimeout(() => {
-      const updatedMain = listType === 'main' ? newList : mainListRef.current;
-      const updatedWait = listType === 'wait' ? newList : waitListRef.current;
-      gamesService
-        .reorder(id!, updatedMain.map((r) => r.id), updatedWait.map((r) => r.id))
+    const timeout = setTimeout(() => {
+      gameMutations.reorder
+        .mutateAsync(reorderPayload)
         .catch((e) => {
+          if (expectedReorder.current !== reorderPayload) return;
           setError(getApiError(e));
-          refreshGame();
+          reorderPending.current = false;
+          expectedReorder.current = null;
+          setReorderInFlight(false);
+        })
+        .then(() => {
+          if (reorderTimeout.current === timeout) reorderTimeout.current = null;
         });
     }, 600);
+    reorderTimeout.current = timeout;
   }
 
   async function handleRegister() {
     if (!id) return;
     setRegError('');
-    setRegistering(true);
     try {
-      await gamesService.register(id);
+      await gameMutations.register.mutateAsync();
       showToast('¡Te anotaste correctamente!');
-      refreshGame();
     } catch (e) {
       setRegError(getApiError(e));
-    } finally {
-      setRegistering(false);
     }
   }
 
   async function handleToggle(regId: string, field: 'attended' | 'paid', currentValue: boolean) {
     if (!id) return;
     try {
-      await gamesService.updateRegistration(id, regId, { [field]: !currentValue });
-      refreshGame();
+      await gameMutations.updateRegistration.mutateAsync({
+        regId,
+        data: { [field]: !currentValue },
+      });
     } catch (e) {
       setError(getApiError(e));
     }
@@ -146,8 +161,7 @@ export default function GameDetailPage() {
   async function handleRemove(userId: string | null, regId?: string) {
     if (!id) return;
     try {
-      await gamesService.removeRegistration(id, userId || 'guest', regId);
-      refreshGame();
+      await gameMutations.removeRegistration.mutateAsync({ userId: userId || 'guest', regId });
     } catch (e) {
       setError(getApiError(e));
     }
@@ -156,8 +170,7 @@ export default function GameDetailPage() {
   async function handlePromote(regId: string) {
     if (!id) return;
     try {
-      await gamesService.promote(id, regId);
-      refreshGame();
+      await gameMutations.promote.mutateAsync(regId);
     } catch (e) {
       setError(getApiError(e));
     }
@@ -166,8 +179,7 @@ export default function GameDetailPage() {
   async function handleDemote(regId: string) {
     if (!id) return;
     try {
-      await gamesService.demote(id, regId);
-      refreshGame();
+      await gameMutations.demote.mutateAsync(regId);
     } catch (e) {
       setError(getApiError(e));
     }
@@ -176,9 +188,8 @@ export default function GameDetailPage() {
   async function handleCancel(reason: string) {
     if (!id) return;
     try {
-      await gamesService.cancel(id, reason);
+      await gameMutations.cancel.mutateAsync(reason);
       setShowCancel(false);
-      refreshGame();
     } catch (e) {
       setError(getApiError(e));
     }
@@ -187,9 +198,8 @@ export default function GameDetailPage() {
   async function handleConfirm() {
     if (!id) return;
     try {
-      await gamesService.confirmRegistration(id);
+      await gameMutations.confirm.mutateAsync();
       showToast('¡Confirmaste tu asistencia!');
-      refreshGame();
     } catch (e) {
       setRegError(getApiError(e));
     }
@@ -198,9 +208,8 @@ export default function GameDetailPage() {
   async function handleConfirmFor(regId: string) {
     if (!id) return;
     try {
-      await gamesService.confirmRegistrationById(id, regId);
+      await gameMutations.confirmFor.mutateAsync(regId);
       showToast('Confirmación registrada');
-      refreshGame();
     } catch (e) {
       setError(getApiError(e));
     }
@@ -235,7 +244,6 @@ export default function GameDetailPage() {
   const isFinished = game.status === 'completed' || game.status === 'cancelled';
   const isAlreadyRegistered = mainList.some((r) => r.userId === user?.id) || waitList.some((r) => r.userId === user?.id);
   const spotsLeft = Math.max(0, game.maxMainSpots - mainList.length);
-  const mainListFull = mainList.length >= game.maxMainSpots;
   const allRegs = [...mainList, ...waitList];
   const proxyCount = allRegs.filter((r) => r.registeredById === user?.id && r.userId !== user?.id && !r.isGuest).length;
   const proxyLimitReached = !isGameManager && proxyCount >= game.maxProxyRegistrations;
@@ -311,250 +319,51 @@ export default function GameDetailPage() {
         </div>
 
         {isGameManager && (
-          <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: 8, marginBottom: 16,
-          }}>
-            {[
-              { label: 'Anotados', value: `${mainList.length}/${game.maxMainSpots}` },
-              { label: 'Asistieron', value: `${attended}` },
-              { label: 'Pagaron', value: `${totalPaid}` },
-              { label: 'Recaudado', value: formatCurrency(recaudado) },
-            ].map(({ label, value }) => (
-              <div key={label} style={{
-                background: '#161829', border: '1px solid #2a2f5a',
-                borderRadius: 10, padding: '10px 12px', textAlign: 'center',
-              }}>
-                <div style={{ color: '#e8eaf6', fontWeight: 700, fontSize: 16 }}>{value}</div>
-                <div style={{ color: '#7c8db5', fontSize: 11 }}>{label}</div>
-              </div>
-            ))}
-          </div>
+          <GameSummary
+            mainCount={mainList.length}
+            maxMainSpots={game.maxMainSpots}
+            attended={attended}
+            paid={totalPaid}
+            collected={recaudado}
+          />
         )}
 
         {game.status === 'completed' && (
-          <div style={{
-            background: '#0f1020', borderRadius: 12, padding: 16,
-            border: '1px solid #2a2f5a', marginBottom: 20,
-          }}>
-            <h3 style={{ color: '#e8eaf6', fontSize: 14, fontWeight: 700, margin: '0 0 12px' }}>
-              📋 Reporte del partido
-            </h3>
-            {reportLoading ? (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}>
-                <Spinner size={24} />
-              </div>
-            ) : completionReport ? (
-              <div style={{ fontSize: 13, lineHeight: 1.7, color: '#e8eaf6' }}>
-                {completionReport.split('\n').map((line, i) => (
-                  <div
-                    key={i}
-                    style={{ minHeight: line.trim() === '' ? 8 : undefined }}
-                    dangerouslySetInnerHTML={{
-                      __html: formatReportLine(line) || '&nbsp;',
-                    }}
-                  />
-                ))}
-              </div>
-            ) : (
-              <p style={{ color: '#7c8db5', fontSize: 13 }}>No se pudo cargar el reporte</p>
-            )}
-          </div>
+          <CompletionReport report={completionReport} loading={reportLoading} />
         )}
 
         {isOpen && (
-          <div style={{ marginBottom: 20, textAlign: 'center' }}>
-            {hasPendingConfirmation && (
-              <div style={{
-                background: '#f59f0011', border: '1px solid #f59f0033',
-                borderRadius: 14, padding: '14px 20px', marginBottom: 12,
-              }}>
-                <p style={{ color: '#f59f00', fontWeight: 700, fontSize: 14, margin: '0 0 8px' }}>
-                  ⏳ Tienes una confirmación pendiente
-                </p>
-                <button
-                  onClick={handleConfirm}
-                  style={{
-                    background: '#2da44e', border: 'none', borderRadius: 10,
-                    padding: '10px 24px', color: '#fff', cursor: 'pointer',
-                    fontSize: 14, fontWeight: 700,
-                  }}
-                >
-                  Confirmar asistencia
-                </button>
-              </div>
-            )}
-            {isAlreadyRegistered ? (
-              <div style={{
-                background: '#2da44e11', border: '1px solid #2da44e33',
-                borderRadius: 14, padding: '16px 20px',
-              }}>
-                <p style={{ color: '#2da44e', fontWeight: 700, fontSize: 16, margin: 0 }}>
-                  ✅ Ya estás anotado
-                </p>
-                <button
-                  onClick={() => handleRemove(user!.id)}
-                  style={{
-                    background: 'none', border: '1px solid #2a2f5a',
-                    borderRadius: 8, padding: '6px 14px', color: '#7c8db5',
-                    cursor: 'pointer', fontSize: 12, marginTop: 10,
-                  }}
-                >
-                  Desanotarme
-                </button>
-              </div>
-            ) : (
-              <div>
-                <p style={{ color: '#7c8db5', fontSize: 13, marginBottom: 10 }}>
-                  {spotsLeft > 0
-                    ? `Quedan ${spotsLeft} cupos en la lista principal`
-                    : 'La lista principal está llena — quedarás en espera'}
-                </p>
-                {regError && <p style={{ color: '#ff6b6b', fontSize: 13, marginBottom: 8 }}>{regError}</p>}
-                <button
-                  onClick={handleRegister}
-                  disabled={registering}
-                  style={{
-                    background: '#3b5bdb', border: 'none', borderRadius: 14,
-                    padding: '14px 32px', color: '#fff', cursor: 'pointer',
-                    fontSize: 18, fontWeight: 800, width: '100%', maxWidth: 300,
-                    opacity: registering ? 0.7 : 1,
-                    boxShadow: '0 4px 20px #3b5bdb44',
-                  }}
-                >
-                  {registering ? 'Anotando...' : '🏐 ¡Anotame!'}
-                </button>
-              </div>
-            )}
-
-            <button
-              onClick={() => setShowRegisterOther(true)}
-              style={{
-                background: 'none', border: '1px solid #3b5bdb55',
-                borderRadius: 10, padding: '10px 20px', color: '#6e8efb',
-                cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                marginTop: 12, transition: 'all 0.15s',
-              }}
-            >
-              + Anotar a alguien más
-            </button>
-          </div>
+          <RegistrationActions
+            hasPendingConfirmation={hasPendingConfirmation}
+            isAlreadyRegistered={isAlreadyRegistered}
+            spotsLeft={spotsLeft}
+            registrationError={regError}
+            registering={gameMutations.register.isPending}
+            onConfirm={handleConfirm}
+            onRemoveSelf={() => {
+              if (user) void handleRemove(user.id);
+            }}
+            onRegister={handleRegister}
+            onRegisterOther={() => setShowRegisterOther(true)}
+          />
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <h2 style={{ color: '#e8eaf6', fontSize: 15, fontWeight: 700, margin: 0 }}>
-            Lista Principal
-            <span style={{
-              marginLeft: 8, background: '#2a2f5a', borderRadius: 12,
-              padding: '2px 10px', fontSize: 12, fontWeight: 600, color: '#7c8db5',
-            }}>
-              {mainList.length}/{game.maxMainSpots}
-            </span>
-          </h2>
-        </div>
-
-        {isGameManager ? (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDragEnd(e, 'main')}>
-            <SortableContext items={mainList.map((r) => r.id)} strategy={verticalListSortingStrategy}>
-              {mainList.map((reg, i) => (
-                <SortableRegistrationRow
-                  key={reg.id}
-                  reg={reg}
-                  index={i}
-                  isGameManager={isGameManager}
-                  readonly={isFinished}
-                  mainListFull={mainListFull}
-                  onToggleAttended={() => handleToggle(reg.id, 'attended', reg.attended)}
-                  onTogglePaid={() => handleToggle(reg.id, 'paid', reg.paid)}
-                  onPromote={() => handlePromote(reg.id)}
-                  onDemote={() => handleDemote(reg.id)}
-                  onConfirm={() => handleConfirmFor(reg.id)}
-                  onRemove={() => handleRemove(reg.userId, reg.isGuest ? reg.id : undefined)}
-                  isSelf={reg.userId === user?.id}
-                  allowSelfRemove={isOpen}
-                  draggable={isGameManager && !isFinished}
-                  onNameClick={() => setSelectedReg(reg)}
-                />
-              ))}
-            </SortableContext>
-          </DndContext>
-        ) : (
-          mainList.map((reg, i) => (
-            <SortableRegistrationRow
-              key={reg.id}
-              reg={reg}
-              index={i}
-              isGameManager={false}
-              onRemove={() => handleRemove(reg.userId, reg.isGuest ? reg.id : undefined)}
-              isSelf={reg.userId === user?.id}
-              allowSelfRemove={isOpen}
-              isOwnGuest={reg.isGuest && reg.registeredById === user?.id}
-              draggable={false}
-              onNameClick={() => setSelectedReg(reg)}
-            />
-          ))
-        )}
-
-        {mainList.length === 0 && (
-          <p style={{ color: '#7c8db5', fontSize: 13, textAlign: 'center', padding: '20px 0' }}>
-            Sin anotados aún
-          </p>
-        )}
-
-        {waitList.length > 0 && (
-          <>
-            <h2 style={{ color: '#e8eaf6', fontSize: 15, fontWeight: 700, marginTop: 24, marginBottom: 10 }}>
-              Lista de Espera
-              <span style={{
-                marginLeft: 8, background: '#2a2f5a', borderRadius: 12,
-                padding: '2px 10px', fontSize: 12, fontWeight: 600, color: '#7c8db5',
-              }}>
-                {waitList.length}
-              </span>
-            </h2>
-            {isGameManager ? (
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleDragEnd(e, 'wait')}>
-                <SortableContext items={waitList.map((r) => r.id)} strategy={verticalListSortingStrategy}>
-                  {waitList.map((reg, i) => (
-                    <SortableRegistrationRow
-                      key={reg.id}
-                      reg={reg}
-                      index={i}
-                      isGameManager={isGameManager}
-                      readonly={isFinished}
-                      mainListFull={mainListFull}
-                      onToggleAttended={() => handleToggle(reg.id, 'attended', reg.attended)}
-                      onTogglePaid={() => handleToggle(reg.id, 'paid', reg.paid)}
-                      onPromote={() => handlePromote(reg.id)}
-                      onDemote={() => handleDemote(reg.id)}
-                      onConfirm={() => handleConfirmFor(reg.id)}
-                      onRemove={() => handleRemove(reg.userId, reg.isGuest ? reg.id : undefined)}
-                      isSelf={reg.userId === user?.id}
-                      allowSelfRemove={isOpen}
-                      draggable={isGameManager && !isFinished}
-                      onNameClick={() => setSelectedReg(reg)}
-                    />
-                  ))}
-                </SortableContext>
-              </DndContext>
-            ) : (
-              waitList.map((reg, i) => (
-                <SortableRegistrationRow
-                  key={reg.id}
-                  reg={reg}
-                  index={i}
-                  isGameManager={false}
-                  onRemove={() => handleRemove(reg.userId, reg.isGuest ? reg.id : undefined)}
-                  isSelf={reg.userId === user?.id}
-                  allowSelfRemove={isOpen}
-                  isOwnGuest={reg.isGuest && reg.registeredById === user?.id}
-                  draggable={false}
-                  onNameClick={() => setSelectedReg(reg)}
-                />
-              ))
-            )}
-          </>
-        )}
+        <GameRegistrationLists
+          mainList={mainList}
+          waitList={waitList}
+          maxMainSpots={game.maxMainSpots}
+          currentUserId={user?.id}
+          isGameManager={isGameManager}
+          isFinished={isFinished}
+          isOpen={isOpen}
+          onDragEnd={handleDragEnd}
+          onToggle={handleToggle}
+          onPromote={handlePromote}
+          onDemote={handleDemote}
+          onConfirm={handleConfirmFor}
+          onRemove={handleRemove}
+          onSelect={setSelectedReg}
+        />
 
         <div style={{ marginTop: 28, borderTop: '1px solid #2a2f5a', paddingTop: 20 }}>
             <button

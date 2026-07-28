@@ -1,4 +1,9 @@
 import { QueryClient } from '@tanstack/react-query';
+import type { OrderStatus } from '../types';
+import { registerSessionCacheReset } from './session-cache';
+
+export type FinanceTransactionType = 'income' | 'expense';
+export type FineStatusFilter = 'pending' | 'paid';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,6 +23,11 @@ export const queryClient = new QueryClient({
   },
 });
 
+registerSessionCacheReset(async () => {
+  await queryClient.cancelQueries();
+  queryClient.clear();
+});
+
 /**
  * Central list of query keys, so invalidation sites can't drift from the
  * queries they are meant to refresh.
@@ -27,6 +37,25 @@ export const queryKeys = {
   gameAudit: (id: string) => ['game', id, 'audit'] as const,
   gameAvailableMembers: (id: string) => ['game', id, 'available-members'] as const,
   gameReport: (id: string) => ['game', id, 'report'] as const,
-  games: (filters: Record<string, unknown>) => ['games', filters] as const,
-  orders: (filters: Record<string, unknown>) => ['orders', filters] as const,
+  gamePreviewReport: (id: string) => ['game', id, 'preview-report'] as const,
+  gamesRoot: ['games'] as const,
+  games: (filters: Record<string, unknown> = {}) => ['games', filters] as const,
+
+  usersRoot: ['users'] as const,
+  usersList: (search?: string) => ['users', 'list', search ?? ''] as const,
+  user: (id: string) => ['users', 'detail', id] as const,
+  userMe: ['users', 'me'] as const,
+
+  financesRoot: ['finances'] as const,
+  financesDashboard: (year?: number) => ['finances', 'dashboard', year ?? null] as const,
+  financesTransactions: (year?: number, type?: FinanceTransactionType) =>
+    ['finances', 'transactions', year ?? null, type ?? null] as const,
+  financesFines: (year?: number, status?: FineStatusFilter) =>
+    ['finances', 'fines', year ?? null, status ?? null] as const,
+  financesMyFines: ['finances', 'my-fines'] as const,
+
+  ordersRoot: ['orders'] as const,
+  ordersCatalog: ['orders', 'catalog'] as const,
+  ordersMine: ['orders', 'mine'] as const,
+  ordersAdmin: (status?: OrderStatus) => ['orders', 'admin', status ?? null] as const,
 } as const;
