@@ -228,8 +228,8 @@ export class GameLifecycleService {
 
   generateReport(game: Awaited<ReturnType<typeof this.query.findOne>>) {
     const allRegs = game.registrations;
-    const mainList = allRegs.filter((r) => !r.isWaitingList);
-    const attended = mainList.filter((r) => r.attended);
+    const attendanceRegistrations = allRegs.filter((r) => !r.isWaitingList || r.attended);
+    const attended = attendanceRegistrations.filter((r) => r.attended);
     const totalPaid = allRegs.filter((r) => r.paid).length;
     const recaudado = totalPaid * game.pricePerPlayer;
 
@@ -247,7 +247,7 @@ export class GameLifecycleService {
       `✅ *${game.title}*`,
       dateStr.charAt(0).toUpperCase() + dateStr.slice(1),
       '',
-      `✅ *Asistentes:* ${attended.length}/${mainList.length}`,
+      `✅ *Asistentes:* ${attended.length}/${attendanceRegistrations.length}`,
       `💰 *Recaudado:* $${recaudado.toLocaleString('es-CO')}`,
     ];
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -289,5 +289,34 @@ describe('GameDetailPage reorder', () => {
     expect(useAvailableMembers).toHaveBeenLastCalledWith('game-1', false);
     await user.click(screen.getByRole('button', { name: '+ Anotar a alguien más' }));
     expect(useAvailableMembers).toHaveBeenLastCalledWith('game-1', true);
+  });
+
+  it('cuenta en el resumen a quien asiste desde la lista de espera', () => {
+    currentGame = {
+      ...baseGame,
+      registrations: [
+        { ...registration('reg-main', 'Ana', 1), attended: true },
+        {
+          ...registration('reg-wait', 'Beto', 1),
+          isWaitingList: true,
+          attended: true,
+        },
+      ],
+    };
+    const client = createTestQueryClient();
+
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/game/game-1']}>
+          <Routes>
+            <Route path="/game/:id" element={<GameDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const attendanceCard = screen.getByText('Asistieron').parentElement;
+    expect(attendanceCard).not.toBeNull();
+    expect(within(attendanceCard!).getByText('2')).toBeInTheDocument();
   });
 });

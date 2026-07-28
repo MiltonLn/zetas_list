@@ -222,36 +222,53 @@ describe('FinancesService', () => {
   // ─── Game integration ──────────────────────────────────────────────────────
 
   describe('createGameFines', () => {
-    it('crea multas solo para registros con userId', async () => {
+    it('asigna al responsable la multa de inasistencia de su invitado', async () => {
       const regs = [
-        { id: 'r1', userId: 'u1', guestName: null },
-        { id: 'r2', userId: null, guestName: 'Invitado' },
-        { id: 'r3', userId: 'u2', guestName: null },
+        { id: 'r1', userId: 'u1', registeredById: 'u1', guestName: null },
+        { id: 'r2', userId: null, registeredById: 'responsable', guestName: 'Invitado' },
+        { id: 'r3', userId: 'u2', registeredById: 'u2', guestName: null },
       ];
-      mockPrisma.fine.createMany.mockResolvedValue({ count: 2 });
+      mockPrisma.fine.createMany.mockResolvedValue({ count: 3 });
 
       await service.createGameFines('g1', regs, 5000, 'actor-1');
 
       expect(mockPrisma.fine.createMany).toHaveBeenCalledWith({
         data: expect.arrayContaining([
           expect.objectContaining({ userId: 'u1', amount: 5000, reason: 'Inasistencia' }),
+          expect.objectContaining({
+            userId: 'responsable',
+            gameRegistrationId: 'r2',
+            amount: 5000,
+            reason: 'Inasistencia de invitado: Invitado',
+          }),
           expect.objectContaining({ userId: 'u2', amount: 5000, reason: 'Inasistencia' }),
         ]),
       });
       const callData = mockPrisma.fine.createMany.mock.calls[0][0].data;
-      expect(callData).toHaveLength(2);
+      expect(callData).toHaveLength(3);
     });
   });
 
   describe('createGameDebts', () => {
-    it('crea deudas con monto igual a pricePerPlayer', async () => {
-      const regs = [{ id: 'r1', userId: 'u1', guestName: null }];
-      mockPrisma.fine.createMany.mockResolvedValue({ count: 1 });
+    it('asigna al responsable la deuda de pago de su invitado', async () => {
+      const regs = [
+        { id: 'r1', userId: 'u1', registeredById: 'u1', guestName: null },
+        { id: 'r2', userId: null, registeredById: 'responsable', guestName: 'Invitado' },
+      ];
+      mockPrisma.fine.createMany.mockResolvedValue({ count: 2 });
 
       await service.createGameDebts('g1', regs, 2000, 'actor-1');
 
       expect(mockPrisma.fine.createMany).toHaveBeenCalledWith({
-        data: [expect.objectContaining({ userId: 'u1', amount: 2000, reason: 'No pagó' })],
+        data: expect.arrayContaining([
+          expect.objectContaining({ userId: 'u1', amount: 2000, reason: 'No pagó' }),
+          expect.objectContaining({
+            userId: 'responsable',
+            gameRegistrationId: 'r2',
+            amount: 2000,
+            reason: 'No pagó invitado: Invitado',
+          }),
+        ]),
       });
     });
   });
