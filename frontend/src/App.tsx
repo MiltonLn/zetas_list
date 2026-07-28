@@ -22,7 +22,6 @@ const RulesPage = lazy(() => import('./pages/RulesPage'));
 const GuidePage = lazy(() => import('./pages/GuidePage'));
 const FinancesDashboardPage = lazy(() => import('./pages/FinancesDashboardPage'));
 const AdminFinancesPage = lazy(() => import('./pages/AdminFinancesPage'));
-const CamisetasPage = lazy(() => import('./pages/CamisetasPage'));
 const AdminOrdersPage = lazy(() => import('./pages/AdminOrdersPage'));
 
 function PageFallback() {
@@ -136,14 +135,6 @@ export default function App() {
               element={
                 <AuthenticatedApp>
                   <FinancesDashboardPage />
-                </AuthenticatedApp>
-              }
-            />
-            <Route
-              path="/camisetas"
-              element={
-                <AuthenticatedApp>
-                  <CamisetasPage />
                 </AuthenticatedApp>
               }
             />

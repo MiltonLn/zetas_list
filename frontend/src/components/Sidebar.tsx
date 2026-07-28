@@ -45,7 +45,6 @@ function NavItem({
 const MAIN_NAV: NavEntry[] = [
   { to: '/', label: 'Partidos', icon: <IconGames /> },
   { to: '/finances', label: 'Finanzas', icon: <IconFinances /> },
-  { to: '/camisetas', label: 'Camisetas', icon: <IconShirt /> },
   { to: '/reglas', label: 'Reglas', icon: <IconRules /> },
   { to: '/profile', label: 'Mi Perfil', icon: <IconUser /> },
 ];
