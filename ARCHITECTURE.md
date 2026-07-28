@@ -11,7 +11,7 @@ zetas_list/
   backend/            NestJS + Prisma + PostgreSQL
   scripts/            Codegen de tipos compartidos
   video/              Video promocional (Remotion) — no forma parte de la app
-  .github/workflows/  CI pipeline (test, lint, typecheck)
+  .github/workflows/  CI pipeline (install, codegen, typecheck, lint, coverage y build)
   .husky/             Pre-commit hooks (lint de archivos staged)
   docker-compose.yml  Desarrollo local
   Dockerfile          Build de producción (multi-stage, en la raíz)
@@ -302,19 +302,22 @@ make gen-types       # Regenera los enums compartidos del frontend
 
 ```mermaid
 graph LR
-  Push[Push/PR] --> Backend[Backend Job]
+  Push[Push a main / cualquier PR] --> Backend[Backend Job]
   Push --> Frontend[Frontend Job]
 
   Backend --> B_Install[npm ci]
-  B_Install --> B_Types[tsc --noEmit]
+  B_Install --> B_Prisma[prisma generate]
+  B_Prisma --> B_Types[tsc --noEmit]
   B_Types --> B_Lint[ESLint]
-  B_Lint --> B_Test[Jest - 481 tests]
+  B_Lint --> B_Test[Jest test:cov]
+  B_Test --> B_Build[npm run build]
 
   Frontend --> F_Install[npm ci]
-  F_Install --> F_Gen[Check tipos generados]
+  F_Install --> F_Gen[gen:api-types:check]
   F_Gen --> F_Types[tsc -b --noEmit]
   F_Types --> F_Lint[ESLint]
-  F_Lint --> F_Test[Vitest - 118 tests]
+  F_Lint --> F_Test[Vitest test:cov]
+  F_Test --> F_Build[npm run build]
 ```
 
 - **Trigger**: push a `main` y todos los PRs.
@@ -327,23 +330,18 @@ graph LR
 
 ## Testing
 
-481 tests en el backend (Jest) y 118 en el frontend (Vitest). Ninguno necesita
-Docker ni Postgres.
+Las suites de Jest y Vitest corren sin Docker ni Postgres. El número de pruebas
+y la cobertura vigentes se publican en la salida de CI; ambos paquetes aplican
+umbrales globales mediante `test:cov`.
 
-| Suite | Tests | Cubre |
-|-------|-------|-------|
-| `whatsapp/message-handler.service.spec.ts` | 175 | regexes de comandos, dispatch, cada handler |
-| `games/games.service.spec.ts` | 129 | registro, promoción, confirmaciones, reporte |
-| `users/users.service.spec.ts` | 37 | CRUD, contraseña por defecto, import de WhatsApp |
-| `games/games.scenario.spec.ts` | 26 | flujos stateful de punta a punta (ver abajo) |
-| `orders/orders.service.spec.ts` | 23 | pedidos, variantes, tallas, estados |
-| `auth/auth.service.spec.ts` | 20 | login, refresh, changePassword, recoverPassword |
-| `finances/finances.service.spec.ts` | 19 | transacciones, multas, dashboard |
-| `whatsapp/utils/jid-utils.spec.ts` | 19 | parsing de JIDs y menciones de Baileys |
-| `games/game-scheduler.service.spec.ts` | 18 | apertura por cron, cutoff, timeouts |
-| `config/env.spec.ts` | 8 | validación del schema de variables de entorno |
-| `users/birthday-scheduler.service.spec.ts` | 7 | felicitaciones de cumpleaños |
-| Frontend (10 archivos) | 118 | parser, servicios y componentes con Testing Library |
+| Área | Cobertura principal |
+|------|---------------------|
+| WhatsApp | regexes de comandos, dispatch, handlers, listeners y utilidades de JID |
+| Partidos | registro, promoción, confirmaciones, reportes, scheduler y escenarios stateful |
+| Usuarios y auth | CRUD, permisos, contraseñas, login, refresh y cumpleaños |
+| Pedidos y finanzas | catálogo, pedidos, estados, transacciones, multas y dashboard |
+| HTTP | rutas principales, validación de DTOs y autorización con JWT/roles |
+| Frontend | parser, servicios, hooks, componentes y flujos de páginas con Testing Library |
 
 Los tests unitarios mockean `PrismaService`, `AuditService`, `GameEventsService`,
 `WhatsappService`, `FinancesService` y `JwtService` vía `@nestjs/testing`.

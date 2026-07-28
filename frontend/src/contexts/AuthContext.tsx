@@ -33,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // El bootstrap de sesión pertenece al ciclo de vida de autenticación, no al caché del API.
     const token = localStorage.getItem('accessToken');
     if (!token) {
       setLoading(false);

@@ -1,4 +1,4 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
@@ -14,7 +14,7 @@ import { env } from '../config/env';
       secret: env.JWT_SECRET,
       signOptions: { expiresIn: '15m' },
     }),
-    forwardRef(() => WhatsappModule),
+    WhatsappModule,
   ],
   providers: [AuthService, JwtStrategy],
   controllers: [AuthController],

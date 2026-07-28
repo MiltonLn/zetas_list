@@ -16,6 +16,7 @@ import {
   isBeforeCutoff,
   REGISTRATION_INCLUDE,
   CONFIRMATION_TIMEOUT_MS,
+  NEXT_CONFIRM_TIMEOUT_MS,
 } from './games.utils';
 
 /**
@@ -221,6 +222,102 @@ export class WaitlistService {
     });
 
     return updated;
+  }
+
+  /**
+   * Returns an expired promotion to its original wait-list position and
+   * advances one eligible candidate using the short continuation window.
+   */
+  async continueAfterConfirmationTimeout(
+    gameId: string,
+    regId: string,
+    beforeCutoff: boolean,
+    originalWaitPosition: number | null,
+  ) {
+    return withGameLock(this.prisma, gameId, async (tx) => {
+      const expired = await tx.gameRegistration.findUnique({
+        where: { id: regId },
+        select: {
+          pendingConfirmation: true,
+        },
+      });
+      if (!expired?.pendingConfirmation) return null;
+
+      const currentMax = await tx.gameRegistration.aggregate({
+        where: { gameId, isWaitingList: true },
+        _max: { position: true },
+      });
+      const maxPosition = currentMax._max.position ?? 0;
+      const returnPosition =
+        originalWaitPosition != null
+          ? Math.min(originalWaitPosition, maxPosition + 1)
+          : maxPosition + 1;
+
+      await tx.gameRegistration.updateMany({
+        where: {
+          gameId,
+          isWaitingList: true,
+          position: { gte: returnPosition },
+        },
+        data: { position: { increment: 1 } },
+      });
+      await tx.gameRegistration.update({
+        where: { id: regId },
+        data: {
+          isWaitingList: true,
+          position: returnPosition,
+          pendingConfirmation: false,
+          confirmationDeadline: null,
+          originalWaitPosition: null,
+          fromWaitList: false,
+          confirmationDeclined: true,
+        },
+      });
+
+      const nextInWait = await tx.gameRegistration.findFirst({
+        where: {
+          gameId,
+          isWaitingList: true,
+          confirmationDeclined: false,
+          id: { not: regId },
+          ...(beforeCutoff ? { isGuest: false } : {}),
+        },
+        orderBy: { position: 'asc' },
+        include: REGISTRATION_INCLUDE,
+      });
+      if (!nextInWait) {
+        return {
+          returnPosition,
+          nextInWait: null,
+          nextDeadline: null,
+          nextOriginalPosition: null,
+        };
+      }
+
+      const nextOriginalPosition = nextInWait.position;
+      const nextDeadline = new Date(Date.now() + NEXT_CONFIRM_TIMEOUT_MS);
+      const maxMainPosition = await tx.gameRegistration.aggregate({
+        where: { gameId, isWaitingList: false },
+        _max: { position: true },
+      });
+      await tx.gameRegistration.update({
+        where: { id: nextInWait.id },
+        data: {
+          isWaitingList: false,
+          position: (maxMainPosition._max.position ?? 0) + 1,
+          fromWaitList: true,
+          pendingConfirmation: true,
+          confirmationDeadline: nextDeadline,
+          originalWaitPosition: nextOriginalPosition,
+        },
+      });
+      return {
+        returnPosition,
+        nextInWait,
+        nextDeadline,
+        nextOriginalPosition,
+      };
+    });
   }
 
   async autoPromoteIfNeeded(gameId: string, options?: { skipMainListFullCheck?: boolean }) {

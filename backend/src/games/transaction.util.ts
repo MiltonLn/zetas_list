@@ -3,6 +3,16 @@ import { PrismaService } from '../prisma/prisma.service';
 
 export type Tx = Prisma.TransactionClient;
 
+export interface LockedRegistrationGame {
+  id: string;
+  status: string;
+  maxMainSpots: number;
+  mainListHasBeenFull: boolean;
+  guestCutoffTime: string;
+  maxProxyRegistrations: number;
+  gameDate: Date;
+}
+
 /**
  * Runs `fn` in a serializable transaction that first takes a row lock on the
  * game.
@@ -22,6 +32,30 @@ export function withGameLock<T>(
     async (tx) => {
       await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
       return fn(tx);
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
+}
+
+/**
+ * Locks and fetches the game fields required by registration decisions in the
+ * same serializable transaction.
+ */
+export function withGameLockAndFetch<T>(
+  prisma: PrismaService,
+  gameId: string,
+  fn: (tx: Tx, game: LockedRegistrationGame | undefined) => Promise<T>,
+): Promise<T> {
+  return prisma.$transaction(
+    async (tx) => {
+      const games = await tx.$queryRaw<LockedRegistrationGame[]>`
+        SELECT id, status, "maxMainSpots", "mainListHasBeenFull",
+               "guestCutoffTime", "maxProxyRegistrations", "gameDate"
+        FROM games
+        WHERE id = ${gameId}
+        FOR UPDATE
+      `;
+      return fn(tx, games[0]);
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );

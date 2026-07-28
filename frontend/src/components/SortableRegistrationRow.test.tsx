@@ -36,6 +36,7 @@ function makeReg(overrides: Partial<GameRegistration> = {}): GameRegistration {
     attended: false,
     paid: false,
     fromWaitList: false,
+    fineExempt: false,
     isGuest: false,
     pendingConfirmation: false,
     confirmationDeclined: false,

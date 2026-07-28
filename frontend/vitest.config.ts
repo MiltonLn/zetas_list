@@ -8,5 +8,23 @@ export default defineConfig({
     environment: 'happy-dom',
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.test.{ts,tsx}',
+        'src/**/*.d.ts',
+        'src/api-types.gen.ts',
+        'src/main.tsx',
+        'src/test/**',
+      ],
+      reporter: ['text', 'json-summary', 'lcov'],
+      thresholds: {
+        statements: 31,
+        branches: 29,
+        functions: 26,
+        lines: 33,
+      },
+    },
   },
 });

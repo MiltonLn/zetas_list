@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Generates the frontend's shared domain enums from the Prisma schema, the
- * single source of truth for them.
+ * Generates the frontend's shared domain enums and scalar entity bases from
+ * the Prisma schema, the single source of truth for them.
  *
  * These literal unions used to be hand-copied into frontend/src/types.ts, so a
  * backend enum change (a new role, a new order status, a new audit action) drifted
@@ -35,6 +35,32 @@ const EXPORTED_ENUMS = [
   'FineStatus',
 ];
 
+/**
+ * Public scalar models consumed by the frontend. Relations are deliberately
+ * excluded by parseModels; API-specific relations remain manual in types.ts.
+ */
+const EXPORTED_MODELS = {
+  User: {
+    outputName: 'UserBase',
+    omit: ['passwordHash', 'whatsappLid', 'mustChangePassword'],
+  },
+  Game: { outputName: 'GameBase', omit: [] },
+  GameRegistration: { outputName: 'GameRegistrationBase', omit: [] },
+  AuditLog: { outputName: 'AuditLogBase', omit: [] },
+  FinanceTransaction: { outputName: 'FinanceTransactionBase', omit: [] },
+  Fine: { outputName: 'FineBase', omit: [] },
+  Order: { outputName: 'OrderBase', omit: [] },
+  OrderItem: { outputName: 'OrderItemBase', omit: [] },
+};
+
+const SCALAR_TYPES = {
+  String: 'string',
+  Int: 'number',
+  Boolean: 'boolean',
+  DateTime: 'string',
+  Json: 'Record<string, unknown>',
+};
+
 function parseEnums(schema) {
   const enums = new Map();
   const enumBlock = /enum\s+(\w+)\s*\{([^}]*)\}/g;
@@ -50,7 +76,36 @@ function parseEnums(schema) {
   return enums;
 }
 
-function render(enums) {
+function parseModels(schema, enumNames) {
+  const models = new Map();
+  // A closing brace only ends a Prisma model when it starts the line. JSON
+  // defaults such as @default("{}") may contain braces inside a field.
+  const modelBlock = /model\s+(\w+)\s*\{([\s\S]*?)^}/gm;
+
+  for (const [, name, body] of schema.matchAll(modelBlock)) {
+    const fields = [];
+    for (const rawLine of body.split('\n')) {
+      const line = rawLine.replace(/\/\/.*$/, '').trim();
+      if (!line || line.startsWith('@@')) continue;
+
+      const match = line.match(/^(\w+)\s+(\w+)(\[\])?(\?)?(?:\s|$)/);
+      if (!match) continue;
+      const [, fieldName, prismaType, isList, isNullable] = match;
+      const type = SCALAR_TYPES[prismaType] ?? (enumNames.has(prismaType) ? prismaType : null);
+      if (!type || isList) continue;
+
+      fields.push({
+        name: fieldName,
+        type: isNullable ? `${type} | null` : type,
+      });
+    }
+    models.set(name, fields);
+  }
+
+  return models;
+}
+
+function render(enums, models) {
   const lines = [
     '// AUTOGENERADO — no editar a mano.',
     '// Fuente: backend/prisma/schema.prisma',
@@ -74,10 +129,29 @@ function render(enums) {
     lines.push('');
   }
 
+  for (const [modelName, config] of Object.entries(EXPORTED_MODELS)) {
+    const fields = models.get(modelName);
+    if (!fields) {
+      throw new Error(`El modelo "${modelName}" no existe en schema.prisma`);
+    }
+
+    const omitted = new Set(config.omit);
+    lines.push(`export interface ${config.outputName} {`);
+    for (const field of fields) {
+      if (!omitted.has(field.name)) {
+        lines.push(`  ${field.name}: ${field.type};`);
+      }
+    }
+    lines.push('}');
+    lines.push('');
+  }
+
   return lines.join('\n');
 }
 
-const generated = render(parseEnums(readFileSync(SCHEMA_PATH, 'utf8')));
+const schema = readFileSync(SCHEMA_PATH, 'utf8');
+const enums = parseEnums(schema);
+const generated = render(enums, parseModels(schema, new Set(enums.keys())));
 
 if (process.argv.includes('--check')) {
   let current = '';

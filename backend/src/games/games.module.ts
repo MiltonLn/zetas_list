@@ -8,6 +8,7 @@ import { GameQueryService } from './game-query.service';
 import { ConfirmationService } from './confirmation.service';
 import { WaitlistService } from './waitlist.service';
 import { GameLifecycleService } from './game-lifecycle.service';
+import { RegistrationService } from './registration.service';
 import { AuditModule } from '../audit/audit.module';
 import { FinancesModule } from '../finances/finances.module';
 
@@ -22,6 +23,7 @@ import { FinancesModule } from '../finances/finances.module';
     ConfirmationService,
     WaitlistService,
     GameLifecycleService,
+    RegistrationService,
   ],
   controllers: [GamesController],
   exports: [GamesService, GameEventsService],

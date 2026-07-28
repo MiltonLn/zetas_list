@@ -2,6 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { GameNotifier } from './game-notifier.service';
 import { GameEvent } from './game-events';
+import * as Sentry from '@sentry/nestjs';
+
+jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }));
 
 const mockEmitter = { emitAsync: jest.fn() };
 
@@ -30,11 +33,13 @@ describe('GameNotifier', () => {
     });
 
     it('no propaga el fallo de un listener: la notificación nunca tumba la operación', async () => {
-      mockEmitter.emitAsync.mockRejectedValue(new Error('WhatsApp down'));
+      const error = new Error('WhatsApp down');
+      mockEmitter.emitAsync.mockRejectedValue(error);
 
       expect(() => notifier.announceGameCompleted({ report: 'reporte' })).not.toThrow();
       // Flush the rejected promise so an unhandled rejection would surface here.
       await Promise.resolve();
+      expect(Sentry.captureException).toHaveBeenCalledWith(error);
     });
 
     it('espera la entrega al anunciar una salida, para preservar el orden en el chat', async () => {

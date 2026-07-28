@@ -2,38 +2,59 @@
 // drift from the backend. See scripts/generate-api-types.mjs.
 export type {
   AuditAction,
+  AuditLogBase,
+  FinanceTransactionBase,
   FineStatus,
+  FineBase,
   Gender,
+  GameBase,
+  GameRegistrationBase,
   GameStatus,
   Modalidad,
+  OrderBase,
+  OrderItemBase,
   OrderStatus,
   Position,
   Role,
   ShirtSize,
   TransactionType,
+  UserBase,
   UserStatus,
 } from './api-types.gen';
 
 import type {
   AuditAction,
+  AuditLogBase,
   Gender,
+  GameBase,
+  GameRegistrationBase,
   GameStatus,
   Modalidad,
+  OrderBase,
+  OrderItemBase,
   OrderStatus,
   Position,
   Role,
   ShirtSize,
+  UserBase,
   UserStatus,
 } from './api-types.gen';
 import { SHIRT_SIZE_VALUES } from './api-types.gen';
 
-export interface User {
-  id: string;
-  username: string;
-  name: string;
+export interface User extends Omit<
+  UserBase,
+  | 'alias'
+  | 'position'
+  | 'gender'
+  | 'heightCm'
+  | 'birthDate'
+  | 'photoUrl'
+  | 'bio'
+  | 'shirtSize'
+  | 'shirtNumber'
+  | 'banReason'
+> {
   alias?: string;
-  phone: string;
-  role: Role;
   position?: Position;
   gender?: Gender;
   heightCm?: number;
@@ -42,10 +63,7 @@ export interface User {
   bio?: string;
   shirtSize?: ShirtSize;
   shirtNumber?: number;
-  status: UserStatus;
   banReason?: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface AuthUser {
@@ -75,60 +93,28 @@ export interface RegistrationUser {
   bio?: string;
 }
 
-export interface GameRegistration {
-  id: string;
-  gameId: string;
-  userId: string | null;
-  position: number;
-  isWaitingList: boolean;
-  attended: boolean;
-  paid: boolean;
+export interface GameRegistration extends Omit<
+  GameRegistrationBase,
+  'note' | 'guestName' | 'confirmationDeadline' | 'originalWaitPosition'
+> {
   note?: string;
-  fromWaitList: boolean;
-  registeredAt: string;
-  registeredById: string;
-  isGuest: boolean;
   guestName?: string;
-  pendingConfirmation: boolean;
   confirmationDeadline?: string;
-  confirmationDeclined: boolean;
   originalWaitPosition?: number;
   user: RegistrationUser;
   registeredBy: { id: string; name: string; alias?: string; username: string };
 }
 
-export interface Game {
-  id: string;
-  title: string;
-  modalidad: Modalidad;
-  gameDate: string;
-  startTime: string;
-  registrationOpenAt: string;
-  maxMainSpots: number;
-  pricePerPlayer: number;
-  vigilante: number;
-  guestCutoffTime: string;
-  maxProxyRegistrations: number;
-  mainListHasBeenFull: boolean;
-  status: GameStatus;
-  cancellationReason?: string;
-  createdById: string;
-  createdAt: string;
-  updatedAt: string;
+export interface Game extends GameBase {
   registrations: GameRegistration[];
   createdBy?: { id: string; name: string };
   _count?: { registrations: number };
 }
 
-export interface AuditLog {
-  id: string;
-  gameId?: string;
-  actorId: string;
-  targetUserId?: string;
-  action: AuditAction;
-  details: Record<string, unknown>;
-  createdAt: string;
-  actor: { id: string; name: string; username: string };
+export interface AuditLog extends Omit<AuditLogBase, 'gameId' | 'targetUserId'> {
+  gameId?: string | null;
+  targetUserId?: string | null;
+  actor: { id: string; name: string; username: string } | null;
   targetUser?: { id: string; name: string; username: string };
 }
 
@@ -189,29 +175,14 @@ export interface CatalogProduct {
   variants: CatalogVariant[];
 }
 
-export interface OrderItem {
-  id: string;
-  orderId: string;
-  productId: string;
-  productName: string;
-  variantId: string;
-  variantName: string;
+export interface OrderItem extends Omit<OrderItemBase, 'size' | 'customName' | 'customNumber'> {
   size?: ShirtSize | null;
-  quantity: number;
   customName?: string | null;
   customNumber?: number | null;
-  unitPrice: number;
-  lineTotal: number;
 }
 
-export interface Order {
-  id: string;
-  userId: string;
-  status: OrderStatus;
-  totalAmount: number;
+export interface Order extends Omit<OrderBase, 'notes'> {
   notes?: string | null;
-  createdAt: string;
-  updatedAt: string;
   items: OrderItem[];
   user?: {
     id: string;

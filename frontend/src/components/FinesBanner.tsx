@@ -1,21 +1,10 @@
-import { useState, useEffect } from 'react';
-import { financesService } from '../services/finances.service';
+import { useMyFinesQuery } from '../hooks/useFinancesQuery';
 import { formatCurrency } from '../utils/currency';
 
 export function FinesBanner() {
-  const [total, setTotal] = useState(0);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    financesService.getMyFines()
-      .then((res) => {
-        setTotal(res.data.total);
-        setLoaded(true);
-      })
-      .catch(() => setLoaded(true));
-  }, []);
-
-  if (!loaded || total === 0) return null;
+  const { data, isPending } = useMyFinesQuery();
+  const total = data?.total ?? 0;
+  if (isPending || total === 0) return null;
 
   return (
     <div style={{

@@ -5,6 +5,7 @@ import { GamesService } from '../games/games.service';
 import { UsersService } from '../users/users.service';
 import { FinancesService } from '../finances/finances.service';
 import { InfoCommandsService } from './commands/info-commands.service';
+import { MutatingCommandsService } from './commands/mutating-commands.service';
 import { Role } from '@prisma/client';
 import { AlreadyRegisteredException, ProxyLimitExceededException } from '../games/exceptions';
 
@@ -19,7 +20,6 @@ const mockGames = {
   complete: jest.fn(),
   promoteNext: jest.fn(),
   retryFromWaitingList: jest.fn(),
-  formatListForWhatsapp: jest.fn(),
   buildCounts: jest.fn().mockReturnValue('📊 *1/18* cupos ocupados (17 disponibles)'),
   buildGameLink: jest.fn().mockReturnValue(''),
 };
@@ -239,6 +239,7 @@ describe('MessageHandlerService — handleMessage', () => {
         // Real InfoCommandsService: these tests assert on the copy the bot sends
         // for read-only commands, so mocking it would test nothing.
         InfoCommandsService,
+        MutatingCommandsService,
         { provide: WHATSAPP_PROVIDER, useValue: mockWp },
         { provide: GamesService, useValue: mockGames },
         { provide: UsersService, useValue: mockUsers },
@@ -267,10 +268,10 @@ describe('MessageHandlerService — handleMessage', () => {
 
     it('envía la lista formateada cuando hay juego activo', async () => {
       mockGames.findActiveGame.mockResolvedValue(makeActiveGame());
-      mockGames.formatListForWhatsapp.mockReturnValue('📋 Lista...');
-
       await service.handleMessage('111', '@Z lista', 'group-1');
-      expect(mockWp.sendToGroup).toHaveBeenCalledWith('📋 Lista...');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('Volley 6x6'),
+      );
     });
 
     // The alias-loading contract now lives with the query itself, in

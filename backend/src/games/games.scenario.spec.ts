@@ -17,6 +17,7 @@ import { GameQueryService } from './game-query.service';
 import { ConfirmationService } from './confirmation.service';
 import { WaitlistService } from './waitlist.service';
 import { GameLifecycleService } from './game-lifecycle.service';
+import { RegistrationService } from './registration.service';
 import { notificationHarness } from './testing/notifier-harness';
 import { FinancesService } from '../finances/finances.service';
 import { GameNotOpenException, NoPendingConfirmationException } from './exceptions';
@@ -73,6 +74,7 @@ async function setup(opts: { members: number; maxMainSpots?: number; gameDate?: 
       ConfirmationService,
       WaitlistService,
       GameLifecycleService,
+      RegistrationService,
       { provide: PrismaService, useValue: prisma },
       { provide: AuditService, useValue: audit },
       { provide: GameEventsService, useValue: events },

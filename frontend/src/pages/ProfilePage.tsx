@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import type { FormEvent } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
-import { usersService } from '../services/users.service';
 import type { UpdateUserPayload } from '../services/users.service';
 import { authService } from '../services/auth.service';
-import type { User, Position, Gender, ShirtSize } from '../types';
+import type { Position, Gender, ShirtSize } from '../types';
 import { POSITION_LABELS, GENDER_LABELS, SHIRT_SIZES } from '../types';
 import { PageHeader } from '../components/PageHeader';
 import { Avatar } from '../components/Avatar';
@@ -13,12 +13,18 @@ import { Spinner } from '../components/Spinner';
 import { getApiError } from '../services/api';
 import { prepareImageForCrop } from '../utils/image';
 import { displayName as getDisplayName } from '../utils/display-name';
+import {
+  useMeQuery,
+  useUpdateUserMutation,
+  useUploadUserPhotoMutation,
+} from '../hooks/useUsersQuery';
 
 export default function ProfilePage() {
   const { user: authUser, isAdmin } = useAuth();
-  const [profile, setProfile] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const profileQuery = useMeQuery();
+  const updateProfile = useUpdateUserMutation();
+  const uploadPhoto = useUploadUserPhotoMutation();
+  const profile = profileQuery.data;
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
 
@@ -36,41 +42,41 @@ export default function ProfilePage() {
   const [newPassword, setNewPassword] = useState('');
   const [pwError, setPwError] = useState('');
   const [pwSuccess, setPwSuccess] = useState('');
-  const [pwSaving, setPwSaving] = useState(false);
+  const changePassword = useMutation({
+    mutationFn: async ({ current, next }: { current: string; next: string }) =>
+      authService.changePassword(current, next),
+  });
 
-  const [photoUploading, setPhotoUploading] = useState(false);
   const [photoPreparing, setPhotoPreparing] = useState(false);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    usersService
-      .me()
-      .then(({ data }) => {
-        setProfile(data);
-        setName(data.name);
-        setAlias(data.alias || '');
-        setBio(data.bio || '');
-        setPosition((data.position as Position) || '');
-        setGender((data.gender as Gender) || '');
-        setHeightCm(data.heightCm?.toString() || '');
-        setBirthDate(data.birthDate ? data.birthDate.slice(0, 10) : '');
-        setShirtSize((data.shirtSize as ShirtSize) || '');
+    if (profile) {
+        setName(profile.name);
+        setAlias(profile.alias || '');
+        setBio(profile.bio || '');
+        setPosition(profile.position || '');
+        setGender(profile.gender || '');
+        setHeightCm(profile.heightCm?.toString() || '');
+        setBirthDate(profile.birthDate ? profile.birthDate.slice(0, 10) : '');
+        setShirtSize(profile.shirtSize || '');
         setShirtNumber(
-          data.shirtNumber !== undefined && data.shirtNumber !== null
-            ? String(data.shirtNumber)
+          profile.shirtNumber !== undefined && profile.shirtNumber !== null
+            ? String(profile.shirtNumber)
             : '',
         );
-      })
-      .catch((e) => setError(getApiError(e)))
-      .finally(() => setLoading(false));
-  }, []);
+    }
+  }, [profile]);
+
+  useEffect(() => {
+    if (profileQuery.error) setError(getApiError(profileQuery.error));
+  }, [profileQuery.error]);
 
   async function handleSave(e: FormEvent) {
     e.preventDefault();
     setError('');
     setSuccess('');
-    setSaving(true);
     try {
       const payload: UpdateUserPayload = {
         ...(isAdmin ? { name } : {}),
@@ -83,12 +89,10 @@ export default function ProfilePage() {
         shirtSize: (shirtSize as ShirtSize) || undefined,
         shirtNumber: shirtNumber !== '' ? parseInt(shirtNumber) : undefined,
       };
-      await usersService.update(authUser!.id, payload);
+      await updateProfile.mutateAsync({ id: authUser!.id, payload });
       setSuccess('Perfil actualizado correctamente');
     } catch (err) {
       setError(getApiError(err));
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -96,16 +100,13 @@ export default function ProfilePage() {
     e.preventDefault();
     setPwError('');
     setPwSuccess('');
-    setPwSaving(true);
     try {
-      await authService.changePassword(currentPassword, newPassword);
+      await changePassword.mutateAsync({ current: currentPassword, next: newPassword });
       setPwSuccess('Contraseña actualizada correctamente');
       setCurrentPassword('');
       setNewPassword('');
     } catch (err) {
       setPwError(getApiError(err));
-    } finally {
-      setPwSaving(false);
     }
   }
 
@@ -126,21 +127,17 @@ export default function ProfilePage() {
   async function handleCroppedPhoto(blob: Blob) {
     setCropImageSrc(null);
     if (!authUser) return;
-    setPhotoUploading(true);
     setError('');
     try {
       const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
-      const { data } = await usersService.uploadPhoto(authUser.id, file);
-      setProfile(data);
+      await uploadPhoto.mutateAsync({ id: authUser.id, file });
       setSuccess('Foto actualizada');
     } catch (err) {
       setError(getApiError(err));
-    } finally {
-      setPhotoUploading(false);
     }
   }
 
-  if (loading) {
+  if (profileQuery.isPending) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
         <Spinner size={48} />
@@ -161,7 +158,7 @@ export default function ProfilePage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
             <div style={{ position: 'relative' }}>
               <Avatar name={profile ? getDisplayName(profile) : ''} photoUrl={profile?.photoUrl} size={72} />
-              {(photoUploading || photoPreparing) && (
+              {(uploadPhoto.isPending || photoPreparing) && (
                 <div style={{
                   position: 'absolute', inset: 0, borderRadius: '50%',
                   background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -176,7 +173,7 @@ export default function ProfilePage() {
                 className="btn btn-primary"
                 style={{ fontSize: 12, padding: '6px 14px', minHeight: 32 }}
                 onClick={() => fileInputRef.current?.click()}
-                disabled={photoUploading || photoPreparing}
+                disabled={uploadPhoto.isPending || photoPreparing}
               >
                 {photoPreparing ? 'Procesando...' : 'Cambiar foto'}
               </button>
@@ -368,8 +365,8 @@ export default function ProfilePage() {
             {error && <p style={{ color: '#ff6b6b', fontSize: 13, margin: 0 }}>{error}</p>}
             {success && <p style={{ color: '#2da44e', fontSize: 13, margin: 0 }}>{success}</p>}
 
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Guardando...' : 'Guardar cambios'}
+            <button type="submit" className="btn btn-primary" disabled={updateProfile.isPending}>
+              {updateProfile.isPending ? 'Guardando...' : 'Guardar cambios'}
             </button>
           </form>
         </div>
@@ -406,8 +403,8 @@ export default function ProfilePage() {
             </div>
             {pwError && <p style={{ color: '#ff6b6b', fontSize: 13, margin: 0 }}>{pwError}</p>}
             {pwSuccess && <p style={{ color: '#2da44e', fontSize: 13, margin: 0 }}>{pwSuccess}</p>}
-            <button type="submit" className="btn btn-primary" disabled={pwSaving}>
-              {pwSaving ? 'Actualizando...' : 'Actualizar contraseña'}
+            <button type="submit" className="btn btn-primary" disabled={changePassword.isPending}>
+              {changePassword.isPending ? 'Actualizando...' : 'Actualizar contraseña'}
             </button>
           </form>
         </div>

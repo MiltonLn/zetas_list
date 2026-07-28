@@ -1,4 +1,4 @@
-import { Controller, Get, Post, UseGuards, Inject, Res, Logger, forwardRef } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards, Inject, Res, Logger } from '@nestjs/common';
 import { Response } from 'express';
 import * as QRCode from 'qrcode';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -20,7 +20,6 @@ export class WhatsappController {
 
   constructor(
     @Inject(WHATSAPP_PROVIDER) private readonly provider: BaileysProvider,
-    @Inject(forwardRef(() => UsersService))
     private readonly users: UsersService,
   ) {}
 

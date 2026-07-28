@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { gamesService } from '../services/games.service';
 import type { CreateGamePayload } from '../services/games.service';
 import type { Modalidad } from '../types';
 import { MODALIDAD_LABELS } from '../types';
 import { PageHeader } from '../components/PageHeader';
 import { getApiError } from '../services/api';
+import { useCreateGameMutation } from '../hooks/useGameQuery';
 
 const MODALIDAD_SPOTS: Record<Modalidad, number> = {
   seis_x_seis: 18,
@@ -38,15 +38,14 @@ export default function CreateGamePage() {
   const [useCustomTitle, setUseCustomTitle] = useState(false);
   const [guestCutoffTime, setGuestCutoffTime] = useState('13:30');
   const [maxProxyRegistrations, setMaxProxyRegistrations] = useState('1');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const createGame = useCreateGameMutation();
 
   const autoTitle = buildAutoTitle(modalidad, gameDate, startTime);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
-    setLoading(true);
     try {
       const payload: CreateGamePayload = {
         modalidad,
@@ -60,12 +59,10 @@ export default function CreateGamePage() {
         guestCutoffTime: guestCutoffTime || undefined,
         maxProxyRegistrations: maxProxyRegistrations ? parseInt(maxProxyRegistrations) : undefined,
       };
-      const { data } = await gamesService.create(payload);
-      navigate(`/game/${data.id}`);
+      const game = await createGame.mutateAsync(payload);
+      navigate(`/game/${game.id}`);
     } catch (err) {
       setError(getApiError(err));
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -258,8 +255,8 @@ export default function CreateGamePage() {
               <p style={{ color: '#ff6b6b', fontSize: 13, margin: 0 }}>{error}</p>
             )}
 
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Creando partido...' : 'Crear partido'}
+            <button type="submit" className="btn btn-primary" disabled={createGame.isPending}>
+              {createGame.isPending ? 'Creando partido...' : 'Crear partido'}
             </button>
 
           </form>

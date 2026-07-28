@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { ordersService } from '../services/orders.service';
 import type { CreateOrderPayload } from '../services/orders.service';
-import { usersService } from '../services/users.service';
-import type { CatalogProduct, Order } from '../types';
+import type { CatalogProduct } from '../types';
 import { ORDER_STATUS_COLORS, ORDER_STATUS_LABELS } from '../types';
 import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
@@ -20,15 +18,23 @@ import {
   LABEL_STYLE,
   type CartItem,
 } from '../components/camisetas/shared';
+import {
+  useCreateOrderMutation,
+  useMyOrdersQuery,
+  useOrdersCatalogQuery,
+} from '../hooks/useOrdersQuery';
+import { useMeQuery } from '../hooks/useUsersQuery';
 
 export default function CamisetasPage() {
   const { user: authUser } = useAuth();
-  const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const catalogQuery = useOrdersCatalogQuery();
+  const meQuery = useMeQuery();
+  const ordersQuery = useMyOrdersQuery();
+  const createOrder = useCreateOrderMutation();
+  const catalog = catalogQuery.data ?? [];
+  const orders = ordersQuery.data ?? [];
 
   const [shirtNumber, setShirtNumber] = useState('');
   const [notes, setNotes] = useState('');
@@ -37,19 +43,16 @@ export default function CamisetasPage() {
   const [configProduct, setConfigProduct] = useState<CatalogProduct | null>(null);
 
   useEffect(() => {
-    Promise.all([ordersService.catalog(), usersService.me(), ordersService.myOrders()])
-      .then(([catalogRes, meRes, ordersRes]) => {
-        setCatalog(catalogRes.data);
-        setShirtNumber(
-          meRes.data.shirtNumber !== undefined && meRes.data.shirtNumber !== null
-            ? String(meRes.data.shirtNumber)
-            : '',
-        );
-        setOrders(ordersRes.data);
-      })
-      .catch((e) => setError(getApiError(e)))
-      .finally(() => setLoading(false));
-  }, []);
+    const savedNumber = meQuery.data?.shirtNumber;
+    if (savedNumber !== undefined && savedNumber !== null) {
+      setShirtNumber((current) => current || String(savedNumber));
+    }
+  }, [meQuery.data]);
+
+  useEffect(() => {
+    const queryError = catalogQuery.error ?? meQuery.error ?? ordersQuery.error;
+    if (queryError) setError(getApiError(queryError));
+  }, [catalogQuery.error, meQuery.error, ordersQuery.error]);
 
   const total = cart.reduce((sum, item) => sum + item.lineTotal, 0);
   const deposit = Math.round(total * DEPOSIT_RATE);
@@ -87,7 +90,6 @@ export default function CamisetasPage() {
     }
 
     const depositForMessage = deposit;
-    setSubmitting(true);
     try {
       const payload: CreateOrderPayload = {
         shirtNumber: parsedNumber,
@@ -100,9 +102,7 @@ export default function CamisetasPage() {
           customName: item.customName?.trim() || undefined,
         })),
       };
-      await ordersService.create(payload);
-      const { data } = await ordersService.myOrders();
-      setOrders(data);
+      await createOrder.mutateAsync(payload);
       setCart([]);
       setNotes('');
       setSuccess(
@@ -110,12 +110,10 @@ export default function CamisetasPage() {
       );
     } catch (err) {
       setError(getApiError(err));
-    } finally {
-      setSubmitting(false);
     }
   }
 
-  if (loading) {
+  if (catalogQuery.isPending || meQuery.isPending || ordersQuery.isPending) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
         <Spinner size={48} />
@@ -303,10 +301,10 @@ export default function CamisetasPage() {
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={submitting || cart.length === 0}
+              disabled={createOrder.isPending || cart.length === 0}
               style={{ marginTop: 16, width: '100%' }}
             >
-              {submitting ? 'Registrando...' : 'Registrar pedido'}
+              {createOrder.isPending ? 'Registrando...' : 'Registrar pedido'}
             </button>
           </div>
         </form>

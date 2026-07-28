@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { Modal } from './Modal';
 import { Spinner } from './Spinner';
-import { gamesService } from '../services/games.service';
 import { getApiError } from '../services/api';
 import { formatReportLine } from '../utils/format-report';
+import { useGameMutations, useGamePreviewReport } from '../hooks/useGameQuery';
 
 interface FineablePlayer {
   regId: string;
@@ -20,61 +20,40 @@ interface Props {
 }
 
 export function GameCompleteModal({ open, onClose, gameId, onCompleted }: Props) {
-  const [report, setReport] = useState('');
-  const [fineable, setFineable] = useState<FineablePlayer[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [completing, setCompleting] = useState(false);
   const [error, setError] = useState('');
-  const [togglingId, setTogglingId] = useState<string | null>(null);
-
-  const loadPreview = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const { data } = await gamesService.previewReport(gameId);
-      setReport(data.report);
-      setFineable(data.fineable);
-    } catch (e) {
-      setError(getApiError(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [gameId]);
-
-  useEffect(() => {
-    if (open) loadPreview();
-  }, [open, loadPreview]);
+  const preview = useGamePreviewReport(gameId, open);
+  const mutations = useGameMutations(gameId);
+  const report = preview.data?.report ?? '';
+  const fineable: FineablePlayer[] = preview.data?.fineable ?? [];
+  const togglingId = mutations.setFineExempt.isPending
+    ? mutations.setFineExempt.variables?.regId ?? null
+    : null;
 
   async function handleToggleFine(player: FineablePlayer) {
-    setTogglingId(player.regId);
+    setError('');
     try {
-      await gamesService.setFineExempt(gameId, player.regId, !player.fineExempt);
-      await loadPreview();
+      await mutations.setFineExempt.mutateAsync({
+        regId: player.regId,
+        exempt: !player.fineExempt,
+      });
     } catch (e) {
       setError(getApiError(e));
-    } finally {
-      setTogglingId(null);
     }
   }
 
   async function handleComplete() {
-    setCompleting(true);
     setError('');
     try {
-      await gamesService.complete(gameId);
+      await mutations.complete.mutateAsync();
       onCompleted();
       onClose();
     } catch (e) {
       setError(getApiError(e));
-    } finally {
-      setCompleting(false);
     }
   }
 
   function handleClose() {
-    if (completing) return;
-    setReport('');
-    setFineable([]);
+    if (mutations.complete.isPending) return;
     setError('');
     onClose();
   }
@@ -84,19 +63,19 @@ export function GameCompleteModal({ open, onClose, gameId, onCompleted }: Props)
 
   return (
     <Modal open={open} onClose={handleClose} title="Terminar partido" width={560}>
-      {loading ? (
+      {preview.isPending ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
           <Spinner size={32} />
         </div>
       ) : (
         <>
-          {error && (
+          {(error || preview.error) && (
             <div style={{
               background: '#e031311a', border: '1px solid #e0313155',
               borderRadius: 8, padding: '10px 14px', color: '#ff6b6b',
               fontSize: 13, marginBottom: 16,
             }}>
-              {error}
+              {error || getApiError(preview.error)}
             </div>
           )}
 
@@ -172,16 +151,16 @@ export function GameCompleteModal({ open, onClose, gameId, onCompleted }: Props)
           )}
 
           <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn" style={{ flex: 1 }} onClick={handleClose} disabled={completing}>
+            <button className="btn" style={{ flex: 1 }} onClick={handleClose} disabled={mutations.complete.isPending}>
               Cancelar
             </button>
             <button
               className="btn btn-primary"
               style={{ flex: 1 }}
               onClick={handleComplete}
-              disabled={completing}
+              disabled={mutations.complete.isPending}
             >
-              {completing ? 'Terminando...' : 'Confirmar y Terminar'}
+              {mutations.complete.isPending ? 'Terminando...' : 'Confirmar y Terminar'}
             </button>
           </div>
         </>

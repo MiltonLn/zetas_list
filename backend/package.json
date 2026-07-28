@@ -101,10 +101,34 @@
     "coverageDirectory": "../coverage",
     "coverageThreshold": {
       "global": {
-        "statements": 64,
-        "branches": 56,
-        "functions": 57,
-        "lines": 65
+        "statements": 73,
+        "branches": 58,
+        "functions": 71,
+        "lines": 74
+      },
+      "src/health.controller.ts": {
+        "statements": 90,
+        "branches": 90,
+        "functions": 90,
+        "lines": 90
+      },
+      "src/orders/orders.controller.ts": {
+        "statements": 90,
+        "branches": 90,
+        "functions": 90,
+        "lines": 90
+      },
+      "src/users/users.controller.ts": {
+        "statements": 85,
+        "branches": 35,
+        "functions": 85,
+        "lines": 85
+      },
+      "src/finances/finances.controller.ts": {
+        "statements": 90,
+        "branches": 90,
+        "functions": 90,
+        "lines": 90
       }
     },
     "testEnvironment": "node"

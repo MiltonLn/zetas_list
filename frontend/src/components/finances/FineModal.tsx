@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Modal } from '../Modal';
-import { financesService, type Fine } from '../../services/finances.service';
+import type { Fine } from '../../services/finances.service';
 import { getApiError } from '../../services/api';
 import { showToast } from '../../utils/toast';
 import type { User } from '../../types';
+import { useSaveFineMutation } from '../../hooks/useFinancesQuery';
 
 export function FineModal({ fine, users, onClose, onSaved }: {
   fine: Fine | null;
@@ -18,7 +19,7 @@ export function FineModal({ fine, users, onClose, onSaved }: {
   const [amount, setAmount] = useState(String(fine?.amount || ''));
   const [reason, setReason] = useState(fine?.reason || '');
   const [status, setStatus] = useState<'pending' | 'paid'>(fine?.status || 'pending');
-  const [saving, setSaving] = useState(false);
+  const saveFine = useSaveFineMutation();
 
   const selectedUser = users.find((u) => u.id === userId);
 
@@ -40,25 +41,29 @@ export function FineModal({ fine, users, onClose, onSaved }: {
       showToast('Selecciona una persona', 'error');
       return;
     }
-    setSaving(true);
     try {
       if (fine) {
-        await financesService.updateFine(fine.id, {
-          userId: userId || null,
-          date,
-          amount: Number(amount),
-          reason,
-          status,
+        await saveFine.mutateAsync({
+          kind: 'update',
+          fineId: fine.id,
+          payload: {
+            userId: userId || null,
+            date,
+            amount: Number(amount),
+            reason,
+            status,
+          },
         });
       } else {
-        await financesService.createFine({ userId, date, amount: Number(amount), reason, status });
+        await saveFine.mutateAsync({
+          kind: 'create',
+          payload: { userId, date, amount: Number(amount), reason, status },
+        });
       }
       showToast(fine ? 'Multa actualizada' : 'Multa creada', 'success');
       onSaved();
     } catch (e) {
       showToast(getApiError(e), 'error');
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -171,7 +176,7 @@ export function FineModal({ fine, users, onClose, onSaved }: {
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-          <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button>
+          <button type="submit" className="btn btn-primary" disabled={saveFine.isPending}>{saveFine.isPending ? 'Guardando...' : 'Guardar'}</button>
         </div>
       </form>
     </Modal>
