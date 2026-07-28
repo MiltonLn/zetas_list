@@ -56,6 +56,7 @@ describe('Sidebar', () => {
   it('no muestra la sección de administración a un member', () => {
     renderSidebar();
     expect(screen.getByText('Partidos')).toBeInTheDocument();
+    expect(screen.queryByText('Camisetas')).not.toBeInTheDocument();
     expect(screen.queryByText('Administración')).not.toBeInTheDocument();
   });
 
