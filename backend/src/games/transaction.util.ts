@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { GameNotFoundException } from './exceptions';
 
 export type Tx = Prisma.TransactionClient;
 
@@ -30,7 +31,12 @@ export function withGameLock<T>(
 ): Promise<T> {
   return prisma.$transaction(
     async (tx) => {
-      await tx.$queryRaw`SELECT id FROM games WHERE id = ${gameId} FOR UPDATE`;
+      const games = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM games WHERE id = ${gameId} FOR UPDATE
+      `;
+      if (!Array.isArray(games) || games.length === 0) {
+        throw new GameNotFoundException();
+      }
       return fn(tx);
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -44,7 +50,7 @@ export function withGameLock<T>(
 export function withGameLockAndFetch<T>(
   prisma: PrismaService,
   gameId: string,
-  fn: (tx: Tx, game: LockedRegistrationGame | undefined) => Promise<T>,
+  fn: (tx: Tx, game: LockedRegistrationGame) => Promise<T>,
 ): Promise<T> {
   return prisma.$transaction(
     async (tx) => {
@@ -55,7 +61,9 @@ export function withGameLockAndFetch<T>(
         WHERE id = ${gameId}
         FOR UPDATE
       `;
-      return fn(tx, games[0]);
+      const game = games[0];
+      if (!game) throw new GameNotFoundException();
+      return fn(tx, game);
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
   );

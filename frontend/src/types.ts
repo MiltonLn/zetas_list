@@ -34,80 +34,53 @@ import type {
   OrderItemBase,
   OrderStatus,
   Position,
-  Role,
   ShirtSize,
   UserBase,
   UserStatus,
 } from './api-types.gen';
 import { SHIRT_SIZE_VALUES } from './api-types.gen';
 
-export interface User extends Omit<
-  UserBase,
-  | 'alias'
-  | 'position'
-  | 'gender'
-  | 'heightCm'
-  | 'birthDate'
-  | 'photoUrl'
-  | 'bio'
-  | 'shirtSize'
-  | 'shirtNumber'
-  | 'banReason'
-> {
-  alias?: string;
-  position?: Position;
-  gender?: Gender;
-  heightCm?: number;
-  birthDate?: string;
-  photoUrl?: string;
-  bio?: string;
-  shirtSize?: ShirtSize;
-  shirtNumber?: number;
-  banReason?: string;
-}
+export type User = UserBase;
 
-export interface AuthUser {
-  id: string;
-  username: string;
-  name: string;
-  alias?: string;
-  role: Role;
-  phone: string;
-  position?: Position;
-  gender?: Gender;
-  photoUrl?: string;
+export interface AuthUser extends Pick<
+  UserBase,
+  'id' | 'username' | 'name' | 'role' | 'phone'
+> {
+  alias?: string | null;
+  position?: Position | null;
+  gender?: Gender | null;
+  photoUrl?: string | null;
   mustChangePassword?: boolean;
 }
 
-export interface RegistrationUser {
-  id: string;
-  name: string;
-  alias?: string;
-  username: string;
-  phone: string;
-  position?: Position;
-  gender?: Gender;
-  heightCm?: number;
-  birthDate?: string;
-  photoUrl?: string;
-  bio?: string;
+export interface RegistrationUser extends Pick<
+  UserBase,
+  'id' | 'name' | 'username' | 'phone'
+> {
+  alias?: string | null;
+  position?: Position | null;
+  gender?: Gender | null;
+  heightCm?: number | null;
+  birthDate?: string | null;
+  photoUrl?: string | null;
+  bio?: string | null;
 }
 
 export interface GameRegistration extends Omit<
   GameRegistrationBase,
   'note' | 'guestName' | 'confirmationDeadline' | 'originalWaitPosition'
 > {
-  note?: string;
-  guestName?: string;
-  confirmationDeadline?: string;
-  originalWaitPosition?: number;
-  user: RegistrationUser;
-  registeredBy: { id: string; name: string; alias?: string; username: string };
+  note?: string | null;
+  guestName?: string | null;
+  confirmationDeadline?: string | null;
+  originalWaitPosition?: number | null;
+  user: RegistrationUser | null;
+  registeredBy: { id: string; name: string; alias?: string | null; username: string } | null;
 }
 
 export interface Game extends GameBase {
   registrations: GameRegistration[];
-  createdBy?: { id: string; name: string };
+  createdBy?: { id: string; name: string } | null;
   _count?: { registrations: number };
 }
 
@@ -115,7 +88,7 @@ export interface AuditLog extends Omit<AuditLogBase, 'gameId' | 'targetUserId'> 
   gameId?: string | null;
   targetUserId?: string | null;
   actor: { id: string; name: string; username: string } | null;
-  targetUser?: { id: string; name: string; username: string };
+  targetUser?: { id: string; name: string; username: string } | null;
 }
 
 export const MODALIDAD_LABELS: Record<Modalidad, string> = {
@@ -190,7 +163,7 @@ export interface Order extends Omit<OrderBase, 'notes'> {
     username: string;
     phone: string;
     gender?: Gender | null;
-  };
+  } | null;
 }
 
 export const USER_STATUS_LABELS: Record<UserStatus, string> = {

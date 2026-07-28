@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { GAME_MANAGERS } from '../common/constants/roles';
-import { isExpectedBusinessError } from '../common/errors/is-expected-error';
+import { reportCaughtError } from '../common/errors/report-caught-error';
 import {
   newReqId,
   runWithLogContext,
@@ -97,11 +97,7 @@ export class MessageHandlerService {
   }
 
   private logError(context: string, error: unknown): void {
-    if (isExpectedBusinessError(error)) {
-      this.logger.debug(`${context}: ${(error as Error).message}`);
-    } else {
-      this.logger.error(`${context}:`, error as Error);
-    }
+    reportCaughtError(this.logger, context, error);
   }
 
   private async dispatch(

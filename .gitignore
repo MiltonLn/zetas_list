@@ -14,12 +14,7 @@ backend/whatsapp-session/
 # Test coverage reports
 coverage/
 
-# Build artifacts
-frontend/dist/
-backend/dist/
-
-# Test coverage reports
-coverage/
+# Build artifacts (the generic dist/ rule above covers both packages)
 
 # Logs
 *.log

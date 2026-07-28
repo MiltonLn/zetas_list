@@ -53,6 +53,7 @@ export function useCreateOrderMutation() {
 
 export function useSaveAdminOrderMutation() {
   const invalidate = useInvalidateOrders();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (
       input:
@@ -62,7 +63,14 @@ export function useSaveAdminOrderMutation() {
       input.kind === 'update'
         ? (await ordersService.update(input.orderId, input.payload)).data
         : (await ordersService.adminCreate(input.targetUserId, input.payload)).data,
-    onSuccess: async () => invalidate(),
+    onSuccess: async (order, input) => {
+      const userId = input.kind === 'create' ? input.targetUserId : order.userId;
+      await Promise.all([
+        invalidate(),
+        queryClient.invalidateQueries({ queryKey: queryKeys.usersRoot }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.user(userId) }),
+      ]);
+    },
   });
 }
 

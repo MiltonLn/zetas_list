@@ -6,6 +6,13 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: Backend — test, lint, typecheck
@@ -40,6 +47,15 @@ jobs:
       - name: Unit tests
         run: npm run test:cov
 
+      - name: Upload backend coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Build
         run: npm run build
 
@@ -66,6 +82,9 @@ jobs:
       - name: Check generated API types are in sync with schema.prisma
         run: npm run gen:api-types:check
 
+      - name: Test API type generator
+        run: npm run test:codegen
+
       - name: Type check
         run: npx tsc -b --noEmit
 
@@ -74,6 +93,15 @@ jobs:
 
       - name: Tests with coverage
         run: npm run test:cov
+
+      - name: Upload frontend coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Build
         run: npm run build

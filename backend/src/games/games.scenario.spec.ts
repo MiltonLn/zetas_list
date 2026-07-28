@@ -149,6 +149,34 @@ describe('GamesService — escenarios reales (stateful)', () => {
     });
   });
 
+  describe('Escenario 1b: invitado desborda a espera', () => {
+    it('conserva mainListHasBeenFull al registrar el invitado', async () => {
+      const { service, prisma, members, gameId } = await setup({
+        members: 1,
+        maxMainSpots: 1,
+      });
+
+      await service.register(gameId, members[0].id, members[0].id, {
+        silent: true,
+      });
+      await service.registerGuest(gameId, 'Invitado en espera', members[0].id, {
+        silent: true,
+      });
+
+      const { main, wait } = lists(prisma, gameId);
+      expect(main).toHaveLength(1);
+      expect(wait).toHaveLength(1);
+      expect(wait[0]).toEqual(
+        expect.objectContaining({
+          isGuest: true,
+          guestName: 'Invitado en espera',
+          isWaitingList: true,
+        }),
+      );
+      expect(prisma.getGame(gameId)?.mainListHasBeenFull).toBe(true);
+    });
+  });
+
   // ─────────────────────────────────────────────────────────────────────────
   describe('Escenario 2: bajar y subir jugadores manualmente (admin)', () => {
     it('demote mueve a espera y promote regresa a principal', async () => {

@@ -26,6 +26,7 @@ const transaction = {
   gameId: null,
   createdById: 'admin-1',
   createdAt: '2026-07-27T12:00:00.000Z',
+  updatedAt: '2026-07-27T12:00:00.000Z',
 };
 
 const fine = {
@@ -38,8 +39,10 @@ const fine = {
   status: 'pending' as const,
   paidAt: null,
   gameId: null,
+  gameRegistrationId: null,
   createdById: 'admin-1',
   createdAt: '2026-07-27T12:00:00.000Z',
+  updatedAt: '2026-07-27T12:00:00.000Z',
 };
 
 describe('AdminFinancesPage', () => {
@@ -98,5 +101,17 @@ describe('AdminFinancesPage', () => {
     );
 
     await waitFor(() => expect(deleteFine).toHaveBeenCalledWith('fine-1'));
+  });
+
+  it('incluye las multas pagadas en el dinero disponible', () => {
+    vi.mocked(useFinesQuery).mockReturnValue({
+      data: [{ ...fine, status: 'paid', amount: 5000 }],
+      isPending: false,
+      error: null,
+    } as never);
+
+    render(<AdminFinancesPage />);
+
+    expect(screen.getByText('DINERO DISPONIBLE').nextElementSibling).toHaveTextContent('$17.000');
   });
 });

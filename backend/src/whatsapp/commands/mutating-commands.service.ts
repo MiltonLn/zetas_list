@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { GAME_MANAGERS } from '../../common/constants/roles';
-import { isExpectedBusinessError } from '../../common/errors/is-expected-error';
+import { reportCaughtError } from '../../common/errors/report-caught-error';
 import {
   AlreadyRegisteredException,
   GameFullException,
@@ -40,11 +40,7 @@ export class MutatingCommandsService {
   ) {}
 
   private logError(context: string, error: unknown): void {
-    if (isExpectedBusinessError(error)) {
-      this.logger.debug(`${context}: ${(error as Error).message}`);
-    } else {
-      this.logger.error(`${context}:`, error as Error);
-    }
+    reportCaughtError(this.logger, context, error);
   }
 
   async handleFinish(ctx: CommandContext): Promise<void> {
@@ -188,7 +184,8 @@ export class MutatingCommandsService {
 
   async handlePromote(ctx: CommandContext): Promise<void> {
     if (ctx.user!.role !== Role.admin) {
-      const isInGame = ctx.activeGame!.registrations.some(
+      const currentGame = await this.games.findOne(ctx.activeGame!.id);
+      const isInGame = currentGame.registrations.some(
         (registration) =>
           registration.user?.id === ctx.user!.id &&
           !registration.isWaitingList,
@@ -225,7 +222,8 @@ export class MutatingCommandsService {
   }
 
   async handleInvite(ctx: CommandContext): Promise<void> {
-    const isRegistered = ctx.activeGame!.registrations.some(
+    const currentGame = await this.games.findOne(ctx.activeGame!.id);
+    const isRegistered = currentGame.registrations.some(
       (registration) => registration.user?.id === ctx.user!.id,
     );
     if (!isRegistered) {
@@ -356,7 +354,8 @@ export class MutatingCommandsService {
     const hasInlineGuests = inlineGuests.length > 0;
     let senderRegistered = false;
     let senderAlreadyRegistered = false;
-    const existingSender = ctx.activeGame!.registrations.find(
+    const currentGame = await this.games.findOne(ctx.activeGame!.id);
+    const existingSender = currentGame.registrations.find(
       (registration) => registration.user?.id === ctx.user!.id,
     );
     const isDeclinedWaiter =

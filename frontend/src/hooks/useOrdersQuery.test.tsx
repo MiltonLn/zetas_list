@@ -3,7 +3,11 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { queryKeys } from '../lib/query-client';
 import { ordersService } from '../services/orders.service';
 import { createTestQueryClient, queryWrapper } from '../test/query-wrapper';
-import { useCreateOrderMutation, useOrdersCatalogQuery } from './useOrdersQuery';
+import {
+  useCreateOrderMutation,
+  useOrdersCatalogQuery,
+  useSaveAdminOrderMutation,
+} from './useOrdersQuery';
 
 describe('useOrdersQuery', () => {
   afterEach(() => vi.restoreAllMocks());
@@ -47,5 +51,28 @@ describe('useOrdersQuery', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.ordersMine });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['orders', 'admin'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.userMe });
+  });
+
+  it.each([
+    ['create', 'target-user'],
+    ['update', 'response-user'],
+  ] as const)('guardar pedido admin (%s) invalida las vistas del usuario', async (kind, userId) => {
+    const order = { id: 'o1', userId: 'response-user' };
+    vi.spyOn(ordersService, kind === 'create' ? 'adminCreate' : 'update')
+      .mockResolvedValue({ data: order } as never);
+    const client = createTestQueryClient();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    const { result } = renderHook(() => useSaveAdminOrderMutation(), {
+      wrapper: queryWrapper(client),
+    });
+
+    await result.current.mutateAsync(
+      kind === 'create'
+        ? { kind, targetUserId: 'target-user', payload: { items: [] } }
+        : { kind, orderId: 'o1', payload: { items: [] } },
+    );
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.usersRoot });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.user(userId) });
   });
 });

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TransactionType, FineStatus } from '@prisma/client';
+import { TransactionType, FineStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTransactionDto, UpdateTransactionDto, CreateFineDto, UpdateFineDto, ImportFinancesDto } from './dto';
 import { FineNotFoundException, TransactionNotFoundException } from './exceptions';
@@ -249,8 +249,11 @@ export class FinancesService {
 
   // ─── REGISTRATION BLOCKING ─────────────────────────────────────────────────
 
-  async hasUnpaidFines(userId: string): Promise<boolean> {
-    const count = await this.prisma.fine.count({
+  async hasUnpaidFines(
+    userId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<boolean> {
+    const count = await client.fine.count({
       where: { userId, status: FineStatus.pending },
     });
     return count > 0;

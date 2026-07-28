@@ -20,7 +20,7 @@ import {
 } from '../hooks/useUsersQuery';
 
 export default function ProfilePage() {
-  const { user: authUser, isAdmin } = useAuth();
+  const { user: authUser, isAdmin, setUser } = useAuth();
   const profileQuery = useMeQuery();
   const updateProfile = useUpdateUserMutation();
   const uploadPhoto = useUploadUserPhotoMutation();
@@ -75,6 +75,7 @@ export default function ProfilePage() {
 
   async function handleSave(e: FormEvent) {
     e.preventDefault();
+    if (!authUser) return;
     setError('');
     setSuccess('');
     try {
@@ -89,7 +90,8 @@ export default function ProfilePage() {
         shirtSize: (shirtSize as ShirtSize) || undefined,
         shirtNumber: shirtNumber !== '' ? parseInt(shirtNumber) : undefined,
       };
-      await updateProfile.mutateAsync({ id: authUser!.id, payload });
+      const updatedUser = await updateProfile.mutateAsync({ id: authUser.id, payload });
+      setUser(updatedUser);
       setSuccess('Perfil actualizado correctamente');
     } catch (err) {
       setError(getApiError(err));
@@ -130,7 +132,8 @@ export default function ProfilePage() {
     setError('');
     try {
       const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
-      await uploadPhoto.mutateAsync({ id: authUser.id, file });
+      const updatedUser = await uploadPhoto.mutateAsync({ id: authUser.id, file });
+      setUser(updatedUser);
       setSuccess('Foto actualizada');
     } catch (err) {
       setError(getApiError(err));

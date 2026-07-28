@@ -1,5 +1,6 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import * as Sentry from '@sentry/react';
+import { clearSessionCache } from '../lib/session-cache';
 
 type RetryConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
@@ -41,6 +42,7 @@ api.interceptors.response.use(
 
       const refreshToken = localStorage.getItem('refreshToken');
       if (!refreshToken) {
+        await clearSessionCache();
         localStorage.clear();
         window.location.href = '/login';
         return Promise.reject(error);
@@ -67,6 +69,7 @@ api.interceptors.response.use(
         return api(original);
       } catch (e) {
         processQueue(e, null);
+        await clearSessionCache();
         localStorage.clear();
         window.location.href = '/login';
         return Promise.reject(e);

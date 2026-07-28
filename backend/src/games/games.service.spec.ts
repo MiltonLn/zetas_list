@@ -42,7 +42,7 @@ const mockPrisma = {
     findMany: jest.fn(),
   },
   $transaction: jest.fn(),
-  $queryRaw: jest.fn().mockResolvedValue([]),
+  $queryRaw: jest.fn().mockResolvedValue([{ id: 'game-1' }]),
 };
 
 const mockAudit = { log: jest.fn() };
@@ -878,7 +878,7 @@ describe('GamesService', () => {
 
     it('promueve jugador de espera a lista principal', async () => {
       const waitReg = makeReg({ isWaitingList: true, position: 1 });
-      txMock.$queryRaw.mockResolvedValue(undefined);
+      txMock.$queryRaw.mockResolvedValue([{ id: 'game-1' }]);
       txMock.gameRegistration.findFirst.mockResolvedValue(waitReg);
       txMock.game.findUniqueOrThrow.mockResolvedValue(makeGame({ maxMainSpots: 18 }));
       txMock.gameRegistration.count.mockResolvedValue(10);
@@ -905,7 +905,7 @@ describe('GamesService', () => {
 
     it('usa transacción serializable para evitar sobrepasar los cupos', async () => {
       const waitReg = makeReg({ isWaitingList: true, position: 1 });
-      txMock.$queryRaw.mockResolvedValue(undefined);
+      txMock.$queryRaw.mockResolvedValue([{ id: 'game-1' }]);
       txMock.gameRegistration.findFirst.mockResolvedValue(waitReg);
       txMock.game.findUniqueOrThrow.mockResolvedValue(makeGame({ maxMainSpots: 18 }));
       txMock.gameRegistration.count.mockResolvedValue(10);
@@ -921,14 +921,14 @@ describe('GamesService', () => {
     });
 
     it('lanza NotFoundException si el registro no está en lista de espera', async () => {
-      txMock.$queryRaw.mockResolvedValue(undefined);
+      txMock.$queryRaw.mockResolvedValue([{ id: 'game-1' }]);
       txMock.gameRegistration.findFirst.mockResolvedValue(null);
 
       await expect(service.promote('game-1', 'reg-1', 'actor-1')).rejects.toThrow(NotFoundException);
     });
 
     it('lanza BadRequestException si la lista principal está llena', async () => {
-      txMock.$queryRaw.mockResolvedValue(undefined);
+      txMock.$queryRaw.mockResolvedValue([{ id: 'game-1' }]);
       txMock.gameRegistration.findFirst.mockResolvedValue(makeReg({ isWaitingList: true }));
       txMock.game.findUniqueOrThrow.mockResolvedValue(makeGame({ maxMainSpots: 18 }));
       txMock.gameRegistration.count.mockResolvedValue(18);
@@ -957,7 +957,7 @@ describe('GamesService', () => {
 
     it('mueve jugador de lista principal a lista de espera', async () => {
       const mainReg = makeReg({ isWaitingList: false, position: 5 });
-      txMock.$queryRaw.mockResolvedValue(undefined);
+      txMock.$queryRaw.mockResolvedValue([{ id: 'game-1' }]);
       txMock.gameRegistration.findFirst.mockResolvedValue(mainReg);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 3 } });
       const demoted = makeReg({ isWaitingList: true, position: 4, fromWaitList: false });
@@ -981,7 +981,7 @@ describe('GamesService', () => {
     });
 
     it('lanza NotFoundException si el registro no está en lista principal', async () => {
-      txMock.$queryRaw.mockResolvedValue(undefined);
+      txMock.$queryRaw.mockResolvedValue([{ id: 'game-1' }]);
       txMock.gameRegistration.findFirst.mockResolvedValue(null);
 
       await expect(service.demote('game-1', 'reg-1', 'actor-1')).rejects.toThrow(NotFoundException);
@@ -996,11 +996,21 @@ describe('GamesService', () => {
       mockPrisma.gameRegistration.count.mockResolvedValue(16);
       const firstWait = makeReg({ id: 'wait-1', isWaitingList: true, position: 1 });
       mockPrisma.gameRegistration.findFirst.mockResolvedValue(firstWait);
-      jest.spyOn(waitlist, 'promote').mockResolvedValue(makeGame() as any);
+      mockPrisma.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 16 } });
+      mockPrisma.gameRegistration.update.mockResolvedValue({
+        ...firstWait,
+        isWaitingList: false,
+        position: 17,
+        fromWaitList: true,
+      });
+      jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
       const result = await service.promoteNext('game-1', 'actor-1');
 
-      expect(waitlist.promote).toHaveBeenCalledWith('game-1', 'wait-1', 'actor-1', { silent: true });
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.gameRegistration.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'wait-1' } }),
+      );
       expect(result.promotedName).toBe('Test User');
     });
 
@@ -1274,6 +1284,9 @@ describe('GamesService', () => {
   describe('autoPromoteIfNeeded', () => {
     const txMock = {
       $queryRaw: jest.fn(),
+      game: {
+        findUnique: jest.fn(),
+      },
       gameRegistration: {
         count: jest.fn(),
         updateMany: jest.fn(),
@@ -1285,7 +1298,8 @@ describe('GamesService', () => {
     };
 
     beforeEach(() => {
-      txMock.$queryRaw.mockResolvedValue(undefined);
+      txMock.$queryRaw.mockResolvedValue([{ id: 'game-1' }]);
+      txMock.game.findUnique.mockImplementation((args) => mockPrisma.game.findUnique(args));
       txMock.gameRegistration.updateMany.mockResolvedValue({ count: 0 });
       txMock.gameRegistration.findMany.mockResolvedValue([]);
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
@@ -1297,7 +1311,7 @@ describe('GamesService', () => {
 
       await service.autoPromoteIfNeeded('game-1');
 
-      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      expect(mockPrisma.$transaction).toHaveBeenCalled();
     });
 
     it('does nothing if mainListHasBeenFull is false (list never filled up)', async () => {
@@ -1305,7 +1319,7 @@ describe('GamesService', () => {
 
       await service.autoPromoteIfNeeded('game-1');
 
-      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      expect(mockPrisma.$transaction).toHaveBeenCalled();
     });
 
     it('does nothing if main list is full', async () => {
@@ -1441,6 +1455,9 @@ describe('GamesService', () => {
   describe('handleConfirmationTimeout', () => {
     const txMock = {
       $queryRaw: jest.fn(),
+      game: {
+        findUnique: jest.fn(),
+      },
       gameRegistration: {
         findUnique: jest.fn(),
         findFirst: jest.fn(),
@@ -1452,7 +1469,8 @@ describe('GamesService', () => {
 
     beforeEach(() => {
       mockPrisma.$transaction.mockImplementation((cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock));
-      txMock.$queryRaw.mockResolvedValue(undefined);
+      txMock.$queryRaw.mockResolvedValue([{ id: 'game-1' }]);
+      txMock.game.findUnique.mockResolvedValue(makeGame());
       txMock.gameRegistration.findUnique.mockResolvedValue({ pendingConfirmation: true });
       txMock.gameRegistration.aggregate.mockResolvedValue({ _max: { position: 0 } });
       txMock.gameRegistration.findFirst.mockResolvedValue(null);
@@ -1662,7 +1680,11 @@ describe('GamesService', () => {
         where: { id: 'reg-1' },
         data: { pendingConfirmation: false, confirmationDeadline: null },
       });
-      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.$queryRaw).toHaveBeenCalled();
+      expect(mockPrisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        mockPrisma.game.findUnique.mock.invocationCallOrder[0],
+      );
     });
   });
 
@@ -1710,6 +1732,7 @@ describe('GamesService', () => {
 
   describe('reorder', () => {
     it('ejecuta la reordenação dentro de uma transação', async () => {
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([{ id: 'r1' }, { id: 'r2' }]);
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({});
       jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
@@ -1719,6 +1742,12 @@ describe('GamesService', () => {
     });
 
     it('asigna posiciones consecutivas a cada lista', async () => {
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([
+        { id: 'r1' },
+        { id: 'r2' },
+        { id: 'r3' },
+        { id: 'w1' },
+      ]);
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({});
       jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 
@@ -1736,6 +1765,7 @@ describe('GamesService', () => {
     });
 
     it('llama a audit.log con "player_reordered"', async () => {
+      mockPrisma.gameRegistration.findMany.mockResolvedValue([]);
       mockPrisma.gameRegistration.updateMany.mockResolvedValue({});
       jest.spyOn(query, 'findOne').mockResolvedValue(makeGame() as any);
 

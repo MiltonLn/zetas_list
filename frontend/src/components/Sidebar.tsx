@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { displayName } from '../utils/display-name';
 import { ADMIN_ONLY, GAME_MANAGERS, hasRole } from '../utils/roles';
 import type { Role } from '../types';
+import { Avatar } from './Avatar';
 
 interface SidebarProps {
   open: boolean;
@@ -111,7 +112,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <div className="sidebar-footer">
           <div className="sidebar-user">
             <div className="sidebar-avatar">
-              {shownName?.[0]?.toUpperCase() ?? '?'}
+              <Avatar
+                name={shownName ?? '?'}
+                photoUrl={user?.photoUrl}
+                size={36}
+              />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ color: '#e8eaf6', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

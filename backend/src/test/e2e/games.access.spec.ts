@@ -45,6 +45,7 @@ describe('Games controller access control (HTTP)', () => {
       register: jest.fn().mockResolvedValue({ id: 'reg-1', position: 1 }),
       updateRegistration: jest.fn().mockResolvedValue({ id: 'reg-1', paid: true }),
       promote: jest.fn().mockResolvedValue({ id: 'reg-1' }),
+      getAvailableMembers: jest.fn().mockResolvedValue([{ id: 'member-1', name: 'Member' }]),
       cancel: jest.fn().mockResolvedValue({ id: 'game-1', status: 'cancelled' }),
       complete: jest.fn().mockResolvedValue({ game: {}, report: 'ok' }),
     };
@@ -124,6 +125,26 @@ describe('Games controller access control (HTTP)', () => {
   });
 
   describe('gestionar la lista (admin y ayudante)', () => {
+    it('restringe los miembros disponibles a gestores', async () => {
+      await request(app.getHttpServer())
+        .get('/api/games/game-1/available-members')
+        .set('Authorization', `Bearer ${token('member-1')}`)
+        .expect(403);
+
+      await request(app.getHttpServer())
+        .get('/api/games/game-1/available-members')
+        .set('Authorization', `Bearer ${token('ayudante-1')}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get('/api/games/game-1/available-members')
+        .set('Authorization', `Bearer ${token('admin-1')}`)
+        .expect(200);
+
+      expect(games.getAvailableMembers).toHaveBeenCalledTimes(2);
+      expect(games.getAvailableMembers).toHaveBeenCalledWith('game-1');
+    });
+
     it('permite al ayudante marcar pago', async () => {
       await request(app.getHttpServer())
         .patch('/api/games/game-1/registrations/reg-1')

@@ -56,4 +56,40 @@ describe('HomePage', () => {
 
     await waitFor(() => expect(screen.getByLabelText('ubicación')).toHaveTextContent('?page=3'));
   });
+
+  it('muestra como activo un partido en progreso con una sola consulta de activos', async () => {
+    vi.mocked(gamesService.list).mockImplementation((params) => {
+      if (params?.excludeStatus === 'scheduled,completed,cancelled') {
+        return Promise.resolve({
+          data: {
+            data: [{
+              id: 'game-live',
+              title: 'Partido en curso',
+              status: 'in_progress',
+              modalidad: 'seis_x_seis',
+              _count: { registrations: 12 },
+            }],
+            total: 1,
+            page: 1,
+            limit: 20,
+          },
+        } as never);
+      }
+      return Promise.resolve({ data: { data: [], total: 0, page: 1, limit: 15 } } as never);
+    });
+
+    renderWithQueryClient(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Partido en curso')).toBeInTheDocument();
+    expect(gamesService.list).toHaveBeenCalledTimes(2);
+    expect(gamesService.list).toHaveBeenCalledWith({
+      excludeStatus: 'scheduled,completed,cancelled',
+      page: 1,
+      limit: 1,
+    });
+  });
 });

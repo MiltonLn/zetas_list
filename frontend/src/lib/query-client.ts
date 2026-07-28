@@ -1,5 +1,6 @@
 import { QueryClient } from '@tanstack/react-query';
 import type { OrderStatus } from '../types';
+import { registerSessionCacheReset } from './session-cache';
 
 export type FinanceTransactionType = 'income' | 'expense';
 export type FineStatusFilter = 'pending' | 'paid';
@@ -20,6 +21,11 @@ export const queryClient = new QueryClient({
       },
     },
   },
+});
+
+registerSessionCacheReset(async () => {
+  await queryClient.cancelQueries();
+  queryClient.clear();
 });
 
 /**

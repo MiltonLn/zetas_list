@@ -67,6 +67,12 @@ describe('SortableRegistrationRow', () => {
     expect(screen.getAllByText('Carlos').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('renderiza un fallback explícito si la relación user es null', () => {
+    render(<SortableRegistrationRow {...baseProps} reg={makeReg({ user: null })} />);
+
+    expect(screen.getAllByText('?').length).toBeGreaterThanOrEqual(1);
+  });
+
   it('muestra botones de admin cuando NO es readonly', () => {
     render(<SortableRegistrationRow {...baseProps} readonly={false} />);
     expect(screen.getByTitle('Asistió')).toBeInTheDocument();

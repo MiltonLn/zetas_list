@@ -63,10 +63,14 @@ export default function HomePage() {
   });
 
   const adminActive = useQuery({
-    queryKey: queryKeys.games({ page: 1, limit: 1, status: 'registration_open' }),
-    queryFn: async () =>
-      (await gamesService.list({ page: 1, limit: 1, status: 'registration_open' as GameStatus }))
-        .data.data[0] ?? null,
+    queryKey: queryKeys.games({ scope: 'admin-active' }),
+    queryFn: async () => (
+      await gamesService.list({
+        excludeStatus: 'scheduled,completed,cancelled',
+        page: 1,
+        limit: 1,
+      })
+    ).data.data[0] ?? null,
     enabled: isAdmin,
   });
 

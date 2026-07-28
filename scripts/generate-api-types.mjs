@@ -21,7 +21,7 @@ const SCHEMA_PATH = resolve(repoRoot, 'backend/prisma/schema.prisma');
 const OUTPUT_PATH = resolve(repoRoot, 'frontend/src/api-types.gen.ts');
 
 /** Prisma enums the frontend consumes. Anything else stays backend-only. */
-const EXPORTED_ENUMS = [
+export const EXPORTED_ENUMS = [
   'Role',
   'UserStatus',
   'Position',
@@ -39,7 +39,7 @@ const EXPORTED_ENUMS = [
  * Public scalar models consumed by the frontend. Relations are deliberately
  * excluded by parseModels; API-specific relations remain manual in types.ts.
  */
-const EXPORTED_MODELS = {
+export const EXPORTED_MODELS = {
   User: {
     outputName: 'UserBase',
     omit: ['passwordHash', 'whatsappLid', 'mustChangePassword'],
@@ -53,7 +53,7 @@ const EXPORTED_MODELS = {
   OrderItem: { outputName: 'OrderItemBase', omit: [] },
 };
 
-const SCALAR_TYPES = {
+export const SCALAR_TYPES = {
   String: 'string',
   Int: 'number',
   Boolean: 'boolean',
@@ -61,7 +61,7 @@ const SCALAR_TYPES = {
   Json: 'Record<string, unknown>',
 };
 
-function parseEnums(schema) {
+export function parseEnums(schema) {
   const enums = new Map();
   const enumBlock = /enum\s+(\w+)\s*\{([^}]*)\}/g;
 
@@ -76,13 +76,16 @@ function parseEnums(schema) {
   return enums;
 }
 
-function parseModels(schema, enumNames) {
+export function parseModels(schema, enumNames, exportedModels = EXPORTED_MODELS) {
   const models = new Map();
   // A closing brace only ends a Prisma model when it starts the line. JSON
   // defaults such as @default("{}") may contain braces inside a field.
   const modelBlock = /model\s+(\w+)\s*\{([\s\S]*?)^}/gm;
 
-  for (const [, name, body] of schema.matchAll(modelBlock)) {
+  const blocks = [...schema.matchAll(modelBlock)];
+  const modelNames = new Set(blocks.map(([, name]) => name));
+
+  for (const [, name, body] of blocks) {
     const fields = [];
     for (const rawLine of body.split('\n')) {
       const line = rawLine.replace(/\/\/.*$/, '').trim();
@@ -92,11 +95,20 @@ function parseModels(schema, enumNames) {
       if (!match) continue;
       const [, fieldName, prismaType, isList, isNullable] = match;
       const type = SCALAR_TYPES[prismaType] ?? (enumNames.has(prismaType) ? prismaType : null);
-      if (!type || isList) continue;
+      if (!type) {
+        // Model-typed fields are relations, not API scalar fields.
+        if (modelNames.has(prismaType)) continue;
+        if (Object.hasOwn(exportedModels, name)) {
+          throw new Error(
+            `Tipo escalar Prisma no soportado "${prismaType}" en ${name}.${fieldName}`,
+          );
+        }
+        continue;
+      }
 
       fields.push({
         name: fieldName,
-        type: isNullable ? `${type} | null` : type,
+        type: `${type}${isList ? '[]' : ''}${isNullable ? ' | null' : ''}`,
       });
     }
     models.set(name, fields);
@@ -105,7 +117,12 @@ function parseModels(schema, enumNames) {
   return models;
 }
 
-function render(enums, models) {
+export function render(
+  enums,
+  models,
+  exportedEnums = EXPORTED_ENUMS,
+  exportedModels = EXPORTED_MODELS,
+) {
   const lines = [
     '// AUTOGENERADO — no editar a mano.',
     '// Fuente: backend/prisma/schema.prisma',
@@ -113,7 +130,7 @@ function render(enums, models) {
     '',
   ];
 
-  for (const name of EXPORTED_ENUMS) {
+  for (const name of exportedEnums) {
     const values = enums.get(name);
     if (!values) {
       throw new Error(`El enum "${name}" no existe en schema.prisma`);
@@ -129,10 +146,19 @@ function render(enums, models) {
     lines.push('');
   }
 
-  for (const [modelName, config] of Object.entries(EXPORTED_MODELS)) {
+  for (const [modelName, config] of Object.entries(exportedModels)) {
     const fields = models.get(modelName);
     if (!fields) {
       throw new Error(`El modelo "${modelName}" no existe en schema.prisma`);
+    }
+
+    const fieldNames = new Set(fields.map((field) => field.name));
+    for (const omittedName of config.omit) {
+      if (!fieldNames.has(omittedName)) {
+        throw new Error(
+          `El campo omitido "${modelName}.${omittedName}" no existe en schema.prisma`,
+        );
+      }
     }
 
     const omitted = new Set(config.omit);
@@ -149,11 +175,21 @@ function render(enums, models) {
   return lines.join('\n');
 }
 
-const schema = readFileSync(SCHEMA_PATH, 'utf8');
-const enums = parseEnums(schema);
-const generated = render(enums, parseModels(schema, new Set(enums.keys())));
+export function generate(schema) {
+  const enums = parseEnums(schema);
+  return render(enums, parseModels(schema, new Set(enums.keys())));
+}
 
-if (process.argv.includes('--check')) {
+export function run({ check = false } = {}) {
+  const schema = readFileSync(SCHEMA_PATH, 'utf8');
+  const generated = generate(schema);
+
+  if (!check) {
+    writeFileSync(OUTPUT_PATH, generated);
+    console.log(`✓ Escrito ${OUTPUT_PATH}`);
+    return;
+  }
+
   let current = '';
   try {
     current = readFileSync(OUTPUT_PATH, 'utf8');
@@ -171,7 +207,8 @@ if (process.argv.includes('--check')) {
   }
 
   console.log('✓ Los tipos generados están al día con schema.prisma');
-} else {
-  writeFileSync(OUTPUT_PATH, generated);
-  console.log(`✓ Escrito ${OUTPUT_PATH}`);
 }
+
+const isDirectRun =
+  process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+if (isDirectRun) run({ check: process.argv.includes('--check') });

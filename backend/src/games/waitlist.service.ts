@@ -5,7 +5,7 @@ import { GameEventsService } from './game-events.service';
 import { GameQueryService } from './game-query.service';
 import { GameNotifier } from './events/game-notifier.service';
 import { toNotifiableTarget } from './events/notifiable-target';
-import { withGameLock } from './transaction.util';
+import { Tx, withGameLock } from './transaction.util';
 import {
   GameFullException,
   NoOneInWaitListException,
@@ -94,36 +94,9 @@ export class WaitlistService {
   }
 
   async promote(gameId: string, regId: string, actorId: string | null, options?: { silent?: boolean }) {
-    const promoted = await withGameLock(this.prisma, gameId, async (tx) => {
-
-      const reg = await tx.gameRegistration.findFirst({
-        where: { id: regId, gameId, isWaitingList: true },
-      });
-      if (!reg) throw new NotRegisteredException();
-
-      const game = await tx.game.findUniqueOrThrow({ where: { id: gameId } });
-      const mainCount = await tx.gameRegistration.count({
-        where: { gameId, isWaitingList: false },
-      });
-      if (mainCount >= game.maxMainSpots) {
-        throw new GameFullException();
-      }
-
-      const maxPos = await tx.gameRegistration.aggregate({
-        where: { gameId, isWaitingList: false },
-        _max: { position: true },
-      });
-
-      return tx.gameRegistration.update({
-        where: { id: regId },
-        data: {
-          isWaitingList: false,
-          position: (maxPos._max.position ?? 0) + 1,
-          fromWaitList: true,
-        },
-        include: REGISTRATION_INCLUDE,
-      });
-    });
+    const promoted = await withGameLock(this.prisma, gameId, (tx) =>
+      this.promoteInTransaction(tx, gameId, regId),
+    );
 
     await this.audit.log({
       gameId,
@@ -148,30 +121,63 @@ export class WaitlistService {
   }
 
   async promoteNext(gameId: string, actorId: string) {
-    const firstInWait = await withGameLock(this.prisma, gameId, async (tx) => {
+    const promoted = await withGameLock(this.prisma, gameId, (tx) =>
+      this.promoteInTransaction(tx, gameId),
+    );
 
-      const game = await tx.game.findUniqueOrThrow({ where: { id: gameId } });
-      const mainCount = await tx.gameRegistration.count({
-        where: { gameId, isWaitingList: false },
+    await this.audit.log({
+      gameId,
+      actorId,
+      targetUserId: promoted.userId ?? undefined,
+      action: 'player_promoted',
+      details: { newPosition: promoted.position },
+    });
+    const updated = await this.query.findOne(gameId);
+    this.events.emit({ gameId, type: 'update', data: updated });
+    const promotedName = displayName(promoted);
+    return { updated, promotedName };
+  }
+
+  private async promoteInTransaction(tx: Tx, gameId: string, regId?: string) {
+    let registrationId = regId;
+    if (registrationId) {
+      const registration = await tx.gameRegistration.findFirst({
+        where: { id: registrationId, gameId, isWaitingList: true },
       });
-      if (mainCount >= game.maxMainSpots) {
-        throw new GameFullException();
-      }
+      if (!registration) throw new NotRegisteredException();
+    }
 
+    const game = await tx.game.findUniqueOrThrow({ where: { id: gameId } });
+    const mainCount = await tx.gameRegistration.count({
+      where: { gameId, isWaitingList: false },
+    });
+    if (mainCount >= game.maxMainSpots) {
+      throw new GameFullException();
+    }
+
+    if (!registrationId) {
       const first = await tx.gameRegistration.findFirst({
         where: { gameId, isWaitingList: true },
         orderBy: { position: 'asc' },
         include: REGISTRATION_INCLUDE,
       });
-      if (!first) {
-        throw new NoOneInWaitListException();
-      }
-      return first;
-    });
+      if (!first) throw new NoOneInWaitListException();
+      registrationId = first.id;
+    }
 
-    const updated = await this.promote(gameId, firstInWait.id, actorId, { silent: true });
-    const promotedName = displayName(firstInWait);
-    return { updated, promotedName };
+    const maxPos = await tx.gameRegistration.aggregate({
+      where: { gameId, isWaitingList: false },
+      _max: { position: true },
+    });
+    return tx.gameRegistration.update({
+      where: { id: registrationId },
+      data: {
+        isWaitingList: false,
+        position: (maxPos._max.position ?? 0) + 1,
+        fromWaitList: true,
+      },
+      include: REGISTRATION_INCLUDE,
+    });
   }
 
   async demote(gameId: string, regId: string, actorId: string) {
@@ -231,7 +237,6 @@ export class WaitlistService {
   async continueAfterConfirmationTimeout(
     gameId: string,
     regId: string,
-    beforeCutoff: boolean,
     originalWaitPosition: number | null,
   ) {
     return withGameLock(this.prisma, gameId, async (tx) => {
@@ -242,6 +247,22 @@ export class WaitlistService {
         },
       });
       if (!expired?.pendingConfirmation) return null;
+
+      const game = await tx.game.findUnique({ where: { id: gameId } });
+      if (
+        !game ||
+        (game.status !== 'registration_open' && game.status !== 'in_progress')
+      ) {
+        await tx.gameRegistration.update({
+          where: { id: regId },
+          data: { pendingConfirmation: false, confirmationDeadline: null },
+        });
+        return null;
+      }
+      const beforeCutoff = isBeforeCutoff(
+        game.guestCutoffTime,
+        game.gameDate,
+      );
 
       const currentMax = await tx.gameRegistration.aggregate({
         where: { gameId, isWaitingList: true },
@@ -321,17 +342,19 @@ export class WaitlistService {
   }
 
   async autoPromoteIfNeeded(gameId: string, options?: { skipMainListFullCheck?: boolean }) {
-    const game = await this.prisma.game.findUnique({ where: { id: gameId } });
-    if (!game || (game.status !== 'registration_open' && game.status !== 'in_progress')) return;
-    if (!options?.skipMainListFullCheck && !game.mainListHasBeenFull) return;
-
-    const beforeCutoff = isBeforeCutoff(game.guestCutoffTime, game.gameDate);
-
     // Promote all eligible waiters that fit in the available spots atomically.
     // Using a single serializable transaction guarantees no two concurrent
     // calls double-fill the same spots (the FOR UPDATE row-lock on the game
     // row serializes concurrent calls).
-    const promotedList = await withGameLock(this.prisma, gameId, async (tx) => {
+    const result = await withGameLock(this.prisma, gameId, async (tx) => {
+      const game = await tx.game.findUnique({ where: { id: gameId } });
+      if (!game || (game.status !== 'registration_open' && game.status !== 'in_progress')) {
+        return { promotedList: [], beforeCutoff: false };
+      }
+      if (!options?.skipMainListFullCheck && !game.mainListHasBeenFull) {
+        return { promotedList: [], beforeCutoff: false };
+      }
+      const beforeCutoff = isBeforeCutoff(game.guestCutoffTime, game.gameDate);
 
       const mainCount = await tx.gameRegistration.count({
         where: { gameId, isWaitingList: false },
@@ -339,7 +362,7 @@ export class WaitlistService {
       const spotsAvailable = game.maxMainSpots - mainCount;
       if (spotsAvailable <= 0) {
         this.logger.log(`[AUTO_PROMOTE] game=${gameId} | mainCount=${mainCount}/${game.maxMainSpots} | FULL, no promotion`);
-        return [];
+        return { promotedList: [], beforeCutoff };
       }
 
       const eligibleWaiters = await tx.gameRegistration.findMany({
@@ -356,7 +379,7 @@ export class WaitlistService {
 
       if (eligibleWaiters.length === 0) {
         this.logger.log(`[AUTO_PROMOTE] game=${gameId} | mainCount=${mainCount}/${game.maxMainSpots} | beforeCutoff=${beforeCutoff} | No eligible waiters found`);
-        return [];
+        return { promotedList: [], beforeCutoff };
       }
 
       const maxPosResult = await tx.gameRegistration.aggregate({
@@ -385,8 +408,9 @@ export class WaitlistService {
         results.push({ reg: updatedReg, originalPos, confirmDeadline });
       }
 
-      return results;
+      return { promotedList: results, beforeCutoff };
     });
+    const { promotedList, beforeCutoff } = result;
 
     if (promotedList.length === 0) return;
 

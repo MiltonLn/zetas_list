@@ -49,8 +49,10 @@ export default function GameDetailPage() {
 
   const { data: auditLogs = [], isFetching: auditLoading } = useGameAudit(id, showAudit);
 
-  const isGameOpen = game?.status === 'registration_open' || game?.status === 'in_progress';
-  const { data: availableMembers = [] } = useAvailableMembers(id, !!isGameOpen);
+  const { data: availableMembers = [] } = useAvailableMembers(
+    id,
+    showRegisterOther,
+  );
 
   const { data: completionReport = null, isPending: reportLoading } = useQuery({
     queryKey: queryKeys.gameReport(id ?? ''),
@@ -59,6 +61,9 @@ export default function GameDetailPage() {
   });
 
   const reorderTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reorderPending = useRef(false);
+  const expectedReorder = useRef<{ mainList: string[]; waitList: string[] } | null>(null);
+  const [reorderInFlight, setReorderInFlight] = useState(false);
   const mainListRef = useRef(mainList);
   const waitListRef = useRef(waitList);
 
@@ -68,9 +73,28 @@ export default function GameDetailPage() {
   useEffect(() => {
     if (!game) return;
     const byPosition = (a: GameRegistration, b: GameRegistration) => a.position - b.position;
-    setMainList(game.registrations.filter((r) => !r.isWaitingList).sort(byPosition));
-    setWaitList(game.registrations.filter((r) => r.isWaitingList).sort(byPosition));
-  }, [game]);
+    const gameMainList = game.registrations.filter((r) => !r.isWaitingList).sort(byPosition);
+    const gameWaitList = game.registrations.filter((r) => r.isWaitingList).sort(byPosition);
+
+    if (reorderPending.current) {
+      const expected = expectedReorder.current;
+      const hasExpectedOrder = expected
+        && expected.mainList.join('\0') === gameMainList.map((r) => r.id).join('\0')
+        && expected.waitList.join('\0') === gameWaitList.map((r) => r.id).join('\0');
+      if (!hasExpectedOrder) return;
+
+      reorderPending.current = false;
+      expectedReorder.current = null;
+      setReorderInFlight(false);
+    }
+
+    setMainList(gameMainList);
+    setWaitList(gameWaitList);
+  }, [game, reorderInFlight]);
+
+  useEffect(() => () => {
+    if (reorderTimeout.current) clearTimeout(reorderTimeout.current);
+  }, []);
 
   function handleDragEnd(event: DragEndEvent, listType: 'main' | 'wait') {
     const { active, over } = event;
@@ -82,21 +106,33 @@ export default function GameDetailPage() {
     const oldIndex = list.findIndex((r) => r.id === active.id);
     const newIndex = list.findIndex((r) => r.id === over.id);
     const newList = arrayMove(list, oldIndex, newIndex);
+    const updatedMain = listType === 'main' ? newList : mainListRef.current;
+    const updatedWait = listType === 'wait' ? newList : waitListRef.current;
+    const reorderPayload = {
+      mainList: updatedMain.map((r) => r.id),
+      waitList: updatedWait.map((r) => r.id),
+    };
     setList(newList);
+    reorderPending.current = true;
+    expectedReorder.current = reorderPayload;
+    setReorderInFlight(true);
 
     if (reorderTimeout.current) clearTimeout(reorderTimeout.current);
-    reorderTimeout.current = setTimeout(() => {
-      const updatedMain = listType === 'main' ? newList : mainListRef.current;
-      const updatedWait = listType === 'wait' ? newList : waitListRef.current;
+    const timeout = setTimeout(() => {
       gameMutations.reorder
-        .mutateAsync({
-          mainList: updatedMain.map((r) => r.id),
-          waitList: updatedWait.map((r) => r.id),
-        })
+        .mutateAsync(reorderPayload)
         .catch((e) => {
+          if (expectedReorder.current !== reorderPayload) return;
           setError(getApiError(e));
+          reorderPending.current = false;
+          expectedReorder.current = null;
+          setReorderInFlight(false);
+        })
+        .then(() => {
+          if (reorderTimeout.current === timeout) reorderTimeout.current = null;
         });
     }, 600);
+    reorderTimeout.current = timeout;
   }
 
   async function handleRegister() {
@@ -304,7 +340,9 @@ export default function GameDetailPage() {
             registrationError={regError}
             registering={gameMutations.register.isPending}
             onConfirm={handleConfirm}
-            onRemoveSelf={() => handleRemove(user!.id)}
+            onRemoveSelf={() => {
+              if (user) void handleRemove(user.id);
+            }}
             onRegister={handleRegister}
             onRegisterOther={() => setShowRegisterOther(true)}
           />

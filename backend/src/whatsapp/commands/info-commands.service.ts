@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { WhatsappProvider, WHATSAPP_PROVIDER } from '../whatsapp.interface';
 import { FinancesService } from '../../finances/finances.service';
 import { userDisplayName } from '../../games/games.utils';
-import { isExpectedBusinessError } from '../../common/errors/is-expected-error';
+import { reportCaughtError } from '../../common/errors/report-caught-error';
 import { env } from '../../config/env';
 import {
   MSG_ALIASES,
@@ -81,11 +81,7 @@ export class InfoCommandsService {
 
       await this.wp.sendToGroup(lines.join('\n'));
     } catch (e) {
-      if (isExpectedBusinessError(e)) {
-        this.logger.debug(`Error al consultar multados: ${(e as Error).message}`);
-      } else {
-        this.logger.error('Error al consultar multados:', e as Error);
-      }
+      reportCaughtError(this.logger, 'Error al consultar multados', e);
       await this.wp.sendToGroup(MSG_FINED_ERROR);
     }
   }

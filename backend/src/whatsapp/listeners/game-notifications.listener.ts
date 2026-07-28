@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { reportCaughtError } from '../../common/errors/report-caught-error';
 import { OnEvent } from '@nestjs/event-emitter';
 import { WhatsappService } from '../whatsapp.service';
 import {
@@ -202,7 +203,7 @@ export class GameNotificationsListener {
         ? await this.whatsapp.sendToGroup(message, options)
         : await this.whatsapp.sendToGroup(message);
     } catch (e) {
-      this.logger.warn('No se pudo enviar el aviso al grupo', e as Error);
+      reportCaughtError(this.logger, 'No se pudo enviar el aviso al grupo', e);
       return false;
     }
   }

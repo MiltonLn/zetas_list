@@ -11,9 +11,10 @@ import { GameNotifier } from './events/game-notifier.service';
 import {
   AlreadyRegisteredException,
   CannotRemoveOtherException,
-  GameNotFoundException,
   GameNotOpenException,
   InactiveUserException,
+  InvalidGuestNameException,
+  InvalidRegistrationOrderException,
   MustBeRegisteredFirstException,
   NotRegisteredException,
   ProxyLimitExceededException,
@@ -51,7 +52,6 @@ export class RegistrationService {
     options?: { silent?: boolean },
   ) {
     const registration = await withGameLockAndFetch(this.prisma, gameId, async (tx, game) => {
-      if (!game) throw new GameNotFoundException();
       if (game.status !== 'registration_open' && game.status !== 'in_progress') {
         throw new GameNotOpenException();
       }
@@ -97,7 +97,7 @@ export class RegistrationService {
       if (targetUser && targetUser.status !== 'active') {
         throw new InactiveUserException();
       }
-      if (await this.finances.hasUnpaidFines(userId)) {
+      if (await this.finances.hasUnpaidFines(userId, tx)) {
         throw new UserHasUnpaidFinesException();
       }
 
@@ -213,15 +213,24 @@ export class RegistrationService {
     options?: { silent?: boolean },
   ) {
     const trimmedName = guestName?.trim();
-    if (!trimmedName) throw new GameNotOpenException();
-    if (await this.finances.hasUnpaidFines(invitedById)) {
-      throw new UserHasUnpaidFinesException();
-    }
+    if (!trimmedName) throw new InvalidGuestNameException();
 
     const registration = await withGameLockAndFetch(this.prisma, gameId, async (tx, game) => {
-      if (!game) throw new GameNotFoundException();
       if (game.status !== 'registration_open' && game.status !== 'in_progress') {
         throw new GameNotOpenException();
+      }
+      if (await this.finances.hasUnpaidFines(invitedById, tx)) {
+        throw new UserHasUnpaidFinesException();
+      }
+      const inviter = await tx.user.findUnique({
+        where: { id: invitedById },
+        select: { role: true },
+      });
+      if (inviter?.role !== 'admin') {
+        const inviterRegistration = await tx.gameRegistration.findFirst({
+          where: { gameId, userId: invitedById },
+        });
+        if (!inviterRegistration) throw new MustBeRegisteredFirstException();
       }
       const mainCount = await tx.gameRegistration.count({
         where: { gameId, isWaitingList: false },
@@ -242,6 +251,12 @@ export class RegistrationService {
         `[REGISTER_GUEST] guest="${trimmedName}" | mainCount=${mainCount}/${game.maxMainSpots} | eligibleWait=${eligibleWaitCount} | beforeCutoff=${beforeCutoff} | mainListHasBeenFull=${game.mainListHasBeenFull} | -> waitList=${waitList}`,
       );
       if (!waitList && mainCount + 1 >= game.maxMainSpots && !game.mainListHasBeenFull) {
+        await tx.game.update({
+          where: { id: gameId },
+          data: { mainListHasBeenFull: true },
+        });
+      }
+      if (waitList && !game.mainListHasBeenFull && mainCount >= game.maxMainSpots) {
         await tx.game.update({
           where: { id: gameId },
           data: { mainListHasBeenFull: true },
@@ -403,23 +418,27 @@ export class RegistrationService {
     actorId: string,
     gameId: string,
   ) {
-    const reg = await this.prisma.gameRegistration.findFirst({
-      where: { id: regId, gameId },
-    });
-    if (!reg) throw new NotRegisteredException();
-    const attendanceWasAutomatic =
-      dto.paid === true && dto.attended === undefined && !reg.attended;
-    const paymentWasAutomatic =
-      dto.attended === false && dto.paid === undefined && reg.paid;
-    let updateData: UpdateRegistrationDto = dto;
-    if (dto.paid === true) updateData = { ...dto, attended: true };
-    else if (dto.attended === false) updateData = { ...dto, paid: false };
+    const result = await withGameLock(this.prisma, gameId, async (tx) => {
+      const reg = await tx.gameRegistration.findFirst({
+        where: { id: regId, gameId },
+      });
+      if (!reg) throw new NotRegisteredException();
+      const attendanceWasAutomatic =
+        dto.paid === true && dto.attended === undefined && !reg.attended;
+      const paymentWasAutomatic =
+        dto.attended === false && dto.paid === undefined && reg.paid;
+      let updateData: UpdateRegistrationDto = dto;
+      if (dto.paid === true) updateData = { ...dto, attended: true };
+      else if (dto.attended === false) updateData = { ...dto, paid: false };
 
-    const updated = await this.prisma.gameRegistration.update({
-      where: { id: regId, gameId },
-      data: updateData,
-      include: REGISTRATION_INCLUDE,
+      const updated = await tx.gameRegistration.update({
+        where: { id: regId, gameId },
+        data: updateData,
+        include: REGISTRATION_INCLUDE,
+      });
+      return { reg, updated, updateData, attendanceWasAutomatic, paymentWasAutomatic };
     });
+    const { reg, updated, updateData, attendanceWasAutomatic, paymentWasAutomatic } = result;
     if (attendanceWasAutomatic) {
       await this.audit.log({
         gameId,
@@ -470,6 +489,19 @@ export class RegistrationService {
 
   async reorder(gameId: string, dto: ReorderDto, actorId: string) {
     await withGameLock(this.prisma, gameId, async (tx) => {
+      const registrations = await tx.gameRegistration.findMany({
+        where: { gameId },
+        select: { id: true },
+      });
+      const actualIds = registrations.map(({ id }) => id);
+      const submittedIds = [...dto.mainList, ...dto.waitList];
+      const uniqueSubmittedIds = new Set(submittedIds);
+      const isExactPartition =
+        submittedIds.length === actualIds.length &&
+        uniqueSubmittedIds.size === submittedIds.length &&
+        actualIds.every((id) => uniqueSubmittedIds.has(id));
+      if (!isExactPartition) throw new InvalidRegistrationOrderException();
+
       for (let index = 0; index < dto.mainList.length; index++) {
         await tx.gameRegistration.updateMany({
           where: { id: dto.mainList[index], gameId },

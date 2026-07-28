@@ -40,7 +40,8 @@ Una app web full-stack para que los integrantes del grupo de volley puedan anota
 
 ### Requisitos
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop) — es lo único que necesitas
+- [Docker Desktop](https://www.docker.com/products/docker-desktop) para ejecutar la app
+- Node.js 20+ con npm 10 para codegen y los gates locales (`make check`)
 
 ### 1. Clonar y configurar
 
@@ -63,7 +64,8 @@ JWT_SECRET=una_clave_larga_y_aleatoria
 make up
 ```
 
-Eso levanta PostgreSQL, el backend NestJS y el frontend React. No se necesita Node.js local ni instalar dependencias — todo corre dentro de Docker.
+Eso levanta PostgreSQL, el backend NestJS y el frontend React. La app corre dentro
+de Docker; Node local solo se usa para codegen y validaciones equivalentes a CI.
 
 ### 3. Migrar y hacer seed
 
@@ -123,6 +125,8 @@ make help          # Lista todos los comandos
 | `make build` | Build de producción (dentro de Docker) |
 | `make lint` | Linter en ambos proyectos (dentro de Docker) |
 | `make test` | Tests en ambos proyectos (dentro de Docker) |
+| `make test-cov` | Genera Prisma y corre tests con cobertura y thresholds (host, Node 20+) |
+| `make check` | Gate completo de CI: codegen, tipos, lint, coverage y build |
 | `make clean` | ⚠️ Para todo + borra volúmenes Docker (DB incluida) |
 | `make nuke` | ⚠️ Para todo + borra volúmenes e imágenes Docker |
 
@@ -137,7 +141,8 @@ zetas_list/
 │       ├── pages/            # LoginPage, HomePage, GameDetailPage, Admin*, ...
 │       ├── components/       # Modal, Spinner, StatusBadge, PrivateRoute, ...
 │       ├── contexts/         # AuthContext
-│       ├── hooks/            # useGameStream (SSE)
+│       ├── hooks/            # TanStack Query, mutaciones y stream SSE autenticado
+│       ├── lib/              # QueryClient, query keys y cache de sesión
 │       ├── services/         # api.ts, games.service.ts, users.service.ts, ...
 │       └── api-types.gen.ts  # Enums generados desde schema.prisma (no editar)
 │
@@ -150,8 +155,8 @@ zetas_list/
 │       ├── config/           # Validación de variables de entorno (zod)
 │       ├── auth/             # JWT login, refresh, guards
 │       ├── users/            # CRUD usuarios, cumpleaños
-│       ├── games/            # Partidos, registro, SSE, scheduler
-│       ├── whatsapp/         # Bot Z (Baileys + CLI simulator)
+│       ├── games/            # Lifecycle, queries, registro, espera, SSE y scheduler
+│       ├── whatsapp/         # Bot Z, comandos info/mutación, listeners y providers
 │       ├── finances/         # Transacciones, multas y deudas
 │       ├── orders/           # Pedidos de camisetas
 │       ├── audit/            # Log de actividad
@@ -228,8 +233,6 @@ En producción (`WHATSAPP_MODE=baileys`) se conecta al grupo real mediante una s
 
 ## Variables de entorno
 
-| Variable | Descripción | Default |
-|----------|-------------|---------|
 Todas las variables del backend se validan al arrancar (`backend/src/config/env.ts`).
 Si falta una obligatoria o tiene un formato inválido, el proceso no arranca.
 

@@ -77,7 +77,12 @@ export function AdminFinancesPage() {
     const totalIncome = transactions.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const totalExpenses = transactions.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
     const totalFinesPaid = fines.filter((f) => f.status === 'paid').reduce((s, f) => s + f.amount, 0);
-    return { totalIncome, totalExpenses, totalFinesPaid, balance: totalIncome - totalExpenses };
+    return {
+      totalIncome,
+      totalExpenses,
+      totalFinesPaid,
+      balance: totalIncome + totalFinesPaid - totalExpenses,
+    };
   }, [transactions, fines]);
 
   if (loading) return <Spinner />;

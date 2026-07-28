@@ -213,7 +213,7 @@ export function ManageUserModal({ user, onClose }: ManageUserModalProps) {
   }, [user]);
 
   const handleRoleChange = async (role: Role) => {
-    if (!user) return;
+    if (!user || updateRole.isPending) return;
     try {
       await updateRole.mutateAsync({ id: user.id, role });
       onClose();
@@ -242,9 +242,9 @@ export function ManageUserModal({ user, onClose }: ManageUserModalProps) {
         <>
           <p style={{ color: '#7c8db5', fontSize: 13, marginTop: 0, marginBottom: 20 }}>{user.phone}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {user.role !== 'admin' && <RoleButton color="#6e8efb" onClick={() => handleRoleChange('admin')}>👑 Hacer administrador</RoleButton>}
-            {user.role !== 'ayudante' && <RoleButton color="#e3a008" onClick={() => handleRoleChange('ayudante')}>🤝 Hacer ayudante</RoleButton>}
-            {user.role !== 'member' && <RoleButton onClick={() => handleRoleChange('member')}>👤 Quitar rol especial</RoleButton>}
+            {user.role !== 'admin' && <RoleButton disabled={updateRole.isPending} color="#6e8efb" onClick={() => handleRoleChange('admin')}>👑 Hacer administrador</RoleButton>}
+            {user.role !== 'ayudante' && <RoleButton disabled={updateRole.isPending} color="#e3a008" onClick={() => handleRoleChange('ayudante')}>🤝 Hacer ayudante</RoleButton>}
+            {user.role !== 'member' && <RoleButton disabled={updateRole.isPending} onClick={() => handleRoleChange('member')}>👤 Quitar rol especial</RoleButton>}
             {user.status !== 'active' && <RoleButton primary onClick={() => setStatusAction('active')}>✅ Activar cuenta</RoleButton>}
             {user.status !== 'inactive' && <RoleButton onClick={() => setStatusAction('inactive')}>⏸ Desactivar cuenta</RoleButton>}
             {user.status !== 'banned' && <RoleButton color="#ff6b6b" onClick={() => setStatusAction('banned')}>🚫 Banear usuario</RoleButton>}
@@ -327,14 +327,16 @@ function RoleButton({
   onClick,
   color,
   primary = false,
+  disabled = false,
 }: {
   children: string;
   onClick: () => void;
   color?: string;
   primary?: boolean;
+  disabled?: boolean;
 }) {
   return (
-    <button className={`btn${primary ? ' btn-primary' : ''}`} onClick={onClick} style={{ textAlign: 'left', color }}>
+    <button type="button" className={`btn${primary ? ' btn-primary' : ''}`} onClick={onClick} disabled={disabled} style={{ textAlign: 'left', color }}>
       {children}
     </button>
   );

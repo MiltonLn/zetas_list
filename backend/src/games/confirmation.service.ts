@@ -8,7 +8,6 @@ import { NoPendingConfirmationException } from './exceptions';
 import { GameQueryService } from './game-query.service';
 import {
   displayName,
-  isBeforeCutoff,
   NEXT_CONFIRM_TIMEOUT_MS,
   REGISTRATION_INCLUDE,
   userDisplayName,
@@ -148,28 +147,9 @@ export class ConfirmationService {
       include: REGISTRATION_INCLUDE,
     });
     if (!registration?.pendingConfirmation) return;
-    const game = await this.prisma.game.findUnique({
-      where: { id: registration.gameId },
-    });
-    if (
-      !game ||
-      (game.status !== 'registration_open' && game.status !== 'in_progress')
-    ) {
-      await this.prisma.gameRegistration.update({
-        where: { id: regId },
-        data: { pendingConfirmation: false, confirmationDeadline: null },
-      });
-      return;
-    }
-
-    const beforeCutoff = isBeforeCutoff(
-      game.guestCutoffTime,
-      game.gameDate,
-    );
     const result = await this.waitlist.continueAfterConfirmationTimeout(
       registration.gameId,
       regId,
-      beforeCutoff,
       registration.originalWaitPosition,
     );
     if (!result) return;

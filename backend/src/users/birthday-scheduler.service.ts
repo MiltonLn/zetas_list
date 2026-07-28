@@ -4,6 +4,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { UserStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserEvent } from './events/user-events';
+import { reportCaughtError } from '../common/errors/report-caught-error';
 
 @Injectable()
 export class BirthdaySchedulerService {
@@ -38,7 +39,7 @@ export class BirthdaySchedulerService {
         `Felicitaciones de cumpleaños enviadas a: ${users.map((u) => u.name).join(', ')}`,
       );
     } catch (e) {
-      this.logger.error('Error enviando felicitaciones de cumpleaños:', e);
+      reportCaughtError(this.logger, 'Error enviando felicitaciones de cumpleaños', e);
     }
   }
 }
