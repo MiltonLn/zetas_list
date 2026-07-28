@@ -577,6 +577,101 @@ describe('GamesService — escenarios reales (stateful)', () => {
       // Neto positivo (2 * 2000, vigilante 0) -> ingreso.
       expect(finances.createGameIncome).toHaveBeenCalled();
     });
+
+    it('incluye en el reporte y el ingreso a quien asiste y paga desde la lista de espera', async () => {
+      const { service, prisma, members, gameId, finances } = await setup({
+        members: 5,
+        maxMainSpots: 4,
+      });
+      prisma.getGame(gameId)!.vigilante = 0;
+
+      for (const member of members) {
+        await service.register(gameId, member.id, member.id, { silent: true });
+      }
+
+      const { main, wait } = lists(prisma, gameId);
+      for (const registration of [...main, wait[0]]) {
+        await service.updateRegistration(
+          registration.id as string,
+          { attended: true, paid: true },
+          ADMIN_ID,
+          gameId,
+        );
+      }
+
+      const { report } = await service.complete(gameId, ADMIN_ID, { silent: true });
+
+      expect(report).toContain('Asistentes:* 5/5');
+      expect(report).toContain('Recaudado:* $10.000');
+      expect(finances.createGameIncome).toHaveBeenCalledWith(
+        gameId,
+        10_000,
+        expect.any(Date),
+        ADMIN_ID,
+      );
+      expect(finances.createGameDebts).not.toHaveBeenCalled();
+      expect(finances.createGameFines).not.toHaveBeenCalled();
+    });
+
+    it('envía a finanzas las faltas de invitados de principal y espera', async () => {
+      const { service, prisma, members, gameId, finances } = await setup({
+        members: 1,
+        maxMainSpots: 2,
+      });
+      const [responsible] = members;
+
+      await service.register(gameId, responsible.id, responsible.id, { silent: true });
+      await service.updateRegistration(
+        lists(prisma, gameId).main[0].id as string,
+        { attended: true, paid: true },
+        ADMIN_ID,
+        gameId,
+      );
+
+      const mainGuest = await service.registerGuest(
+        gameId,
+        'Invitado principal',
+        responsible.id,
+        { silent: true },
+      );
+      await service.promote(gameId, mainGuest.id, ADMIN_ID);
+
+      const waitingGuest = await service.registerGuest(
+        gameId,
+        'Invitado espera',
+        responsible.id,
+        { silent: true },
+      );
+      await service.updateRegistration(
+        waitingGuest.id,
+        { attended: true, paid: false },
+        ADMIN_ID,
+        gameId,
+      );
+
+      await service.complete(gameId, ADMIN_ID, { silent: true });
+
+      expect(finances.createGameFines).toHaveBeenCalledWith(
+        gameId,
+        [expect.objectContaining({
+          id: mainGuest.id,
+          registeredById: responsible.id,
+          isGuest: true,
+        })],
+        5000,
+        ADMIN_ID,
+      );
+      expect(finances.createGameDebts).toHaveBeenCalledWith(
+        gameId,
+        [expect.objectContaining({
+          id: waitingGuest.id,
+          registeredById: responsible.id,
+          isGuest: true,
+        })],
+        2000,
+        ADMIN_ID,
+      );
+    });
   });
 
   // ─────────────────────────────────────────────────────────────────────────

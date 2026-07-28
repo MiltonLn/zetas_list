@@ -4,6 +4,13 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateTransactionDto, UpdateTransactionDto, CreateFineDto, UpdateFineDto, ImportFinancesDto } from './dto';
 import { FineNotFoundException, TransactionNotFoundException } from './exceptions';
 
+interface GameChargeRegistration {
+  id: string;
+  userId: string | null;
+  registeredById: string;
+  guestName?: string | null;
+}
+
 @Injectable()
 export class FinancesService {
   private readonly logger = new Logger(FinancesService.name);
@@ -183,23 +190,26 @@ export class FinancesService {
 
   async createGameFines(
     gameId: string,
-    registrations: { id: string; userId: string | null; guestName?: string | null }[],
+    registrations: GameChargeRegistration[],
     fineAmount: number,
     actorId: string,
   ) {
-    const fines = registrations
-      .filter((r) => r.userId)
-      .map((r) => ({
-        userId: r.userId!,
+    const fines = registrations.map((registration) => {
+      const isGuest = registration.userId === null;
+      return {
+        userId: registration.userId ?? registration.registeredById,
         date: new Date(),
         amount: fineAmount,
-        reason: 'Inasistencia',
+        reason: isGuest
+          ? `Inasistencia de invitado: ${registration.guestName ?? 'Invitado'}`
+          : 'Inasistencia',
         status: FineStatus.pending,
         gameId,
-        gameRegistrationId: r.id,
+        gameRegistrationId: registration.id,
         createdById: actorId,
         updatedAt: new Date(),
-      }));
+      };
+    });
 
     if (fines.length > 0) {
       await this.prisma.fine.createMany({ data: fines });
@@ -209,23 +219,26 @@ export class FinancesService {
 
   async createGameDebts(
     gameId: string,
-    registrations: { id: string; userId: string | null; guestName?: string | null }[],
+    registrations: GameChargeRegistration[],
     pricePerPlayer: number,
     actorId: string,
   ) {
-    const debts = registrations
-      .filter((r) => r.userId)
-      .map((r) => ({
-        userId: r.userId!,
+    const debts = registrations.map((registration) => {
+      const isGuest = registration.userId === null;
+      return {
+        userId: registration.userId ?? registration.registeredById,
         date: new Date(),
         amount: pricePerPlayer,
-        reason: 'No pagó',
+        reason: isGuest
+          ? `No pagó invitado: ${registration.guestName ?? 'Invitado'}`
+          : 'No pagó',
         status: FineStatus.pending,
         gameId,
-        gameRegistrationId: r.id,
+        gameRegistrationId: registration.id,
         createdById: actorId,
         updatedAt: new Date(),
-      }));
+      };
+    });
 
     if (debts.length > 0) {
       await this.prisma.fine.createMany({ data: debts });

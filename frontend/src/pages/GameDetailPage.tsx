@@ -255,7 +255,7 @@ export default function GameDetailPage() {
   const paidWait = waitList.filter((r) => r.paid).length;
   const totalPaid = paidMain + paidWait;
   const recaudado = totalPaid * game.pricePerPlayer;
-  const attended = mainList.filter((r) => r.attended).length;
+  const attended = allRegs.filter((r) => r.attended).length;
 
   return (
     <>
