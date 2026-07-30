@@ -118,12 +118,28 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
     try {
       const baileys = await import('@whiskeysockets/baileys' as any);
       const makeWASocket = baileys.default || baileys.makeWASocket;
-      const { DisconnectReason } = baileys;
+      const { DisconnectReason, fetchLatestBaileysVersion } = baileys;
 
       const { state, saveCreds } = await usePrismaAuthState(this.prisma);
+      const { version, isLatest, error: versionError } = await fetchLatestBaileysVersion({
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (versionError) {
+        this.logger.warn(
+          `No se pudo consultar la versión más reciente de WhatsApp; usando ${version.join('.')}`,
+        );
+      } else {
+        this.logger.log(
+          `Versión de WhatsApp seleccionada: ${version.join('.')} (actual: ${isLatest})`,
+        );
+      }
 
       this.sock = makeWASocket({
         auth: state,
+        // WhatsApp periodically rejects stale protocol versions with code 405
+        // before emitting a QR. Resolve it at connection time instead of relying
+        // on the version bundled when Baileys was published.
+        version,
         printQRInTerminal: !isProduction,
         // Baileys' default logger dumps Signal session internals (including
         // private keys). We pin it to warn to keep our logs clean and avoid
