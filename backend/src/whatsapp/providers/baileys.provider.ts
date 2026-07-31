@@ -11,12 +11,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { usePrismaAuthState } from './prisma-auth-state';
 import {
   extractPhoneFromJid,
+  isLidJid,
   isPhoneJid,
   normalizeBotMentions,
   resolveNonBotMentions,
   phoneToJid,
 } from '../utils/jid-utils';
 import { env, isProduction } from '../../config/env';
+import { UsersService } from '../../users/users.service';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -50,7 +52,10 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
   private connectInProgress = false;
   private lidMapBuilding = false;
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly users: UsersService,
+  ) {
     this.groupId = env.WHATSAPP_GROUP_ID;
   }
 
@@ -246,7 +251,18 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
     if (!this.groupId || !isGroup || from !== this.groupId) return;
 
     const participant = msg.key.participant || '';
-    const phone = await this.resolvePhone(participant);
+    let phone = await this.resolvePhone(participant);
+
+    // WhatsApp may hide the phone number for accounts using usernames and send
+    // only their stable LID. Use the mapping already persisted on our user
+    // record instead of discarding commands from those accounts.
+    if (!phone && isLidJid(participant)) {
+      const user = await this.users.findByPhoneOrLid(participant);
+      phone = user?.phone ?? null;
+      if (phone) {
+        this.logger.log('[MSG] Remitente resuelto mediante LID almacenado');
+      }
+    }
 
     if (!phone) {
       this.logger.warn(`[MSG] No se pudo resolver teléfono para participant=${participant}`);
