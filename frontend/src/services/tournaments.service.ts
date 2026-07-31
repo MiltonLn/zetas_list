@@ -6,6 +6,8 @@ import type {
   TournamentFormat,
   Modalidad,
   TeamStanding,
+  CompetitionRulesV1,
+  BracketPreviewResponse,
 } from '../types';
 
 export interface CreateTournamentPayload {
@@ -23,6 +25,7 @@ export interface CreateTournamentPayload {
   minZetasMembers?: number;
   allowExternalTeams?: boolean;
   numberOfGroups?: number;
+  competitionRules: CompetitionRulesV1;
   rules?: string;
   rulesFileUrl?: string;
   flyerUrl?: string;
@@ -73,6 +76,9 @@ export const tournamentsService = {
 
   getStandings: (tournamentId: string) =>
     api.get<TeamStanding[]>(`/tournaments/${tournamentId}/standings`),
+
+  getBracketPreview: (tournamentId: string) =>
+    api.get<BracketPreviewResponse>(`/tournaments/${tournamentId}/bracket-preview`),
 
   assignGroups: (tournamentId: string, assignments?: Record<string, string>) =>
     api.post<Tournament>(`/tournaments/${tournamentId}/assign-groups`, { assignments }),

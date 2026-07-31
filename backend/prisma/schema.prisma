@@ -108,6 +108,7 @@ enum TournamentStatus {
 
 enum TournamentFormat {
   groups_and_knockout
+  league_and_knockout
   knockout_only
 }
 
@@ -350,6 +351,7 @@ model Tournament {
   minZetasMembers    Int              @default(0)
   allowExternalTeams Boolean          @default(true)
   numberOfGroups     Int?
+  competitionRules   Json             @default("{\"version\":1,\"groupStage\":{\"matchFormat\":\"best_of_three\",\"qualifiersPerGroup\":2,\"standingsPoints\":{\"straightWin\":3,\"splitWin\":2,\"splitLoss\":1,\"straightLoss\":0},\"tiebreakers\":[\"wins\",\"setDifference\",\"pointDifference\",\"headToHead\"],\"regularSetPoints\":25,\"tiebreakSetPoints\":15},\"knockoutStage\":{\"matchFormat\":\"best_of_three\",\"regularSetPoints\":25,\"tiebreakSetPoints\":15,\"includeThirdPlace\":true,\"pairingStrategy\":\"cross_group\"}}")
   rules              String?
   rulesFileUrl       String?
   flyerUrl           String?

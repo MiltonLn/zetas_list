@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { tournamentsService } from '../services/tournaments.service';
-import type { Tournament, TournamentTeam, TournamentMatch } from '../types';
+import type {
+  BracketPreviewResponse,
+  TeamStanding,
+  Tournament,
+  TournamentTeam,
+  TournamentMatch,
+} from '../types';
 import {
   TOURNAMENT_STATUS_LABELS,
   TOURNAMENT_STATUS_COLORS,
@@ -16,6 +22,8 @@ import { MatchScoreModal } from '../components/MatchScoreModal';
 import { GroupAssignModal } from '../components/GroupAssignModal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { showToast } from '../utils/toast';
+import { StandingsTable } from '../components/tournaments/StandingsTable';
+import { BracketPreview } from '../components/tournaments/BracketPreview';
 
 const money = (n: number) =>
   n === 0 ? 'Gratis' : `$${n.toLocaleString('es-CO')}`;
@@ -61,13 +69,24 @@ export default function AdminTournamentDetailPage() {
   const [confirmBracket, setConfirmBracket] = useState(false);
   const [confirmCancelMatch, setConfirmCancelMatch] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [standings, setStandings] = useState<TeamStanding[]>([]);
+  const [standingsError, setStandingsError] = useState('');
+  const [bracketPreview, setBracketPreview] = useState<BracketPreviewResponse | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const load = () => {
     if (!id) return;
     setLoading(true);
     tournamentsService
       .findOne(id)
-      .then((r) => setTournament(r.data))
+      .then((r) => {
+        setTournament(r.data);
+        if (r.data.format !== 'knockout_only' && r.data.matches.some((match) => match.phase === 'group')) {
+          tournamentsService.getStandings(id)
+            .then((standingsResponse) => setStandings(standingsResponse.data))
+            .catch((standingsRequestError) => setStandingsError(getApiError(standingsRequestError)));
+        }
+      })
       .catch((e) => setError(getApiError(e)))
       .finally(() => setLoading(false));
   };
@@ -129,8 +148,17 @@ export default function AdminTournamentDetailPage() {
     }
   };
 
-  const handleGenerateBracket = () => {
-    setConfirmBracket(true);
+  const handleGenerateBracket = async () => {
+    if (!id) return;
+    setPreviewLoading(true);
+    try {
+      const response = await tournamentsService.getBracketPreview(id);
+      setBracketPreview(response.data);
+    } catch (previewError) {
+      showToast(getApiError(previewError), 'error');
+    } finally {
+      setPreviewLoading(false);
+    }
   };
 
   const doGenerateBracket = async () => {
@@ -314,6 +342,15 @@ export default function AdminTournamentDetailPage() {
           ))}
         </div>
 
+        {tournament.format !== 'knockout_only' && tournament.matches.some((match) => match.phase === 'group') && (
+          <section style={{ marginBottom: 24 }}>
+            <h3 style={{ color: '#e8eaf6', fontSize: 16 }}>Tabla de posiciones</h3>
+            {standingsError
+              ? <div className="card" style={{ color: '#ef5350' }}>{standingsError}</div>
+              : <StandingsTable standings={standings} teams={tournament.teams} />}
+          </section>
+        )}
+
         {/* Matches / bracket section */}
         {tournament.status === 'in_progress' && (
           <MatchesSection
@@ -324,7 +361,18 @@ export default function AdminTournamentDetailPage() {
             onAdvanceWinners={handleAdvanceWinners}
             onEditMatch={(m) => setScoreModal(m)}
             onCancelMatch={handleCancelMatch}
+            previewLoading={previewLoading}
           />
+        )}
+        {bracketPreview && (
+          <section style={{ marginTop: 16 }}>
+            <BracketPreview preview={bracketPreview} teams={tournament.teams} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+              <button type="button" className="btn btn-sm btn-primary" onClick={() => setConfirmBracket(true)}>
+                Confirmar y generar bracket
+              </button>
+            </div>
+          </section>
         )}
       </div>
 
@@ -365,6 +413,7 @@ export default function AdminTournamentDetailPage() {
       {scoreModal && (
         <MatchScoreModal
           match={scoreModal}
+          tournament={tournament}
           onClose={() => setScoreModal(null)}
           onSaved={() => {
             setScoreModal(null);
@@ -387,7 +436,7 @@ export default function AdminTournamentDetailPage() {
       <ConfirmModal
         open={confirmBracket}
         title="Generar bracket"
-        message={tournament ? `¿Generar el bracket con los ${tournament.teams.length} equipos inscritos?` : ''}
+        message="¿Confirmas estos cruces? Se crearán los partidos de la fase eliminatoria."
         confirmLabel="Generar"
         loading={actionLoading}
         onConfirm={doGenerateBracket}
@@ -562,6 +611,7 @@ function MatchesSection({
   onAdvanceWinners,
   onEditMatch,
   onCancelMatch,
+  previewLoading,
 }: {
   tournament: Tournament;
   onGenerateGroups: () => void;
@@ -570,12 +620,16 @@ function MatchesSection({
   onAdvanceWinners: () => void;
   onEditMatch: (m: TournamentMatch) => void;
   onCancelMatch: (matchId: string) => void;
+  previewLoading: boolean;
 }) {
-  const isGroups = tournament.format === 'groups_and_knockout';
+  const isGroups = tournament.format !== 'knockout_only';
   const groupMatches = tournament.matches.filter((m) => m.phase === 'group');
   const knockoutMatches = tournament.matches.filter((m) => m.phase !== 'group');
   const teamsHaveGroups = tournament.teams.some((t) => t.groupLabel);
+  const needsGroupAssignment = tournament.format === 'groups_and_knockout';
   const hasKnockout = knockoutMatches.length > 0;
+  const groupStageComplete = groupMatches.length > 0 &&
+    groupMatches.every((match) => match.status === 'completed');
   const pendingAdvance =
     knockoutMatches.some((m) => m.phase !== 'third_place' && m.status === 'completed') &&
     knockoutMatches.some((m) => m.phase !== 'third_place' && (!m.teamAId || !m.teamBId));
@@ -605,14 +659,16 @@ function MatchesSection({
                 </span>
               ) : (
                 <>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-secondary"
-                    onClick={onGenerateGroups}
-                  >
-                    {teamsHaveGroups ? 'Reasignar grupos' : 'Asignar grupos'}
-                  </button>
-                  {teamsHaveGroups && (
+                  {needsGroupAssignment && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-secondary"
+                      onClick={onGenerateGroups}
+                    >
+                      {teamsHaveGroups ? 'Reasignar grupos' : 'Asignar grupos'}
+                    </button>
+                  )}
+                  {(!needsGroupAssignment || teamsHaveGroups) && (
                     <button
                       type="button"
                       className="btn btn-sm btn-primary"
@@ -629,7 +685,9 @@ function MatchesSection({
             <div className="card" style={{ color: '#7c8db5', textAlign: 'center', padding: 24 }}>
               {teamsHaveGroups
                 ? 'Haz clic en "Generar partidos de grupo" para crear los cruces.'
-                : 'Primero asigna los equipos a sus grupos.'}
+                : needsGroupAssignment
+                  ? 'Primero asigna los equipos a sus grupos.'
+                  : 'Genera los partidos de liga para iniciar la clasificación.'}
             </div>
           )}
           {groupMatches.length > 0 && (
@@ -671,8 +729,10 @@ function MatchesSection({
               type="button"
               className="btn btn-sm btn-primary"
               onClick={onGenerateBracket}
+              disabled={previewLoading || (isGroups && !groupStageComplete)}
+              title={isGroups && !groupStageComplete ? 'Completa todos los partidos de grupo para ver los cruces.' : undefined}
             >
-              {hasKnockout ? 'Regenerar bracket' : 'Generar bracket'}
+              {previewLoading ? 'Cargando vista previa…' : hasKnockout ? 'Previsualizar nuevo bracket' : 'Previsualizar bracket'}
             </button>
           </div>
         </div>

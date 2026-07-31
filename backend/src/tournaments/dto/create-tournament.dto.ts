@@ -8,9 +8,12 @@ import {
   Min,
   Max,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { TournamentFormat, Modalidad } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CompetitionRulesDto } from './competition-rules.dto';
 
 export class CreateTournamentDto {
   @ApiProperty()
@@ -82,7 +85,14 @@ export class CreateTournamentDto {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(8)
   numberOfGroups?: number;
+
+  @ApiPropertyOptional({ type: CompetitionRulesDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CompetitionRulesDto)
+  competitionRules?: CompetitionRulesDto;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -177,7 +187,14 @@ export class UpdateTournamentDto {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(8)
   numberOfGroups?: number;
+
+  @ApiPropertyOptional({ type: CompetitionRulesDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CompetitionRulesDto)
+  competitionRules?: CompetitionRulesDto;
 
   @ApiPropertyOptional()
   @IsOptional()

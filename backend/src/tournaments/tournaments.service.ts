@@ -6,8 +6,10 @@ import {
 } from '@nestjs/common';
 import {
   TournamentStatus,
+  TournamentFormat,
   MatchStatus,
   AuditAction,
+  Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -15,12 +17,15 @@ import { CreateTournamentDto, UpdateTournamentDto } from './dto/create-tournamen
 import { RegisterTeamDto, UpdateTeamPaymentDto } from './dto/register-team.dto';
 import { UpdateMatchDto } from './dto/update-match.dto';
 import {
+  applyCompetitionRuleDefaults,
+  buildBracketPreview,
+  calculateStandings,
+  CompetitionRulesV1,
+  evaluateMatchResult,
   generateRoundRobinPairs,
-  determineWinner,
-  calculateGroupStandings,
-  seedKnockoutBracket,
-  nextPowerOf2,
-} from './bracket.util';
+  MatchResultValidationError,
+  parseCompetitionRules,
+} from './rules';
 
 function getTournamentInclude() {
   return {
@@ -64,6 +69,13 @@ export class TournamentsService {
   // ---------------------------------------------------------------------------
 
   async create(dto: CreateTournamentDto, actorId: string) {
+    if (
+      dto.format === TournamentFormat.groups_and_knockout &&
+      dto.numberOfGroups === undefined
+    ) {
+      throw new BadRequestException('Debes definir el número de grupos');
+    }
+    const competitionRules = applyCompetitionRuleDefaults(dto.format, dto.competitionRules);
     const tournament = await this.prisma.tournament.create({
       data: {
         name: dto.name,
@@ -79,7 +91,9 @@ export class TournamentsService {
         maxPlayersPerTeam: dto.maxPlayersPerTeam ?? 8,
         minZetasMembers: dto.minZetasMembers ?? 0,
         allowExternalTeams: dto.allowExternalTeams ?? true,
-        numberOfGroups: dto.numberOfGroups,
+        numberOfGroups:
+          dto.format === TournamentFormat.league_and_knockout ? 1 : dto.numberOfGroups,
+        competitionRules: competitionRules as unknown as Prisma.InputJsonValue,
         rules: dto.rules,
         rulesFileUrl: dto.rulesFileUrl,
         flyerUrl: dto.flyerUrl,
@@ -98,7 +112,31 @@ export class TournamentsService {
   }
 
   async update(id: string, dto: UpdateTournamentDto, actorId: string) {
-    await this.findOneOrThrow(id);
+    const current = await this.findOneOrThrow(id);
+    const changesStructure =
+      dto.format !== undefined ||
+      dto.numberOfGroups !== undefined ||
+      dto.competitionRules !== undefined;
+    if (changesStructure && current.status !== TournamentStatus.draft) {
+      throw new BadRequestException(
+        'El formato, los grupos y las reglas de competencia solo se pueden cambiar en borrador',
+      );
+    }
+    const effectiveFormat = dto.format ?? current.format;
+    const effectiveNumberOfGroups =
+      effectiveFormat === TournamentFormat.league_and_knockout
+        ? 1
+        : dto.numberOfGroups ?? current.numberOfGroups;
+    if (
+      effectiveFormat === TournamentFormat.groups_and_knockout &&
+      effectiveNumberOfGroups === null
+    ) {
+      throw new BadRequestException('Debes definir el número de grupos');
+    }
+    const competitionRules =
+      dto.competitionRules !== undefined || dto.format !== undefined
+        ? applyCompetitionRuleDefaults(effectiveFormat, dto.competitionRules)
+        : undefined;
 
     const updated = await this.prisma.tournament.update({
       where: { id },
@@ -117,6 +155,11 @@ export class TournamentsService {
         ...(dto.minZetasMembers !== undefined && { minZetasMembers: dto.minZetasMembers }),
         ...(dto.allowExternalTeams !== undefined && { allowExternalTeams: dto.allowExternalTeams }),
         ...(dto.numberOfGroups !== undefined && { numberOfGroups: dto.numberOfGroups }),
+        ...(dto.format === TournamentFormat.league_and_knockout && { numberOfGroups: 1 }),
+        ...(dto.format === TournamentFormat.knockout_only && { numberOfGroups: null }),
+        ...(competitionRules && {
+          competitionRules: competitionRules as unknown as Prisma.InputJsonValue,
+        }),
         ...(dto.rules !== undefined && { rules: dto.rules }),
         ...(dto.rulesFileUrl !== undefined && { rulesFileUrl: dto.rulesFileUrl }),
         ...(dto.flyerUrl !== undefined && { flyerUrl: dto.flyerUrl }),
@@ -342,16 +385,42 @@ export class TournamentsService {
   async updateMatchScore(matchId: string, dto: UpdateMatchDto, actorId: string) {
     const match = await this.prisma.tournamentMatch.findUnique({
       where: { id: matchId },
-      include: { sets: true },
+      include: {
+        sets: true,
+        tournament: { select: { competitionRules: true } },
+      },
     });
     if (!match) throw new NotFoundException('Partido no encontrado');
     if (!match.teamAId || !match.teamBId) {
       throw new BadRequestException('El partido no tiene equipos asignados aún');
     }
 
-    // Upsert sets
+    const orderedSets = [...dto.sets].sort((a, b) => a.setNumber - b.setNumber);
+    let winnerId: string;
+    try {
+      const rules = parseCompetitionRules(match.tournament.competitionRules);
+      winnerId = evaluateMatchResult(
+        match.teamAId,
+        match.teamBId,
+        orderedSets,
+        match.phase === 'group' ? 'group' : 'knockout',
+        rules,
+      ).winnerId;
+    } catch (error) {
+      if (error instanceof MatchResultValidationError || error instanceof Error) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+
     await this.prisma.$transaction(async (tx) => {
-      for (const setData of dto.sets) {
+      await tx.tournamentSet.deleteMany({
+        where: {
+          matchId,
+          setNumber: { notIn: orderedSets.map((set) => set.setNumber) },
+        },
+      });
+      for (const setData of orderedSets) {
         await tx.tournamentSet.upsert({
           where: { matchId_setNumber: { matchId, setNumber: setData.setNumber } },
           create: {
@@ -363,12 +432,6 @@ export class TournamentsService {
           update: { scoreA: setData.scoreA, scoreB: setData.scoreB },
         });
       }
-
-      const winnerId = determineWinner(
-        match.teamAId!,
-        match.teamBId!,
-        dto.sets.map((s) => ({ scoreA: s.scoreA, scoreB: s.scoreB })),
-      );
 
       await tx.tournamentMatch.update({
         where: { id: matchId },
@@ -384,6 +447,10 @@ export class TournamentsService {
       action: AuditAction.tournament_match_updated,
       details: { matchId, sets: dto.sets },
     });
+
+    if (match.phase !== 'group') {
+      await this.advanceWinners(match.tournamentId, actorId);
+    }
 
     return this.prisma.tournamentMatch.findUnique({
       where: { id: matchId },
@@ -412,10 +479,11 @@ export class TournamentsService {
       },
     });
     if (!tournament) throw new NotFoundException('Torneo no encontrado');
+    const rules = this.readCompetitionRules(tournament.competitionRules);
 
     const teamsWithGroup = tournament.teams
-      .filter((t) => t.groupLabel)
-      .map((t) => ({ id: t.id, groupLabel: t.groupLabel! }));
+      .filter((team) => team.groupLabel || tournament.format === TournamentFormat.league_and_knockout)
+      .map((team) => ({ id: team.id, groupLabel: team.groupLabel ?? 'A' }));
 
     const results = tournament.matches.map((m) => ({
       teamAId: m.teamAId!,
@@ -423,7 +491,7 @@ export class TournamentsService {
       sets: m.sets.map((s) => ({ scoreA: s.scoreA, scoreB: s.scoreB })),
     }));
 
-    return calculateGroupStandings(teamsWithGroup, results);
+    return calculateStandings(teamsWithGroup, results, rules);
   }
 
   // ---------------------------------------------------------------------------
@@ -445,7 +513,10 @@ export class TournamentsService {
       include: { teams: { select: { id: true } } },
     });
     if (!tournament) throw new NotFoundException('Torneo no encontrado');
-    if (tournament.format !== 'groups_and_knockout') {
+    if (
+      tournament.format !== TournamentFormat.groups_and_knockout &&
+      tournament.format !== TournamentFormat.league_and_knockout
+    ) {
       throw new BadRequestException('Este torneo no tiene fase de grupos');
     }
     if (!tournament.numberOfGroups) {
@@ -455,7 +526,16 @@ export class TournamentsService {
     const groups = 'ABCDEFGH'.slice(0, tournament.numberOfGroups).split('');
 
     if (assignments) {
-      // Manual assignment
+      const teamIds = new Set(tournament.teams.map((team) => team.id));
+      const invalidAssignment = Object.entries(assignments).some(
+        ([teamId, label]) =>
+          !teamIds.has(teamId) || !groups.includes(label.trim().toUpperCase()),
+      );
+      if (invalidAssignment) {
+        throw new BadRequestException(
+          'Las asignaciones contienen equipos o etiquetas de grupo inválidos',
+        );
+      }
       await this.prisma.$transaction(
         Object.entries(assignments).map(([teamId, label]) =>
           this.prisma.tournamentTeam.update({
@@ -495,10 +575,22 @@ export class TournamentsService {
       include: { teams: { select: { id: true, groupLabel: true } } },
     });
     if (!tournament) throw new NotFoundException('Torneo no encontrado');
-    if (tournament.format !== 'groups_and_knockout') {
+    if (
+      tournament.format !== TournamentFormat.groups_and_knockout &&
+      tournament.format !== TournamentFormat.league_and_knockout
+    ) {
       throw new BadRequestException('Este torneo no tiene fase de grupos');
     }
 
+    if (tournament.format === TournamentFormat.league_and_knockout) {
+      await this.prisma.tournamentTeam.updateMany({
+        where: { tournamentId },
+        data: { groupLabel: 'A' },
+      });
+      tournament.teams.forEach((team) => {
+        team.groupLabel = 'A';
+      });
+    }
     const teamsWithGroup = tournament.teams.filter((t) => t.groupLabel);
     if (teamsWithGroup.length === 0) {
       throw new BadRequestException('Asigna los equipos a grupos primero');
@@ -512,8 +604,7 @@ export class TournamentsService {
       byGroup.get(g)!.push(t.id);
     }
 
-    // Delete existing group matches
-    await this.prisma.tournamentMatch.deleteMany({
+    const deleteExistingMatches = this.prisma.tournamentMatch.deleteMany({
       where: { tournamentId, phase: 'group' },
     });
 
@@ -541,7 +632,7 @@ export class TournamentsService {
       }
     }
 
-    await this.prisma.$transaction(creates);
+    await this.prisma.$transaction([deleteExistingMatches, ...creates]);
 
     await this.audit.log({
       actorId,
@@ -556,17 +647,7 @@ export class TournamentsService {
   // Knockout bracket
   // ---------------------------------------------------------------------------
 
-  /**
-   * Generate the knockout bracket.
-   * For knockout_only: seeds teams by registration order (or `seeding` override).
-   * For groups_and_knockout: seeds from group standings.
-   * `seeding` is an optional ordered array of teamIds to override automatic seeding.
-   */
-  async generateKnockoutBracket(
-    tournamentId: string,
-    actorId: string,
-    seeding?: string[],
-  ) {
+  async getBracketPreview(tournamentId: string, seeding?: string[]) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { id: tournamentId },
       include: {
@@ -574,98 +655,119 @@ export class TournamentsService {
           select: { id: true, name: true, groupLabel: true },
           orderBy: { createdAt: 'asc' },
         },
-        matches: {
-          where: { phase: 'group', status: 'completed' },
-          include: { sets: true },
-        },
+        matches: { where: { phase: 'group' }, include: { sets: true } },
       },
     });
     if (!tournament) throw new NotFoundException('Torneo no encontrado');
+    const rules = this.readCompetitionRules(tournament.competitionRules);
 
-    let orderedTeamIds: (string | null)[];
-
+    let teamIds: string[];
+    let standings: ReturnType<typeof calculateStandings> | undefined;
     if (seeding && seeding.length > 0) {
-      orderedTeamIds = seeding;
-    } else if (tournament.format === 'groups_and_knockout') {
-      // Seed from group standings
+      teamIds = seeding;
+    } else if (tournament.format !== TournamentFormat.knockout_only) {
+      if (
+        tournament.matches.length === 0 ||
+        tournament.matches.some((match) => match.status !== MatchStatus.completed)
+      ) {
+        throw new BadRequestException(
+          'Todos los partidos de la fase de grupos deben estar completos',
+        );
+      }
       const teamsWithGroup = tournament.teams
-        .filter((t) => t.groupLabel)
-        .map((t) => ({ id: t.id, groupLabel: t.groupLabel! }));
-
+        .filter((team) => team.groupLabel)
+        .map((team) => ({ id: team.id, groupLabel: team.groupLabel! }));
       const results = tournament.matches.map((m) => ({
         teamAId: m.teamAId!,
         teamBId: m.teamBId!,
         sets: m.sets.map((s) => ({ scoreA: s.scoreA, scoreB: s.scoreB })),
       }));
-
-      const standings = calculateGroupStandings(teamsWithGroup, results);
-      const byGroup = new Map<string, typeof standings>();
-      for (const s of standings) {
-        if (!byGroup.has(s.groupLabel)) byGroup.set(s.groupLabel, []);
-        byGroup.get(s.groupLabel)!.push(s);
-      }
-
-      orderedTeamIds = seedKnockoutBracket(byGroup);
+      standings = calculateStandings(teamsWithGroup, results, rules);
+      teamIds = standings
+        .filter((standing) => standing.qualified)
+        .sort(
+          (a, b) =>
+            a.position - b.position ||
+            b.points - a.points ||
+            a.groupLabel.localeCompare(b.groupLabel),
+        )
+        .map((standing) => standing.teamId);
     } else {
-      // knockout_only: just use registration order
-      const n = nextPowerOf2(tournament.teams.length);
-      orderedTeamIds = [
-        ...tournament.teams.map((t) => t.id),
-        ...Array(n - tournament.teams.length).fill(null),
-      ];
+      teamIds = tournament.teams.map((team) => team.id);
     }
 
-    // Build first-round matches from the seeded list
-    // Pair slot 0 vs last, 1 vs last-1... (standard bracket)
-    const n = orderedTeamIds.length;
-    const round1Matches: { teamAId: string | null; teamBId: string | null }[] = [];
-    for (let i = 0; i < n / 2; i++) {
-      round1Matches.push({
-        teamAId: orderedTeamIds[i] ?? null,
-        teamBId: orderedTeamIds[n - 1 - i] ?? null,
-      });
+    if (
+      teamIds.length < 2 ||
+      new Set(teamIds).size !== teamIds.length ||
+      teamIds.some((teamId) => !tournament.teams.some((team) => team.id === teamId))
+    ) {
+      throw new BadRequestException(
+        'La siembra debe incluir al menos dos equipos válidos y sin duplicados',
+      );
     }
+    const previewRules =
+      seeding && seeding.length > 0
+        ? {
+            ...rules,
+            knockoutStage: { ...rules.knockoutStage, pairingStrategy: 'high_low' as const },
+          }
+        : rules;
+    return buildBracketPreview(teamIds, previewRules, standings);
+  }
 
-    // Determine how many rounds are needed
-    const totalRounds = Math.log2(n);
+  async generateKnockoutBracket(
+    tournamentId: string,
+    actorId: string,
+    seeding?: string[],
+  ) {
+    const preview = await this.getBracketPreview(tournamentId, seeding);
 
-    // Delete existing knockout matches
-    await this.prisma.tournamentMatch.deleteMany({
-      where: { tournamentId, phase: { not: 'group' } },
-    });
-
-    // Create all rounds (future rounds have null teams — TBD)
+    const seedUpdates = preview.seeding.map((teamId, index) =>
+      this.prisma.tournamentTeam.update({
+        where: { id: teamId },
+        data: { seed: index + 1 },
+      }),
+    );
     const creates: ReturnType<typeof this.prisma.tournamentMatch.create>[] = [];
     let matchOrder = 0;
-
-    for (let round = 1; round <= totalRounds; round++) {
-      const matchesInRound = n / Math.pow(2, round);
-
+    const bracketSize = preview.firstRound.length * 2;
+    const hasAutomaticBye = preview.firstRound.some(
+      (pair) => Boolean(pair.teamAId) !== Boolean(pair.teamBId),
+    );
+    for (let round = 1; round <= preview.totalRounds; round++) {
+      const matchesInRound = bracketSize / Math.pow(2, round);
       if (round === 1) {
-        for (let i = 0; i < round1Matches.length; i++) {
+        for (const pair of preview.firstRound) {
+          const automaticWinnerId =
+            pair.teamAId && !pair.teamBId
+              ? pair.teamAId
+              : pair.teamBId && !pair.teamAId
+                ? pair.teamBId
+                : null;
           creates.push(
             this.prisma.tournamentMatch.create({
               data: {
                 tournamentId,
-                phase: this.bracketPhase(matchesInRound, round, totalRounds),
+                phase: this.bracketPhase(matchesInRound, round, preview.totalRounds),
                 roundNumber: round,
                 matchOrder: matchOrder++,
-                teamAId: round1Matches[i].teamAId,
-                teamBId: round1Matches[i].teamBId,
-                status: 'scheduled',
+                teamAId: pair.teamAId,
+                teamBId: pair.teamBId,
+                winnerId: automaticWinnerId,
+                status: automaticWinnerId
+                  ? MatchStatus.completed
+                  : MatchStatus.scheduled,
               },
             }),
           );
         }
       } else {
-        // TBD slots for future rounds
         for (let i = 0; i < matchesInRound; i++) {
-          // Skip 3rd place match creation here — it's added separately at the final round
           creates.push(
             this.prisma.tournamentMatch.create({
               data: {
                 tournamentId,
-                phase: this.bracketPhase(matchesInRound, round, totalRounds),
+                phase: this.bracketPhase(matchesInRound, round, preview.totalRounds),
                 roundNumber: round,
                 matchOrder: matchOrder++,
                 teamAId: null,
@@ -675,8 +777,11 @@ export class TournamentsService {
             }),
           );
         }
-        // Add 3rd place match at semifinal level
-        if (matchesInRound === 1 && totalRounds >= 2) {
+        if (
+          matchesInRound === 1 &&
+          preview.totalRounds >= 2 &&
+          preview.includeThirdPlace
+        ) {
           creates.push(
             this.prisma.tournamentMatch.create({
               data: {
@@ -694,7 +799,17 @@ export class TournamentsService {
       }
     }
 
-    await this.prisma.$transaction(creates);
+    await this.prisma.$transaction([
+      this.prisma.tournamentMatch.deleteMany({
+        where: { tournamentId, phase: { not: 'group' } },
+      }),
+      this.prisma.tournamentTeam.updateMany({
+        where: { tournamentId },
+        data: { seed: null },
+      }),
+      ...seedUpdates,
+      ...creates,
+    ]);
 
     await this.audit.log({
       actorId,
@@ -702,6 +817,9 @@ export class TournamentsService {
       details: { tournamentId, action: 'generate_bracket' },
     });
 
+    if (hasAutomaticBye) {
+      return this.advanceWinners(tournamentId, actorId);
+    }
     return this.findOne(tournamentId);
   }
 
@@ -880,6 +998,16 @@ export class TournamentsService {
     if (matchesInRound === 2) return 'semifinal';
     if (matchesInRound === 4) return 'quarterfinal';
     return `round_${round}`;
+  }
+
+  private readCompetitionRules(value: Prisma.JsonValue): CompetitionRulesV1 {
+    try {
+      return parseCompetitionRules(value);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'La configuración de competencia no es válida';
+      throw new BadRequestException(message);
+    }
   }
 
   private async findOneOrThrow(id: string) {

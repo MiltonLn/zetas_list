@@ -272,7 +272,43 @@ export type TournamentStatus =
   | 'completed'
   | 'cancelled';
 
-export type TournamentFormat = 'groups_and_knockout' | 'knockout_only';
+export type TournamentFormat =
+  | 'league_and_knockout'
+  | 'groups_and_knockout'
+  | 'knockout_only';
+
+export type GroupMatchFormat = 'two_sets_point_difference' | 'best_of_three';
+export type StandingsTiebreaker =
+  | 'wins'
+  | 'setDifference'
+  | 'pointDifference'
+  | 'headToHead';
+
+export interface CompetitionRulesV1 {
+  version: 1;
+  groupStage: {
+    matchFormat: GroupMatchFormat;
+    qualifiersPerGroup: number;
+    standingsPoints: {
+      straightWin: number;
+      splitWin: number;
+      splitLoss: number;
+      straightLoss: number;
+    };
+    tiebreakers: StandingsTiebreaker[];
+    regularSetPoints: number;
+    tiebreakSetPoints: number;
+    winByTwo: boolean;
+  };
+  knockoutStage: {
+    matchFormat: 'best_of_three';
+    regularSetPoints: number;
+    tiebreakSetPoints: number;
+    winByTwo: boolean;
+    includeThirdPlace: boolean;
+    pairingStrategy: 'high_low' | 'cross_group';
+  };
+}
 
 export type MatchStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -342,6 +378,7 @@ export interface Tournament {
   minZetasMembers: number;
   allowExternalTeams: boolean;
   numberOfGroups?: number;
+  competitionRules: CompetitionRulesV1;
   rules?: string;
   rulesFileUrl?: string;
   flyerUrl?: string;
@@ -378,19 +415,54 @@ export const TOURNAMENT_STATUS_COLORS: Record<TournamentStatus, string> = {
 };
 
 export const TOURNAMENT_FORMAT_LABELS: Record<TournamentFormat, string> = {
+  league_and_knockout: 'Liga + semifinales',
   groups_and_knockout: 'Fase de grupos + eliminación',
   knockout_only: 'Solo llaves (eliminación directa)',
 };
 
 export interface TeamStanding {
   teamId: string;
+  teamName?: string;
   groupLabel: string;
+  position: number;
+  qualified: boolean;
   wins: number;
   losses: number;
   points: number;
   setsWon: number;
   setsLost: number;
-  setDiff: number;
+  setDiff?: number;
+  setDifference?: number;
   pointsScored: number;
   pointsConceded: number;
+  pointDiff?: number;
+  pointDifference?: number;
+  resolvedBy?: StandingsTiebreaker | 'teamId';
+}
+
+export interface BracketPreviewTeam {
+  id?: string;
+  teamId?: string;
+  name?: string;
+  teamName?: string;
+  seed?: number;
+  groupLabel?: string;
+  position?: number;
+}
+
+export interface BracketPreviewPair {
+  teamA?: BracketPreviewTeam | null;
+  teamB?: BracketPreviewTeam | null;
+  teamAId?: string;
+  teamBId?: string;
+  seedA?: number;
+  seedB?: number;
+}
+
+export interface BracketPreviewResponse {
+  seeds?: BracketPreviewTeam[];
+  seeding?: Array<string | BracketPreviewTeam>;
+  firstRound: BracketPreviewPair[];
+  totalRounds?: number;
+  includeThirdPlace?: boolean;
 }

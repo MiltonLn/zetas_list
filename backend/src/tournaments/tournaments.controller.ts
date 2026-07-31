@@ -60,6 +60,12 @@ export class TournamentsController {
     return this.tournamentsService.findAll(status);
   }
 
+  @Roles(Role.admin)
+  @Get(':id/bracket-preview')
+  getBracketPreview(@Param('id') tournamentId: string) {
+    return this.tournamentsService.getBracketPreview(tournamentId);
+  }
+
   @Public()
   @Get(':id')
   findOne(@Param('id') id: string) {

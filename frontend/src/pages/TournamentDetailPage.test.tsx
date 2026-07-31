@@ -6,6 +6,7 @@ import type { Tournament, TournamentMatch } from '../types';
 import { useTournamentDetail } from '../hooks/useTournamentDetail';
 import TournamentDetailPage, { TournamentView } from './TournamentDetailPage';
 import PublicTournamentPage from './PublicTournamentPage';
+import { tournamentsService } from '../services/tournaments.service';
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ isAdmin: true }),
@@ -13,6 +14,13 @@ vi.mock('../contexts/AuthContext', () => ({
 
 vi.mock('../hooks/useTournamentDetail', () => ({
   useTournamentDetail: vi.fn(),
+}));
+
+vi.mock('../services/tournaments.service', () => ({
+  tournamentsService: {
+    getStandings: vi.fn(),
+    getBracketPreview: vi.fn(),
+  },
 }));
 
 vi.mock('../components/TeamRegistrationModal', () => ({
@@ -134,6 +142,24 @@ function tournament(overrides: Partial<Tournament> = {}): Tournament {
 describe('TournamentView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(tournamentsService.getStandings).mockResolvedValue({
+      data: [{
+        teamId: 'team-a',
+        teamName: 'Los Zetas',
+        groupLabel: 'A',
+        position: 1,
+        qualified: true,
+        wins: 1,
+        losses: 0,
+        points: 3,
+        setsWon: 2,
+        setsLost: 0,
+        setDiff: 2,
+        pointsScored: 50,
+        pointsConceded: 38,
+        pointDiff: 12,
+      }],
+    });
   });
 
   it('renderiza equipos, resultados y modales del torneo', async () => {

@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { resolvePhotoUrl } from '../components/Avatar';
-import type { Tournament, TournamentTeam, TournamentMatch } from '../types';
+import type {
+  TeamStanding,
+  Tournament,
+  TournamentTeam,
+  TournamentMatch,
+} from '../types';
 import {
   TOURNAMENT_STATUS_LABELS,
   TOURNAMENT_STATUS_COLORS,
@@ -12,6 +17,9 @@ import { Spinner } from '../components/Spinner';
 import { useAuth } from '../contexts/AuthContext';
 import { TeamRegistrationModal } from '../components/TeamRegistrationModal';
 import { useTournamentDetail } from '../hooks/useTournamentDetail';
+import { tournamentsService } from '../services/tournaments.service';
+import { getApiError } from '../services/api';
+import { StandingsTable } from '../components/tournaments/StandingsTable';
 
 const money = (n: number) =>
   n === 0 ? 'Gratis' : `$${n.toLocaleString('es-CO')}`;
@@ -40,11 +48,22 @@ export function TournamentView({
   const [resultsExpanded, setResultsExpanded] = useState(true);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [pdfSrc, setPdfSrc] = useState<string | null>(null);
+  const [standings, setStandings] = useState<TeamStanding[]>([]);
+  const [standingsError, setStandingsError] = useState('');
 
   const canRegister = tournament.status === 'registration_open';
   const slots = tournament.maxTeams - tournament.teams.length;
   const isFull = slots <= 0;
   const statusColor = TOURNAMENT_STATUS_COLORS[tournament.status];
+  const groupMatches = tournament.matches.filter((match) => match.phase === 'group');
+
+  useEffect(() => {
+    if (tournament.format === 'knockout_only' || groupMatches.length === 0) return;
+    setStandingsError('');
+    tournamentsService.getStandings(tournament.id)
+      .then((response) => setStandings(response.data))
+      .catch((requestError) => setStandingsError(getApiError(requestError)));
+  }, [tournament.id, tournament.format, tournament.matches, groupMatches.length]);
 
   return (
     <>
@@ -196,6 +215,15 @@ export function TournamentView({
               ))}
             </div>
           )
+        )}
+
+        {groupMatches.length > 0 && (
+          <section style={{ marginBottom: 28 }}>
+            <h2 style={{ color: '#e8eaf6', fontSize: 16, fontWeight: 700 }}>Tabla de posiciones</h2>
+            {standingsError
+              ? <div className="card" style={{ color: '#ef5350' }}>{standingsError}</div>
+              : <StandingsTable standings={standings} teams={tournament.teams} />}
+          </section>
         )}
 
         {/* ── Results ──────────────────────────────────────────────────── */}

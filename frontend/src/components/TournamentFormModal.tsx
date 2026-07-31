@@ -1,8 +1,15 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { tournamentsService } from '../services/tournaments.service';
-import type { Tournament, TournamentFormat, Modalidad } from '../types';
+import type { CompetitionRulesV1, Tournament, TournamentFormat, Modalidad } from '../types';
 import { TOURNAMENT_FORMAT_LABELS } from '../types';
 import { getApiError } from '../services/api';
+import {
+  TournamentRulesEditor,
+} from './tournaments/TournamentRulesEditor';
+import {
+  DEFAULT_COMPETITION_RULES,
+  TOURNAMENT_PRESETS,
+} from './tournaments/tournamentRules';
 
 interface Props {
   tournament?: Tournament;
@@ -10,7 +17,7 @@ interface Props {
   onSaved: (t: Tournament) => void;
 }
 
-const FORMATS: TournamentFormat[] = ['groups_and_knockout', 'knockout_only'];
+const FORMATS: TournamentFormat[] = ['league_and_knockout', 'groups_and_knockout', 'knockout_only'];
 const MODALIDADES: Modalidad[] = ['seis_x_seis', 'cuatro_x_cuatro'];
 const MODALIDAD_LABELS: Record<Modalidad, string> = {
   seis_x_seis: '6x6',
@@ -140,6 +147,9 @@ export function TournamentFormModal({ tournament, onClose, onSaved }: Props) {
   const [minZetas, setMinZetas] = useState(String(tournament?.minZetasMembers ?? 0));
   const [allowExternal, setAllowExternal] = useState(tournament?.allowExternalTeams ?? true);
   const [numberOfGroups, setNumberOfGroups] = useState(String(tournament?.numberOfGroups ?? ''));
+  const [competitionRules, setCompetitionRules] = useState<CompetitionRulesV1>(
+    tournament?.competitionRules ?? DEFAULT_COMPETITION_RULES,
+  );
   const [rules, setRules] = useState(tournament?.rules ?? '');
 
   const [rulesPdfFile, setRulesPdfFile] = useState<File | null>(null);
@@ -169,7 +179,10 @@ export function TournamentFormModal({ tournament, onClose, onSaved }: Props) {
         maxPlayersPerTeam: parseInt(maxPlayers, 10),
         minZetasMembers: parseInt(minZetas, 10),
         allowExternalTeams: allowExternal,
-        numberOfGroups: numberOfGroups ? parseInt(numberOfGroups, 10) : undefined,
+        numberOfGroups: format === 'groups_and_knockout' && numberOfGroups
+          ? parseInt(numberOfGroups, 10)
+          : undefined,
+        competitionRules,
         rules: rules || undefined,
       };
 
@@ -214,7 +227,15 @@ export function TournamentFormModal({ tournament, onClose, onSaved }: Props) {
   };
 
   const isBusy = saving || uploadingPdf || uploadingFlyer;
+  const canEditCompetitionRules = !tournament || tournament.status === 'draft';
   const busyLabel = saving ? 'Guardando…' : uploadingPdf ? 'Subiendo PDF…' : uploadingFlyer ? 'Subiendo flyer…' : '';
+
+  const applyPreset = (nextFormat: TournamentFormat) => {
+    const preset = TOURNAMENT_PRESETS[nextFormat];
+    setFormat(nextFormat);
+    setCompetitionRules(preset.rules);
+    setNumberOfGroups(preset.numberOfGroups ? String(preset.numberOfGroups) : '');
+  };
 
   return (
     <div
@@ -267,6 +288,24 @@ export function TournamentFormModal({ tournament, onClose, onSaved }: Props) {
             />
           </div>
 
+          {!isEdit && (
+            <div style={{ marginBottom: 14 }}>
+              <label style={fieldLabel}>Plantilla de competencia</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {FORMATS.map((presetFormat) => (
+                  <button
+                    key={presetFormat}
+                    type="button"
+                    className={`btn btn-sm ${format === presetFormat ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => applyPreset(presetFormat)}
+                  >
+                    {TOURNAMENT_PRESETS[presetFormat].label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Format + modalidad */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
             <div>
@@ -274,7 +313,8 @@ export function TournamentFormModal({ tournament, onClose, onSaved }: Props) {
               <select
                 className="zetas-input"
                 value={format}
-                onChange={(e) => setFormat(e.target.value as TournamentFormat)}
+                disabled={!canEditCompetitionRules}
+                onChange={(e) => applyPreset(e.target.value as TournamentFormat)}
               >
                 {FORMATS.map((f) => (
                   <option key={f} value={f}>{TOURNAMENT_FORMAT_LABELS[f]}</option>
@@ -390,17 +430,21 @@ export function TournamentFormModal({ tournament, onClose, onSaved }: Props) {
 
           {/* Groups + allow external */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-            <div>
-              <label style={fieldLabel}>N° de grupos (grupos+knockout)</label>
-              <input
-                type="number"
-                className="zetas-input"
-                value={numberOfGroups}
-                onChange={(e) => setNumberOfGroups(e.target.value)}
-                min={1}
-                placeholder="Ej: 2"
-              />
-            </div>
+            {format === 'groups_and_knockout' && (
+              <div>
+                <label style={fieldLabel}>Número de grupos</label>
+                <input
+                  type="number"
+                  className="zetas-input"
+                  value={numberOfGroups}
+                  onChange={(e) => setNumberOfGroups(e.target.value)}
+                  min={2}
+                  required
+                  disabled={!canEditCompetitionRules}
+                  placeholder="Ej: 2"
+                />
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 12 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', color: '#c5cae9', fontSize: 14 }}>
                 <input
@@ -414,8 +458,15 @@ export function TournamentFormModal({ tournament, onClose, onSaved }: Props) {
             </div>
           </div>
 
+          <TournamentRulesEditor
+            rules={competitionRules}
+            disabled={!canEditCompetitionRules}
+            showGroupStage={format !== 'knockout_only'}
+            onChange={setCompetitionRules}
+          />
+
           {/* Prize */}
-          <div style={{ marginBottom: 14 }}>
+          <div style={{ marginTop: 18, marginBottom: 14 }}>
             <label style={fieldLabel}>Descripción del premio</label>
             <input
               className="zetas-input"
@@ -427,13 +478,13 @@ export function TournamentFormModal({ tournament, onClose, onSaved }: Props) {
 
           {/* Rules text */}
           <div style={{ marginBottom: 14 }}>
-            <label style={fieldLabel}>Reglas adicionales</label>
+            <label style={fieldLabel}>Reglas para participantes (texto libre)</label>
             <textarea
               className="zetas-input"
               value={rules}
               onChange={(e) => setRules(e.target.value)}
               rows={3}
-              placeholder="Notas o reglas especiales del torneo..."
+              placeholder="Reglas humanas, convivencia, uniformes u otras notas..."
               style={{ resize: 'vertical', minHeight: 80, fontFamily: 'inherit', fontSize: 14 }}
             />
           </div>

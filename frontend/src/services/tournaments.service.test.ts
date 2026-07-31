@@ -79,6 +79,7 @@ describe('tournamentsService', () => {
     await tournamentsService.removeTeam('t1', 'team1');
     await tournamentsService.updateTeamPayment('t1', 'team1', true);
     await tournamentsService.getStandings('t1');
+    await tournamentsService.getBracketPreview('t1');
     await tournamentsService.assignGroups('t1', assignments);
     await tournamentsService.generateGroupMatches('t1');
     await tournamentsService.generateKnockoutBracket('t1', seeding);
@@ -93,6 +94,7 @@ describe('tournamentsService', () => {
       { paid: true },
     );
     expect(mockApi.get).toHaveBeenCalledWith('/tournaments/t1/standings');
+    expect(mockApi.get).toHaveBeenCalledWith('/tournaments/t1/bracket-preview');
     expect(mockApi.post).toHaveBeenCalledWith(
       '/tournaments/t1/assign-groups',
       { assignments },

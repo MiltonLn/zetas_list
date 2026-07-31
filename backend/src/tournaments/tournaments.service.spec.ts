@@ -4,6 +4,7 @@ import { TournamentStatus, TournamentFormat, Modalidad, MatchStatus } from '@pri
 import { TournamentsService } from './tournaments.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { defaultCompetitionRules } from './rules';
 
 const mockPrisma = {
   tournament: {
@@ -15,6 +16,7 @@ const mockPrisma = {
   tournamentTeam: {
     create: jest.fn(),
     update: jest.fn(),
+    updateMany: jest.fn(),
     findUnique: jest.fn(),
     findFirst: jest.fn(),
     delete: jest.fn(),
@@ -26,6 +28,8 @@ const mockPrisma = {
   tournamentMatch: {
     findUnique: jest.fn(),
     update: jest.fn(),
+    create: jest.fn(),
+    deleteMany: jest.fn(),
   },
   tournamentSet: {
     upsert: jest.fn(),
@@ -56,6 +60,7 @@ function makeTournament(overrides: Partial<any> = {}) {
     minZetasMembers: 0,
     allowExternalTeams: true,
     numberOfGroups: 2,
+    competitionRules: defaultCompetitionRules(TournamentFormat.groups_and_knockout),
     rules: null,
     createdById: 'admin-1',
     createdAt: new Date(),
@@ -117,6 +122,7 @@ describe('TournamentsService', () => {
           startDate: '2026-07-15',
           endDate: '2026-07-15',
           maxTeams: 8,
+          numberOfGroups: 2,
         },
         'admin-1',
       );
@@ -124,12 +130,51 @@ describe('TournamentsService', () => {
       expect(result).toEqual(tournament);
       expect(mockPrisma.tournament.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ name: 'Torneo Zetas 2026', createdById: 'admin-1' }),
+          data: expect.objectContaining({
+            name: 'Torneo Zetas 2026',
+            createdById: 'admin-1',
+            competitionRules: expect.objectContaining({
+              version: 1,
+              groupStage: expect.objectContaining({ matchFormat: 'best_of_three' }),
+              knockoutStage: expect.objectContaining({ pairingStrategy: 'cross_group' }),
+            }),
+          }),
         }),
       );
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'tournament_created' }),
       );
+    });
+  });
+
+  describe('update', () => {
+    it('rechaza cambios estructurales fuera de borrador', async () => {
+      mockPrisma.tournament.findUnique.mockResolvedValue(
+        makeTournament({ status: TournamentStatus.in_progress }),
+      );
+
+      await expect(
+        service.update(
+          'tournament-1',
+          {
+            competitionRules: {
+              groupStage: { matchFormat: 'two_sets_point_difference' },
+            },
+          },
+          'admin-1',
+        ),
+      ).rejects.toThrow('solo se pueden cambiar en borrador');
+      expect(mockPrisma.tournament.update).not.toHaveBeenCalled();
+    });
+
+    it('permite editar campos no estructurales fuera de borrador', async () => {
+      const current = makeTournament({ status: TournamentStatus.registration_open });
+      mockPrisma.tournament.findUnique.mockResolvedValue(current);
+      mockPrisma.tournament.update.mockResolvedValue({ ...current, name: 'Nuevo nombre' });
+
+      await expect(
+        service.update('tournament-1', { name: 'Nuevo nombre' }, 'admin-1'),
+      ).resolves.toEqual(expect.objectContaining({ name: 'Nuevo nombre' }));
     });
   });
 
@@ -404,6 +449,143 @@ describe('TournamentsService', () => {
     });
   });
 
+  describe('knockout bracket', () => {
+    it('previsualiza liga como high-low usando los clasificados', async () => {
+      const competitionRules = defaultCompetitionRules(
+        TournamentFormat.league_and_knockout,
+      );
+      competitionRules.groupStage.qualifiersPerGroup = 4;
+      mockPrisma.tournament.findUnique.mockResolvedValue({
+        ...makeTournament({
+          format: TournamentFormat.league_and_knockout,
+          numberOfGroups: 1,
+          competitionRules,
+        }),
+        teams: ['a', 'b', 'c', 'd'].map((id) => ({
+          id,
+          name: id,
+          groupLabel: 'A',
+          createdAt: new Date(),
+        })),
+        matches: [
+          {
+            phase: 'group',
+            status: MatchStatus.completed,
+            teamAId: 'a',
+            teamBId: 'd',
+            sets: [
+              { scoreA: 25, scoreB: 20 },
+              { scoreA: 25, scoreB: 18 },
+            ],
+          },
+        ],
+      });
+
+      await expect(service.getBracketPreview('tournament-1')).resolves.toEqual(
+        expect.objectContaining({
+          firstRound: [
+            { teamAId: 'a', teamBId: 'd' },
+            { teamAId: 'b', teamBId: 'c' },
+          ],
+        }),
+      );
+    });
+
+    it('impide generar bracket con partidos de grupo pendientes', async () => {
+      mockPrisma.tournament.findUnique.mockResolvedValue({
+        ...makeTournament(),
+        teams: [
+          { id: 'a', name: 'A', groupLabel: 'A', createdAt: new Date() },
+          { id: 'b', name: 'B', groupLabel: 'A', createdAt: new Date() },
+        ],
+        matches: [{ phase: 'group', status: MatchStatus.scheduled, sets: [] }],
+      });
+
+      await expect(service.getBracketPreview('tournament-1')).rejects.toThrow(
+        'deben estar completos',
+      );
+    });
+
+    it('confirma el bracket, persiste seeds y omite tercer lugar según reglas', async () => {
+      const competitionRules = defaultCompetitionRules(TournamentFormat.knockout_only);
+      competitionRules.knockoutStage.includeThirdPlace = false;
+      const tournament = {
+        ...makeTournament({
+          format: TournamentFormat.knockout_only,
+          numberOfGroups: null,
+          competitionRules,
+        }),
+        teams: ['a', 'b', 'c', 'd'].map((id) => ({
+          id,
+          name: id,
+          groupLabel: null,
+          createdAt: new Date(),
+        })),
+        matches: [],
+      };
+      mockPrisma.tournament.findUnique
+        .mockResolvedValueOnce(tournament)
+        .mockResolvedValueOnce(tournament);
+      mockPrisma.tournamentMatch.create.mockResolvedValue({});
+      mockPrisma.tournamentMatch.deleteMany.mockResolvedValue({ count: 0 });
+      mockPrisma.tournamentTeam.updateMany.mockResolvedValue({ count: 4 });
+      mockPrisma.tournamentTeam.update.mockResolvedValue({});
+      mockPrisma.$transaction.mockResolvedValue([]);
+
+      await service.generateKnockoutBracket('tournament-1', 'admin-1');
+
+      expect(mockPrisma.tournamentTeam.update).toHaveBeenCalledTimes(4);
+      expect(mockPrisma.tournamentMatch.create).toHaveBeenCalledTimes(3);
+      expect(mockPrisma.tournamentMatch.create).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ phase: 'third_place' }),
+        }),
+      );
+    });
+
+    it('completa automáticamente los byes y avanza su ganador', async () => {
+      const competitionRules = defaultCompetitionRules(
+        TournamentFormat.knockout_only,
+      );
+      competitionRules.knockoutStage.includeThirdPlace = false;
+      const tournament = {
+        ...makeTournament({
+          format: TournamentFormat.knockout_only,
+          numberOfGroups: null,
+          competitionRules,
+        }),
+        teams: ['a', 'b', 'c'].map((id) => ({
+          id,
+          name: id,
+          groupLabel: null,
+          createdAt: new Date(),
+        })),
+        matches: [],
+      };
+      mockPrisma.tournament.findUnique.mockResolvedValueOnce(tournament);
+      mockPrisma.tournamentMatch.create.mockResolvedValue({});
+      mockPrisma.tournamentMatch.deleteMany.mockResolvedValue({ count: 0 });
+      mockPrisma.tournamentTeam.updateMany.mockResolvedValue({ count: 3 });
+      mockPrisma.tournamentTeam.update.mockResolvedValue({});
+      mockPrisma.$transaction.mockResolvedValue([]);
+      const advanceSpy = jest
+        .spyOn(service, 'advanceWinners')
+        .mockResolvedValue(tournament as never);
+
+      await service.generateKnockoutBracket('tournament-1', 'admin-1');
+
+      expect(mockPrisma.tournamentMatch.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            winnerId: expect.any(String),
+            status: MatchStatus.completed,
+          }),
+        }),
+      );
+      expect(advanceSpy).toHaveBeenCalledWith('tournament-1', 'admin-1');
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // updateMatchScore
   // ---------------------------------------------------------------------------
@@ -412,11 +594,15 @@ describe('TournamentsService', () => {
       const match = {
         id: 'match-1',
         tournamentId: 'tournament-1',
+        phase: 'group',
         teamAId: 'team-a',
         teamBId: 'team-b',
         winnerId: null,
         status: MatchStatus.scheduled,
         sets: [],
+        tournament: {
+          competitionRules: defaultCompetitionRules(TournamentFormat.groups_and_knockout),
+        },
       };
       const updatedMatch = {
         ...match,
@@ -436,7 +622,7 @@ describe('TournamentsService', () => {
         .mockResolvedValueOnce(updatedMatch);
       mockPrisma.$transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
         await fn({
-          tournamentSet: { upsert: jest.fn() },
+          tournamentSet: { upsert: jest.fn(), deleteMany: jest.fn() },
           tournamentMatch: { update: jest.fn() },
         });
       });

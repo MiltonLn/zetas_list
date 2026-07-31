@@ -25,6 +25,7 @@ describe('TournamentsController', () => {
     getGroupStandings: jest.fn(),
     assignGroups: jest.fn(),
     generateGroupMatches: jest.fn(),
+    getBracketPreview: jest.fn(),
     generateKnockoutBracket: jest.fn(),
     advanceWinners: jest.fn(),
     cancelMatch: jest.fn(),
@@ -144,6 +145,7 @@ describe('TournamentsController', () => {
       { seeding },
       user,
     );
+    controller.getBracketPreview('tournament-1');
     controller.advanceWinners('tournament-1', user);
     controller.cancelMatch('match-1', user);
     controller.updateMatchScore('match-1', matchDto, user);
@@ -153,6 +155,7 @@ describe('TournamentsController', () => {
       user.id,
       seeding,
     );
+    expect(service.getBracketPreview).toHaveBeenCalledWith('tournament-1');
     expect(service.advanceWinners).toHaveBeenCalledWith(
       'tournament-1',
       user.id,
