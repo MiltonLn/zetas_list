@@ -5,8 +5,8 @@
 .PHONY: help up up-build down restart logs logs-backend logs-frontend logs-db \
         restart-frontend restart-backend \
         shell-backend shell-db \
-        migrate migrate-deploy seed seed-players cleanup-players seed-tournaments cleanup-tournaments reset-db generate studio \
-        build lint test hooks clean nuke
+        migrate migrate-deploy seed seed-players cleanup-players seed-tournaments cleanup-tournaments reset-db generate gen-types studio \
+        build lint test test-cov check hooks clean nuke
 
 # Colores
 CYAN  := \033[0;36m
@@ -95,6 +95,9 @@ cleanup-tournaments: ## Elimina los torneos de prueba ([TEST] prefijo)
 generate: ## Regenera el cliente de Prisma
 	docker compose exec backend npx prisma generate
 
+gen-types: ## Regenera los enums compartidos del frontend desde schema.prisma
+	node scripts/generate-api-types.mjs
+
 studio: ## Abre Prisma Studio en http://localhost:5555
 	docker compose exec -it backend npx prisma studio --port 5555
 
@@ -122,6 +125,24 @@ lint: ## Linter en frontend y backend (dentro de Docker)
 test: ## Tests en frontend y backend (dentro de Docker)
 	docker compose exec frontend npm test
 	docker compose exec backend npm test
+
+test-cov: ## Tests con cobertura y thresholds (Node 20+, igual que CI)
+	npm --prefix backend run prisma:generate
+	npm --prefix backend run test:cov
+	npm --prefix frontend run test:cov
+
+check: ## Gate local completo equivalente a CI (requiere npm ci previo)
+	npm --prefix backend run prisma:generate
+	npm --prefix backend run typecheck
+	npm --prefix backend run lint -- --max-warnings=0
+	npm --prefix backend run test:cov
+	npm --prefix backend run build
+	npm --prefix frontend run gen:api-types:check
+	npm --prefix frontend run test:codegen
+	npm --prefix frontend run typecheck
+	npm --prefix frontend run lint -- --max-warnings=0
+	npm --prefix frontend run test:cov
+	npm --prefix frontend run build
 
 # ── Limpieza ──────────────────────────────────────────────
 

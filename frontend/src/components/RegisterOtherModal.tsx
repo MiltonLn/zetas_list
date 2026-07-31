@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Modal } from './Modal';
-import { gamesService } from '../services/games.service';
 import { showToast } from '../utils/toast';
 import { getApiError } from '../services/api';
+import { useGameMutations } from '../hooks/useGameQuery';
 
 interface AvailableMember {
   id: string;
@@ -17,26 +17,30 @@ interface Props {
   gameId: string;
   availableMembers: AvailableMember[];
   isUserRegistered: boolean;
-  isAdmin: boolean;
+  isGameManager: boolean;
   proxyLimitReached: boolean;
   maxProxyRegistrations: number;
   onSuccess: () => void;
 }
 
-export function RegisterOtherModal({ open, onClose, gameId, availableMembers, isUserRegistered, isAdmin, proxyLimitReached, maxProxyRegistrations, onSuccess }: Props) {
+export function RegisterOtherModal({ open, onClose, gameId, availableMembers, isUserRegistered, isGameManager, proxyLimitReached, maxProxyRegistrations, onSuccess }: Props) {
   const [tab, setTab] = useState<'member' | 'guest'>('member');
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState('');
   const [error, setError] = useState('');
   const [guestName, setGuestName] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const mutations = useGameMutations(gameId);
+  const loading = mutations.registerProxy.isPending
+    ? mutations.registerProxy.variables ?? ''
+    : mutations.registerGuest.isPending
+      ? 'guest'
+      : '';
 
   useEffect(() => {
     if (open) {
       setSearch('');
       setGuestName('');
       setError('');
-      setLoading('');
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [open, tab]);
@@ -52,10 +56,9 @@ export function RegisterOtherModal({ open, onClose, gameId, availableMembers, is
   });
 
   async function handleSelectMember(memberId: string) {
-    setLoading(memberId);
     setError('');
     try {
-      await gamesService.registerProxy(gameId, memberId);
+      await mutations.registerProxy.mutateAsync(memberId);
       const member = availableMembers.find((m) => m.id === memberId);
       showToast(`${member?.name || 'Jugador'} fue anotado correctamente`);
       setSearch('');
@@ -63,25 +66,20 @@ export function RegisterOtherModal({ open, onClose, gameId, availableMembers, is
       onClose();
     } catch (e) {
       setError(getApiError(e));
-    } finally {
-      setLoading('');
     }
   }
 
   async function handleInviteGuest() {
     if (!guestName.trim()) return;
-    setLoading('guest');
     setError('');
     try {
-      await gamesService.registerGuest(gameId, guestName.trim());
+      await mutations.registerGuest.mutateAsync(guestName.trim());
       showToast(`Invitado "${guestName.trim()}" fue anotado correctamente`);
       setGuestName('');
       onSuccess();
       onClose();
     } catch (e) {
       setError(getApiError(e));
-    } finally {
-      setLoading('');
     }
   }
 
@@ -122,7 +120,7 @@ export function RegisterOtherModal({ open, onClose, gameId, availableMembers, is
 
       {tab === 'member' && (
         <div>
-          {!isAdmin && !isUserRegistered ? (
+          {!isGameManager && !isUserRegistered ? (
             <div style={{
               background: '#e3a00811', border: '1px solid #e3a00833',
               borderRadius: 10, padding: '20px 16px', textAlign: 'center',

@@ -1,4 +1,5 @@
-import { Modalidad } from '@prisma/client';
+import { GameStatus, Modalidad } from '@prisma/client';
+import { env } from '../config/env';
 
 const COLOMBIA_OFFSET_MIN = -5 * 60;
 
@@ -20,11 +21,22 @@ export const DEFAULT_GUEST_CUTOFF = '13:30';
 export const DEFAULT_MAX_PROXY = 1;
 export const DEFAULT_REGISTRATION_OPEN_TIME = '10:00';
 
+/**
+ * A game is "active" while people can still be added to or moved around its
+ * lists. Anything that looks for the current game must use this, so the notion
+ * of active stays in one place.
+ */
+export const ACTIVE_GAME_STATUSES = [
+  GameStatus.registration_open,
+  GameStatus.in_progress,
+] as const;
+
 export const REGISTRATION_INCLUDE = {
   user: {
     select: {
       id: true,
       name: true,
+      alias: true,
       username: true,
       phone: true,
       whatsappLid: true,
@@ -37,7 +49,7 @@ export const REGISTRATION_INCLUDE = {
     },
   },
   registeredBy: {
-    select: { id: true, name: true, username: true, phone: true, whatsappLid: true },
+    select: { id: true, name: true, alias: true, username: true, phone: true, whatsappLid: true },
   },
 } as const;
 
@@ -62,12 +74,21 @@ export function buildMention(
   return { jid, tag: `@${num}` };
 }
 
-export function displayName(r: { isGuest: boolean; guestName?: string | null; user?: { name: string } | null; registeredBy?: { name: string } | null }): string {
+export function userDisplayName(user: { name: string; alias?: string | null }): string {
+  return user.alias?.trim() || user.name;
+}
+
+export function displayName(r: {
+  isGuest: boolean;
+  guestName?: string | null;
+  user?: { name: string; alias?: string | null } | null;
+  registeredBy?: { name: string; alias?: string | null } | null;
+}): string {
   if (r.isGuest) {
-    const inviter = r.registeredBy?.name || '?';
+    const inviter = r.registeredBy ? userDisplayName(r.registeredBy) : '?';
     return `${r.guestName || 'Invitado'} (inv. de ${inviter})`;
   }
-  return r.user?.name || 'Desconocido';
+  return r.user ? userDisplayName(r.user) : 'Desconocido';
 }
 
 export function buildCounts(game: { maxMainSpots: number; registrations: Array<{ isWaitingList: boolean }> }): string {
@@ -92,14 +113,11 @@ export function buildTitle(modalidad: Modalidad, gameDate: string, startTime: st
 }
 
 export function buildGameLink(gameId: string): string {
-  const appUrl = process.env.APP_URL;
-  if (!appUrl) return '';
-  return `\n🔗 ${appUrl}/game/${gameId}`;
+  return `\n🔗 ${env.APP_URL}/game/${gameId}`;
 }
 
 export function buildRegistrationOpenMessage(game: { id: string; title: string }): string {
-  const appUrl = process.env.APP_URL || '';
-  const gameUrl = `${appUrl}/game/${game.id}`;
+  const gameUrl = `${env.APP_URL}/game/${game.id}`;
   return (
     `🏐 *${game.title}*\n\n` +
     `¡La inscripción está abierta! 🎉\n\n` +

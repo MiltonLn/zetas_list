@@ -1,28 +1,23 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { Spinner } from '../components/Spinner';
-import { financesService, type DashboardData, type FinanceTransaction } from '../services/finances.service';
+import { FinanceSummary } from '../components/FinanceSummary';
+import { Pagination } from '../components/Pagination';
+import { useFinancesDashboardQuery, useTransactionsQuery } from '../hooks/useFinancesQuery';
+import type { FinanceTransaction } from '../services/finances.service';
 import { getApiError } from '../services/api';
+import { formatCurrency, formatDate, formatSignedCurrency } from '../utils/currency';
 
 const PAGE_SIZE = 10;
-
-function Pagination({ page, totalPages, onPageChange }: { page: number; totalPages: number; onPageChange: (p: number) => void }) {
-  if (totalPages <= 1) return null;
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '12px 0' }}>
-      <button className="btn" style={{ fontSize: 12, padding: '4px 10px' }} disabled={page === 1} onClick={() => onPageChange(page - 1)}>← Anterior</button>
-      <span style={{ fontSize: 12, opacity: 0.7 }}>Pág. {page} de {totalPages}</span>
-      <button className="btn" style={{ fontSize: 12, padding: '4px 10px' }} disabled={page === totalPages} onClick={() => onPageChange(page + 1)}>Siguiente →</button>
-    </div>
-  );
-}
+const EMPTY_TRANSACTIONS: FinanceTransaction[] = [];
 
 export function FinancesDashboardPage() {
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [year, setYear] = useState(new Date().getFullYear());
+  const dashboardQuery = useFinancesDashboardQuery(year);
+  const transactionsQuery = useTransactionsQuery(year);
+  const dashboard = dashboardQuery.data;
+  const transactions = transactionsQuery.data ?? EMPTY_TRANSACTIONS;
+  const error = dashboardQuery.error ?? transactionsQuery.error;
   const [txFilter, setTxFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [txSortCol, setTxSortCol] = useState<'date' | 'description' | 'amount'>('date');
   const [txSortDir, setTxSortDir] = useState<'asc' | 'desc'>('desc');
@@ -31,27 +26,6 @@ export function FinancesDashboardPage() {
   const [fineSortCol, setFineSortCol] = useState<'name' | 'amount' | 'date'>('date');
   const [fineSortDir, setFineSortDir] = useState<'asc' | 'desc'>('asc');
   const [finePage, setFinePage] = useState(1);
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const [dashRes, txRes] = await Promise.all([
-        financesService.getDashboard(year),
-        financesService.getTransactions(year),
-      ]);
-      setDashboard(dashRes.data);
-      setTransactions(txRes.data);
-    } catch (e) {
-      setError(getApiError(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [year]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
 
   useEffect(() => { setTxPage(1); }, [txFilter, txSortCol, txSortDir]);
   useEffect(() => { setFinePage(1); }, [fineSortCol, fineSortDir]);
@@ -88,9 +62,6 @@ export function FinancesDashboardPage() {
   const fineTotalPages = Math.max(1, Math.ceil(sortedFines.length / PAGE_SIZE));
   const paginatedFines = sortedFines.slice((finePage - 1) * PAGE_SIZE, finePage * PAGE_SIZE);
 
-  const formatCurrency = (amount: number) => `$${amount.toLocaleString('es-CO')}`;
-  const formatDate = (date: string) => new Date(date).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
-
   const handleTxSort = (col: typeof txSortCol) => {
     if (txSortCol === col) setTxSortDir((d) => d === 'asc' ? 'desc' : 'asc');
     else { setTxSortCol(col); setTxSortDir(col === 'date' ? 'desc' : 'asc'); }
@@ -108,14 +79,14 @@ export function FinancesDashboardPage() {
     color: active ? '#6e8efb' : undefined,
   });
 
-  if (loading) return <Spinner />;
+  if (dashboardQuery.isPending || transactionsQuery.isPending) return <Spinner />;
 
   if (error) {
     return (
       <>
         <PageHeader title="Finanzas" />
         <div className="page-wrapper" style={{ maxWidth: 900 }}>
-          <div className="card" style={{ padding: 20, textAlign: 'center', color: '#ef5350' }}>{error}</div>
+          <div className="card" style={{ padding: 20, textAlign: 'center', color: '#ef5350' }}>{getApiError(error)}</div>
         </div>
       </>
     );
@@ -133,32 +104,14 @@ export function FinancesDashboardPage() {
           </select>
         </div>
 
-        {/* Balance card */}
+        {/* Summary */}
         {dashboard && (
-          <div className="card" style={{ padding: 24, marginBottom: 24, textAlign: 'center' }}>
-            <div style={{ fontSize: 14, opacity: 0.7, marginBottom: 4 }}>DINERO DISPONIBLE</div>
-            <div style={{ fontSize: 32, fontWeight: 700, color: dashboard.balance >= 0 ? '#66bb6a' : '#ef5350' }}>
-              {formatCurrency(dashboard.balance)}
-            </div>
-          </div>
-        )}
-
-        {/* Summary row */}
-        {dashboard && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
-            <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-              <div style={{ fontSize: 12, opacity: 0.7 }}>Gastos</div>
-              <div style={{ fontSize: 20, fontWeight: 600, color: '#ef5350' }}>{formatCurrency(dashboard.totalExpenses)}</div>
-            </div>
-            <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-              <div style={{ fontSize: 12, opacity: 0.7 }}>Entradas</div>
-              <div style={{ fontSize: 20, fontWeight: 600, color: '#66bb6a' }}>{formatCurrency(dashboard.totalIncome)}</div>
-            </div>
-            <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-              <div style={{ fontSize: 12, opacity: 0.7 }}>Multas Pagadas</div>
-              <div style={{ fontSize: 20, fontWeight: 600, color: '#42a5f5' }}>{formatCurrency(dashboard.totalFinesPaid)}</div>
-            </div>
-          </div>
+          <FinanceSummary
+            balance={dashboard.balance}
+            totalExpenses={dashboard.totalExpenses}
+            totalIncome={dashboard.totalIncome}
+            totalFinesPaid={dashboard.totalFinesPaid}
+          />
         )}
 
         {/* Pending fines section */}
@@ -231,7 +184,7 @@ export function FinancesDashboardPage() {
                         <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{formatDate(tx.date)}</td>
                         <td style={{ padding: '8px 12px' }}>{tx.description}</td>
                         <td style={{ padding: '8px 12px', textAlign: 'right', color: tx.type === 'income' ? '#66bb6a' : '#ef5350', fontWeight: 500 }}>
-                          {tx.type === 'expense' ? '-' : '+'}{formatCurrency(tx.amount)}
+                          {formatSignedCurrency(tx.amount, tx.type)}
                         </td>
                       </tr>
                     ))}
@@ -246,3 +199,6 @@ export function FinancesDashboardPage() {
     </>
   );
 }
+
+// Default export as well so App.tsx can lazy-load it like every other page.
+export default FinancesDashboardPage;

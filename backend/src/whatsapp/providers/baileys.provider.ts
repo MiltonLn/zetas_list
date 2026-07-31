@@ -11,11 +11,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { usePrismaAuthState } from './prisma-auth-state';
 import {
   extractPhoneFromJid,
+  isLidJid,
   isPhoneJid,
   normalizeBotMentions,
   resolveNonBotMentions,
   phoneToJid,
 } from '../utils/jid-utils';
+import { env, isProduction } from '../../config/env';
+import { UsersService } from '../../users/users.service';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -33,7 +36,7 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
   // Dedicated, quiet logger for Baileys internals. Override with WA_LOG_LEVEL
   // (e.g. 'debug') only when troubleshooting the WhatsApp connection itself.
   private readonly baileysLogger = pino({
-    level: process.env.WA_LOG_LEVEL || 'warn',
+    level: env.WA_LOG_LEVEL,
   });
   private sock: any = null;
   private connected = false;
@@ -49,8 +52,11 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
   private connectInProgress = false;
   private lidMapBuilding = false;
 
-  constructor(private readonly prisma: PrismaService) {
-    this.groupId = process.env.WHATSAPP_GROUP_ID || '';
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly users: UsersService,
+  ) {
+    this.groupId = env.WHATSAPP_GROUP_ID;
   }
 
   setMessageHandler(handler: MessageHandlerService) {
@@ -117,13 +123,29 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
     try {
       const baileys = await import('@whiskeysockets/baileys' as any);
       const makeWASocket = baileys.default || baileys.makeWASocket;
-      const { DisconnectReason } = baileys;
+      const { DisconnectReason, fetchLatestBaileysVersion } = baileys;
 
       const { state, saveCreds } = await usePrismaAuthState(this.prisma);
+      const { version, isLatest, error: versionError } = await fetchLatestBaileysVersion({
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (versionError) {
+        this.logger.warn(
+          `No se pudo consultar la versión más reciente de WhatsApp; usando ${version.join('.')}`,
+        );
+      } else {
+        this.logger.log(
+          `Versión de WhatsApp seleccionada: ${version.join('.')} (actual: ${isLatest})`,
+        );
+      }
 
       this.sock = makeWASocket({
         auth: state,
-        printQRInTerminal: process.env.NODE_ENV !== 'production',
+        // WhatsApp periodically rejects stale protocol versions with code 405
+        // before emitting a QR. Resolve it at connection time instead of relying
+        // on the version bundled when Baileys was published.
+        version,
+        printQRInTerminal: !isProduction,
         // Baileys' default logger dumps Signal session internals (including
         // private keys). We pin it to warn to keep our logs clean and avoid
         // leaking key material.
@@ -229,7 +251,18 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
     if (!this.groupId || !isGroup || from !== this.groupId) return;
 
     const participant = msg.key.participant || '';
-    const phone = await this.resolvePhone(participant);
+    let phone = await this.resolvePhone(participant);
+
+    // WhatsApp may hide the phone number for accounts using usernames and send
+    // only their stable LID. Use the mapping already persisted on our user
+    // record instead of discarding commands from those accounts.
+    if (!phone && isLidJid(participant)) {
+      const user = await this.users.findByPhoneOrLid(participant);
+      phone = user?.phone ?? null;
+      if (phone) {
+        this.logger.log('[MSG] Remitente resuelto mediante LID almacenado');
+      }
+    }
 
     if (!phone) {
       this.logger.warn(`[MSG] No se pudo resolver teléfono para participant=${participant}`);

@@ -1,8 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
+import {
+  AccountInactiveException,
+  AccountSuspendedException,
+  ExpiredTokenException,
+  InvalidCredentialsException,
+  WrongCurrentPasswordException,
+} from './exceptions';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 
@@ -69,32 +75,32 @@ describe('AuthService', () => {
   // ─── login ─────────────────────────────────────────────────────────────────
 
   describe('login', () => {
-    it('lanza UnauthorizedException si el usuario no existe', async () => {
+    it('lanza InvalidCredentialsException si el usuario no existe', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
       await expect(service.login({ username: 'noone', password: 'pass' })).rejects.toThrow(
-        UnauthorizedException,
+        InvalidCredentialsException,
       );
     });
 
-    it('lanza ForbiddenException si la cuenta está baneada', async () => {
+    it('lanza AccountSuspendedException si la cuenta está baneada', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(makeDbUser({ status: 'banned', banReason: 'Conducta' }));
       await expect(service.login({ username: 'testuser', password: 'any' })).rejects.toThrow(
-        ForbiddenException,
+        AccountSuspendedException,
       );
     });
 
-    it('lanza ForbiddenException si la cuenta está inactiva', async () => {
+    it('lanza AccountInactiveException si la cuenta está inactiva', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(makeDbUser({ status: 'inactive' }));
       await expect(service.login({ username: 'testuser', password: 'any' })).rejects.toThrow(
-        ForbiddenException,
+        AccountInactiveException,
       );
     });
 
-    it('lanza UnauthorizedException si la contraseña es incorrecta', async () => {
+    it('lanza InvalidCredentialsException si la contraseña es incorrecta', async () => {
       const hash = await hashPassword('correct');
       mockPrisma.user.findUnique.mockResolvedValue(makeDbUser({ passwordHash: hash }));
       await expect(service.login({ username: 'testuser', password: 'wrong' })).rejects.toThrow(
-        UnauthorizedException,
+        InvalidCredentialsException,
       );
     });
 
@@ -134,21 +140,23 @@ describe('AuthService', () => {
   // ─── refresh ───────────────────────────────────────────────────────────────
 
   describe('refresh', () => {
-    it('lanza UnauthorizedException si el token no es verificable', async () => {
+    it('lanza ExpiredTokenException si el token no es verificable', async () => {
       mockJwt.verify.mockImplementation(() => { throw new Error('invalid'); });
-      await expect(service.refresh('bad-token')).rejects.toThrow(UnauthorizedException);
+      await expect(service.refresh('bad-token')).rejects.toThrow(ExpiredTokenException);
     });
 
-    it('lanza UnauthorizedException si el usuario no existe', async () => {
+    it('lanza ExpiredTokenException si el usuario no existe', async () => {
       mockJwt.verify.mockReturnValue({ sub: 'user-1' });
       mockPrisma.user.findUnique.mockResolvedValue(null);
-      await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
+      // InvalidTokenException is raised inside the try block and re-mapped by
+      // the catch, so callers always see the same generic failure.
+      await expect(service.refresh('token')).rejects.toThrow(ExpiredTokenException);
     });
 
-    it('lanza UnauthorizedException si el usuario no está activo', async () => {
+    it('lanza ExpiredTokenException si el usuario no está activo', async () => {
       mockJwt.verify.mockReturnValue({ sub: 'user-1' });
       mockPrisma.user.findUnique.mockResolvedValue(makeDbUser({ status: 'banned' }));
-      await expect(service.refresh('token')).rejects.toThrow(UnauthorizedException);
+      await expect(service.refresh('token')).rejects.toThrow(ExpiredTokenException);
     });
 
     it('devuelve nuevos accessToken y refreshToken cuando el token es válido', async () => {
@@ -165,13 +173,13 @@ describe('AuthService', () => {
 
 
   describe('changePassword', () => {
-    it('lanza UnauthorizedException si la contraseña actual es incorrecta', async () => {
+    it('lanza WrongCurrentPasswordException si la contraseña actual es incorrecta', async () => {
       const hash = await hashPassword('correct');
       mockPrisma.user.findUniqueOrThrow.mockResolvedValue(makeDbUser({ passwordHash: hash }));
 
       await expect(
         service.changePassword('user-1', { currentPassword: 'wrong', newPassword: 'newpass123' }),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toThrow(WrongCurrentPasswordException);
     });
 
     it('actualiza el hash y limpia mustChangePassword', async () => {

@@ -13,7 +13,12 @@ import { GamesService } from './games.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { GameEventsService } from './game-events.service';
-import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { GameQueryService } from './game-query.service';
+import { ConfirmationService } from './confirmation.service';
+import { WaitlistService } from './waitlist.service';
+import { GameLifecycleService } from './game-lifecycle.service';
+import { RegistrationService } from './registration.service';
+import { notificationHarness } from './testing/notifier-harness';
 import { FinancesService } from '../finances/finances.service';
 import { GameNotOpenException, NoPendingConfirmationException } from './exceptions';
 import { InMemoryPrisma, makeGameData } from './testing/in-memory-prisma';
@@ -50,7 +55,7 @@ async function setup(opts: { members: number; maxMainSpots?: number; gameDate?: 
     }),
   });
 
-  const whatsapp = { sendToGroup: jest.fn().mockResolvedValue(undefined), sendMessage: jest.fn().mockResolvedValue(undefined) };
+  const whatsapp = { sendToGroup: jest.fn().mockResolvedValue(true), sendMessage: jest.fn().mockResolvedValue(undefined) };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const events = { emit: jest.fn() };
   const finances = {
@@ -60,16 +65,25 @@ async function setup(opts: { members: number; maxMainSpots?: number; gameDate?: 
     createGameIncome: jest.fn().mockResolvedValue(undefined),
   };
 
+  const harness = notificationHarness(whatsapp);
   const module: TestingModule = await Test.createTestingModule({
+    imports: harness.imports,
     providers: [
       GamesService,
+      GameQueryService,
+      ConfirmationService,
+      WaitlistService,
+      GameLifecycleService,
+      RegistrationService,
       { provide: PrismaService, useValue: prisma },
       { provide: AuditService, useValue: audit },
       { provide: GameEventsService, useValue: events },
-      { provide: WhatsappService, useValue: whatsapp },
       { provide: FinancesService, useValue: finances },
+      ...harness.providers,
     ],
   }).compile();
+  // Registers the @OnEvent handlers.
+  await module.init();
 
   return { service: module.get(GamesService), prisma, members, gameId: game.id as string, whatsapp, audit, finances };
 }
@@ -132,6 +146,34 @@ describe('GamesService — escenarios reales (stateful)', () => {
       expect(promoted).toBeDefined();
       expect(promoted?.pendingConfirmation).toBe(true);
       expect(promoted?.isWaitingList).toBe(false);
+    });
+  });
+
+  describe('Escenario 1b: invitado desborda a espera', () => {
+    it('conserva mainListHasBeenFull al registrar el invitado', async () => {
+      const { service, prisma, members, gameId } = await setup({
+        members: 1,
+        maxMainSpots: 1,
+      });
+
+      await service.register(gameId, members[0].id, members[0].id, {
+        silent: true,
+      });
+      await service.registerGuest(gameId, 'Invitado en espera', members[0].id, {
+        silent: true,
+      });
+
+      const { main, wait } = lists(prisma, gameId);
+      expect(main).toHaveLength(1);
+      expect(wait).toHaveLength(1);
+      expect(wait[0]).toEqual(
+        expect.objectContaining({
+          isGuest: true,
+          guestName: 'Invitado en espera',
+          isWaitingList: true,
+        }),
+      );
+      expect(prisma.getGame(gameId)?.mainListHasBeenFull).toBe(true);
     });
   });
 
@@ -535,6 +577,101 @@ describe('GamesService — escenarios reales (stateful)', () => {
       // Neto positivo (2 * 2000, vigilante 0) -> ingreso.
       expect(finances.createGameIncome).toHaveBeenCalled();
     });
+
+    it('incluye en el reporte y el ingreso a quien asiste y paga desde la lista de espera', async () => {
+      const { service, prisma, members, gameId, finances } = await setup({
+        members: 5,
+        maxMainSpots: 4,
+      });
+      prisma.getGame(gameId)!.vigilante = 0;
+
+      for (const member of members) {
+        await service.register(gameId, member.id, member.id, { silent: true });
+      }
+
+      const { main, wait } = lists(prisma, gameId);
+      for (const registration of [...main, wait[0]]) {
+        await service.updateRegistration(
+          registration.id as string,
+          { attended: true, paid: true },
+          ADMIN_ID,
+          gameId,
+        );
+      }
+
+      const { report } = await service.complete(gameId, ADMIN_ID, { silent: true });
+
+      expect(report).toContain('Asistentes:* 5/5');
+      expect(report).toContain('Recaudado:* $10.000');
+      expect(finances.createGameIncome).toHaveBeenCalledWith(
+        gameId,
+        10_000,
+        expect.any(Date),
+        ADMIN_ID,
+      );
+      expect(finances.createGameDebts).not.toHaveBeenCalled();
+      expect(finances.createGameFines).not.toHaveBeenCalled();
+    });
+
+    it('envía a finanzas las faltas de invitados de principal y espera', async () => {
+      const { service, prisma, members, gameId, finances } = await setup({
+        members: 1,
+        maxMainSpots: 2,
+      });
+      const [responsible] = members;
+
+      await service.register(gameId, responsible.id, responsible.id, { silent: true });
+      await service.updateRegistration(
+        lists(prisma, gameId).main[0].id as string,
+        { attended: true, paid: true },
+        ADMIN_ID,
+        gameId,
+      );
+
+      const mainGuest = await service.registerGuest(
+        gameId,
+        'Invitado principal',
+        responsible.id,
+        { silent: true },
+      );
+      await service.promote(gameId, mainGuest.id, ADMIN_ID);
+
+      const waitingGuest = await service.registerGuest(
+        gameId,
+        'Invitado espera',
+        responsible.id,
+        { silent: true },
+      );
+      await service.updateRegistration(
+        waitingGuest.id,
+        { attended: true, paid: false },
+        ADMIN_ID,
+        gameId,
+      );
+
+      await service.complete(gameId, ADMIN_ID, { silent: true });
+
+      expect(finances.createGameFines).toHaveBeenCalledWith(
+        gameId,
+        [expect.objectContaining({
+          id: mainGuest.id,
+          registeredById: responsible.id,
+          isGuest: true,
+        })],
+        5000,
+        ADMIN_ID,
+      );
+      expect(finances.createGameDebts).toHaveBeenCalledWith(
+        gameId,
+        [expect.objectContaining({
+          id: waitingGuest.id,
+          registeredById: responsible.id,
+          isGuest: true,
+        })],
+        2000,
+        ADMIN_ID,
+      );
+    });
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -773,6 +910,120 @@ describe('GamesService — escenarios reales (stateful)', () => {
       expect(whatsapp.sendToGroup).toHaveBeenCalledWith(
         expect.stringContaining('Nadie en lista de espera confirmó'),
       );
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  describe('Escenario 8: múltiples cupos libres → se llenan todos simultáneamente', () => {
+    it('al llegar el corte con 3 cupos libres y 5 invitados en espera, sube a los 3 primeros a la vez', async () => {
+      // maxMainSpots=6, 3 miembros en principal → 3 cupos libres.
+      // 5 invitados en espera (antes del corte siempre van a espera).
+      const { service, prisma, members, gameId, whatsapp } = await setup({ members: 4, maxMainSpots: 6 });
+
+      // 3 miembros se anotan (dejan 3 cupos libres).
+      for (const m of members.slice(0, 3)) {
+        await service.register(gameId, m.id, m.id, { silent: true });
+      }
+
+      // 5 invitados se anotan antes del corte → todos a espera.
+      for (let i = 0; i < 5; i++) {
+        await service.registerGuest(gameId, `Invitado ${i + 1}`, members[0].id, { silent: true });
+      }
+
+      let { main, wait } = lists(prisma, gameId);
+      expect(main).toHaveLength(3);
+      expect(wait).toHaveLength(5);
+
+      // Pasa el corte: simulamos poniendo la fecha en el pasado.
+      const g = prisma.getGame(gameId)!;
+      g.gameDate = new Date('2020-01-01');
+
+      // Llamada equivalente a la que hace el scheduler al llegar el corte.
+      await service.autoPromoteIfNeeded(gameId, { skipMainListFullCheck: true });
+
+      ({ main, wait } = lists(prisma, gameId));
+      // Los 3 cupos libres deben llenarse con los 3 primeros invitados.
+      expect(main).toHaveLength(6);
+      expect(wait).toHaveLength(2);
+
+      // Los 3 promovidos deben estar pendientes de confirmación.
+      const pendingInMain = main.filter((r) => r.pendingConfirmation);
+      expect(pendingInMain).toHaveLength(3);
+
+      // Todos son invitados (los únicos en espera antes del corte).
+      expect(pendingInMain.every((r) => r.isGuest)).toBe(true);
+
+      // Un solo mensaje consolidado con los 3 @mentions.
+      expect(whatsapp.sendToGroup).toHaveBeenCalledTimes(1);
+      expect(whatsapp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('3 cupos disponibles'),
+        expect.anything(),
+      );
+    });
+
+    it('si hay exactamente 1 cupo libre, sigue usando el mensaje individual (no el consolidado)', async () => {
+      const { service, prisma, members, gameId, whatsapp } = await setup({ members: 6, maxMainSpots: 4 });
+
+      for (const m of members) {
+        await service.register(gameId, m.id, m.id, { silent: true });
+      }
+
+      const leaving = lists(prisma, gameId).main.find((r) => r.position === 1)!;
+      await service.removeRegistration(gameId, leaving.userId as string, leaving.userId as string, Role.member, { silent: true });
+
+      // Solo 1 cupo libre → mensaje individual.
+      expect(whatsapp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('fue promovido a la'),
+        expect.anything(),
+      );
+    });
+
+    it('con múltiples cupos libres y menos candidatos que cupos, sube solo a los que hay', async () => {
+      const { service, prisma, members, gameId } = await setup({ members: 4, maxMainSpots: 6 });
+
+      // 3 miembros en principal (3 cupos libres).
+      for (const m of members.slice(0, 3)) {
+        await service.register(gameId, m.id, m.id, { silent: true });
+      }
+
+      // Solo 2 invitados en espera (menos que los cupos disponibles).
+      await service.registerGuest(gameId, 'Invitado A', members[0].id, { silent: true });
+      await service.registerGuest(gameId, 'Invitado B', members[0].id, { silent: true });
+
+      // Pasa el corte.
+      const g = prisma.getGame(gameId)!;
+      g.gameDate = new Date('2020-01-01');
+
+      await service.autoPromoteIfNeeded(gameId, { skipMainListFullCheck: true });
+
+      const { main, wait } = lists(prisma, gameId);
+      // Sube a los 2 invitados; queda 1 cupo libre.
+      expect(main).toHaveLength(5);
+      expect(wait).toHaveLength(0);
+      expect(main.filter((r) => r.pendingConfirmation)).toHaveLength(2);
+    });
+
+    it('si la lista principal ya está llena al llegar el corte, nadie sube', async () => {
+      const { service, prisma, members, gameId } = await setup({ members: 6, maxMainSpots: 4 });
+
+      for (const m of members) {
+        await service.register(gameId, m.id, m.id, { silent: true });
+      }
+
+      // Pasa el corte con la lista principal llena (4/4).
+      const g = prisma.getGame(gameId)!;
+      g.gameDate = new Date('2020-01-01');
+
+      const { main: beforeMain, wait: beforeWait } = lists(prisma, gameId);
+      expect(beforeMain).toHaveLength(4);
+      expect(beforeWait).toHaveLength(2);
+
+      await service.autoPromoteIfNeeded(gameId, { skipMainListFullCheck: true });
+
+      const { main, wait } = lists(prisma, gameId);
+      expect(main).toHaveLength(4); // sin cambios
+      expect(wait).toHaveLength(2);
+      expect(main.filter((r) => r.pendingConfirmation)).toHaveLength(0);
     });
   });
 });

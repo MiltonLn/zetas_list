@@ -1,8 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { Role } from '@prisma/client';
 import { UsersService } from './users.service';
+import {
+  PhoneTakenException,
+  ShirtNumberTakenException,
+  UsernameTakenException,
+} from './exceptions';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -69,9 +73,9 @@ describe('UsersService', () => {
     };
     const actorId = 'admin-1';
 
-    it('lanza ConflictException si el username ya existe', async () => {
+    it('lanza UsernameTakenException si el username ya existe', async () => {
       mockPrisma.user.findFirst.mockResolvedValue({ id: 'existing', username: 'jperez', phone: '999' });
-      await expect(service.create(baseDto as any, actorId)).rejects.toThrow(ConflictException);
+      await expect(service.create(baseDto as any, actorId)).rejects.toThrow(UsernameTakenException);
     });
 
     it('el mensaje de conflicto de username es específico', async () => {
@@ -79,9 +83,9 @@ describe('UsersService', () => {
       await expect(service.create(baseDto as any, actorId)).rejects.toThrow('nombre de usuario');
     });
 
-    it('lanza ConflictException si el teléfono ya existe', async () => {
+    it('lanza PhoneTakenException si el teléfono ya existe', async () => {
       mockPrisma.user.findFirst.mockResolvedValue({ id: 'x', username: 'otherone', phone: '3001234567' });
-      await expect(service.create(baseDto as any, actorId)).rejects.toThrow(ConflictException);
+      await expect(service.create(baseDto as any, actorId)).rejects.toThrow(PhoneTakenException);
     });
 
     it('el mensaje de conflicto de teléfono es específico', async () => {
@@ -225,13 +229,21 @@ describe('UsersService', () => {
       expect(result.name).toBe('Nuevo Nombre');
     });
 
-    it('permite a un miembro editar su propio perfil', async () => {
+    it('permite a un miembro editar su propio perfil (alias, bio, etc.)', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(makeCreatedUser({ id: 'user-1' }));
-      mockPrisma.user.update.mockResolvedValue(makeCreatedUser({ name: 'Mi Nombre' }));
+      mockPrisma.user.update.mockResolvedValue(makeCreatedUser({ bio: 'Hola' }));
 
       await expect(
-        service.update('user-1', { name: 'Mi Nombre' } as any, 'user-1', Role.member),
+        service.update('user-1', { bio: 'Hola' } as any, 'user-1', Role.member),
       ).resolves.toBeDefined();
+    });
+
+    it('impide a un miembro cambiar su nombre real', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(makeCreatedUser({ id: 'user-1' }));
+
+      await expect(
+        service.update('user-1', { name: 'Nuevo Nombre' } as any, 'user-1', Role.member),
+      ).rejects.toThrow('Solo un administrador puede cambiar el nombre real.');
     });
 
     it('llama a audit.log con "user_updated"', async () => {
@@ -265,7 +277,7 @@ describe('UsersService', () => {
 
       await expect(
         service.update('user-1', { shirtNumber: 7 } as any, 'user-1', Role.member),
-      ).rejects.toThrow(ConflictException);
+      ).rejects.toThrow(ShirtNumberTakenException);
     });
   });
 
@@ -367,6 +379,108 @@ describe('UsersService', () => {
       expect(mockAudit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'user_updated' }),
       );
+    });
+  });
+
+  // ─── importFromWhatsapp ────────────────────────────────────────────────────
+
+  describe('importFromWhatsapp', () => {
+    const actorId = 'admin-1';
+
+    it('crea un miembro por cada participante nuevo con contraseña por defecto', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockPrisma.user.create.mockImplementation(({ data }: any) =>
+        Promise.resolve({
+          id: `user-${data.phone}`,
+          name: data.name,
+          phone: data.phone,
+          username: data.username,
+          role: data.role,
+        }),
+      );
+
+      const result = await service.importFromWhatsapp(
+        [{ phone: '3001111111', lid: 'lid-1' }, { phone: '3002222222' }],
+        actorId,
+      );
+
+      expect(result.created).toBe(2);
+      expect(result.createdUsers).toEqual([
+        { phone: '3001111111', name: '3001111111' },
+        { phone: '3002222222', name: '3002222222' },
+      ]);
+
+      const firstCall = mockPrisma.user.create.mock.calls[0][0];
+      expect(firstCall.data).toMatchObject({
+        username: '3001111111',
+        phone: '3001111111',
+        role: Role.member,
+        mustChangePassword: true,
+        whatsappLid: 'lid-1',
+      });
+      await expect(bcrypt.compare('zetas123', firstCall.data.passwordHash)).resolves.toBe(true);
+    });
+
+    it('audita cada usuario creado indicando el origen', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(null);
+      mockPrisma.user.create.mockResolvedValue({
+        id: 'user-1',
+        name: '3001111111',
+        phone: '3001111111',
+        username: '3001111111',
+        role: Role.member,
+      });
+
+      await service.importFromWhatsapp([{ phone: '3001111111' }], actorId);
+
+      expect(mockAudit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorId,
+          targetUserId: 'user-1',
+          action: 'user_created',
+          details: expect.objectContaining({ source: 'whatsapp_import' }),
+        }),
+      );
+    });
+
+    it('omite participantes ya registrados y rellena el LID faltante', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue({
+        id: 'existing-1',
+        phone: '3001111111',
+        whatsappLid: null,
+      });
+      mockPrisma.user.update.mockResolvedValue({});
+
+      const result = await service.importFromWhatsapp(
+        [{ phone: '3001111111', lid: 'lid-1' }],
+        actorId,
+      );
+
+      expect(result).toMatchObject({ created: 0, skipped: 1 });
+      expect(mockPrisma.user.create).not.toHaveBeenCalled();
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'existing-1' },
+        data: { whatsappLid: 'lid-1' },
+      });
+    });
+
+    it('no toca el LID de un usuario que ya lo tiene', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue({
+        id: 'existing-1',
+        phone: '3001111111',
+        whatsappLid: 'lid-viejo',
+      });
+
+      await service.importFromWhatsapp([{ phone: '3001111111', lid: 'lid-nuevo' }], actorId);
+
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('cuenta como no resueltos los participantes sin teléfono', async () => {
+      const result = await service.importFromWhatsapp([{ phone: null, lid: 'lid-1' }], actorId);
+
+      expect(result).toMatchObject({ created: 0, skipped: 0, unresolved: 1 });
+      expect(mockPrisma.user.create).not.toHaveBeenCalled();
     });
   });
 });

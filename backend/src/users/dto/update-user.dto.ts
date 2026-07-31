@@ -7,6 +7,7 @@ import {
   Max,
   IsDateString,
   IsUrl,
+  MaxLength,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Position, Gender, ShirtSize } from '@prisma/client';
@@ -16,6 +17,12 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   name?: string;
+
+  @ApiPropertyOptional({ example: 'Juancho', description: 'Nombre que aparece en la lista de juego. Si está vacío se usa el nombre real.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  alias?: string;
 
   @ApiPropertyOptional({ enum: Position })
   @IsOptional()

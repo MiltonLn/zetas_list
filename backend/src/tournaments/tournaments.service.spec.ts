@@ -21,6 +21,7 @@ const mockPrisma = {
   },
   tournamentPlayer: {
     create: jest.fn(),
+    findFirst: jest.fn(),
   },
   tournamentMatch: {
     findUnique: jest.fn(),

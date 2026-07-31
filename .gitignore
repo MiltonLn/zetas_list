@@ -11,13 +11,17 @@ dist/
 whatsapp-session/
 backend/whatsapp-session/
 
-# Build artifacts
-frontend/dist/
-backend/dist/
+# Test coverage reports
+coverage/
 
-# Prisma
-backend/prisma/migrations/**/migration_lock.toml
+# Build artifacts (the generic dist/ rule above covers both packages)
 
 # Logs
 *.log
 npm-debug.log*
+
+# Promo video project (local only, ships large media)
+video/
+
+# Supplier order exports
+frontend/public/camisetas/pedido-*.csv

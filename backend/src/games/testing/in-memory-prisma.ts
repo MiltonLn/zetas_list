@@ -307,6 +307,8 @@ export class InMemoryPrisma {
       const where = args?.where as AnyRecord | undefined;
       let list = this.regs.filter((r) => matchWhere(r, where));
       list = sortRows(list, args?.orderBy as OrderBy);
+      if (typeof args?.skip === 'number') list = list.slice(args.skip as number);
+      if (typeof args?.take === 'number') list = list.slice(0, args.take as number);
       if (args?.select) return list.map((r) => this.selectFields(r, args.select as AnyRecord));
       return list.map((r) => this.withRelations(r, args?.include as AnyRecord));
     },

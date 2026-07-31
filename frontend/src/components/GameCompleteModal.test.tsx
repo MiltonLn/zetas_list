@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GameCompleteModal } from './GameCompleteModal';
+import { renderWithQueryClient } from '../test/query-wrapper';
 
 vi.mock('../services/games.service', () => ({
   gamesService: {
@@ -40,7 +41,7 @@ describe('GameCompleteModal', () => {
   });
 
   it('carga y muestra el reporte al abrir', async () => {
-    render(<GameCompleteModal {...defaultProps} />);
+    renderWithQueryClient(<GameCompleteModal {...defaultProps} />);
 
     await waitFor(() => {
       expect(screen.getByText('Vista previa del reporte')).toBeInTheDocument();
@@ -50,7 +51,7 @@ describe('GameCompleteModal', () => {
   });
 
   it('muestra la lista de jugadores multables', async () => {
-    render(<GameCompleteModal {...defaultProps} />);
+    renderWithQueryClient(<GameCompleteModal {...defaultProps} />);
 
     await waitFor(() => {
       expect(screen.getByText('Carlos')).toBeInTheDocument();
@@ -69,7 +70,7 @@ describe('GameCompleteModal', () => {
       } as Awaited<ReturnType<typeof gamesService.previewReport>>);
 
     const user = userEvent.setup();
-    render(<GameCompleteModal {...defaultProps} />);
+    renderWithQueryClient(<GameCompleteModal {...defaultProps} />);
 
     await waitFor(() => {
       expect(screen.getByText('Carlos')).toBeInTheDocument();
@@ -85,7 +86,7 @@ describe('GameCompleteModal', () => {
     mockGames.complete.mockResolvedValue({} as Awaited<ReturnType<typeof gamesService.complete>>);
 
     const user = userEvent.setup();
-    render(<GameCompleteModal {...defaultProps} />);
+    renderWithQueryClient(<GameCompleteModal {...defaultProps} />);
 
     await waitFor(() => {
       expect(screen.getByText('Confirmar y Terminar')).toBeInTheDocument();
@@ -104,7 +105,7 @@ describe('GameCompleteModal', () => {
     mockGames.complete.mockRejectedValue(new Error('Falló'));
 
     const user = userEvent.setup();
-    render(<GameCompleteModal {...defaultProps} />);
+    renderWithQueryClient(<GameCompleteModal {...defaultProps} />);
 
     await waitFor(() => {
       expect(screen.getByText('Confirmar y Terminar')).toBeInTheDocument();
@@ -118,7 +119,7 @@ describe('GameCompleteModal', () => {
   });
 
   it('no renderiza nada cuando open=false', () => {
-    const { container } = render(
+    const { container } = renderWithQueryClient(
       <GameCompleteModal {...defaultProps} open={false} />,
     );
     expect(container.innerHTML).toBe('');

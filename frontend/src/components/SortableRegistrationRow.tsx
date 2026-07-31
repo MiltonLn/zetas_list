@@ -1,13 +1,14 @@
-import { useState, useRef } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { GameRegistration } from '../types';
 import { Avatar } from './Avatar';
+import { displayName } from '../utils/display-name';
+import { useConfirm } from '../hooks/useConfirm';
 
 interface Props {
   reg: GameRegistration;
   index: number;
-  isAdmin: boolean;
+  isGameManager: boolean;
   readonly?: boolean;
   mainListFull?: boolean;
   onToggleAttended?: () => void;
@@ -27,7 +28,7 @@ interface Props {
 export function SortableRegistrationRow({
   reg,
   index,
-  isAdmin,
+  isGameManager,
   readonly: isReadonly,
   mainListFull,
   onToggleAttended,
@@ -42,8 +43,7 @@ export function SortableRegistrationRow({
   draggable,
   onNameClick,
 }: Props) {
-  const [confirmRemove, setConfirmRemove] = useState(false);
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const confirmRemove = useConfirm();
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: reg.id, disabled: !draggable });
@@ -69,16 +69,6 @@ export function SortableRegistrationRow({
         marginBottom: 6,
       }}
     >
-      {draggable && (
-        <span
-          {...attributes}
-          {...listeners}
-          style={{ color: '#2a2f5a', cursor: 'grab', fontSize: 18, lineHeight: 1, touchAction: 'none' }}
-        >
-          ⠿
-        </span>
-      )}
-
       <span style={{ color: '#7c8db5', fontSize: 13, minWidth: 22, textAlign: 'right' }}>
         {index + 1}.
       </span>
@@ -87,13 +77,13 @@ export function SortableRegistrationRow({
         onClick={onNameClick}
         style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, cursor: 'pointer' }}
       >
-        <Avatar name={reg.isGuest ? reg.guestName || 'Invitado' : reg.user?.name || '?'} photoUrl={reg.isGuest ? undefined : reg.user?.photoUrl} size={30} />
+        <Avatar name={reg.isGuest ? reg.guestName || 'Invitado' : (reg.user ? displayName(reg.user) : '?')} photoUrl={reg.isGuest ? undefined : reg.user?.photoUrl} size={30} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <span style={{ color: '#e8eaf6', fontSize: 14, fontWeight: isSelf ? 700 : 500 }}>
             {reg.isGuest ? (
-              <>{reg.guestName || 'Invitado'} <span style={{ color: '#7c8db5', fontSize: 11 }}>👤 inv. de {reg.registeredBy?.name || '?'}</span></>
+              <>{reg.guestName || 'Invitado'} <span style={{ color: '#7c8db5', fontSize: 11 }}>👤 inv. de {reg.registeredBy ? displayName(reg.registeredBy) : '?'}</span></>
             ) : (
-              reg.user?.name || '?'
+              reg.user ? displayName(reg.user) : '?'
             )}
             {isSelf && <span style={{ color: '#6e8efb', fontSize: 11, marginLeft: 6 }}>Tú</span>}
           </span>
@@ -107,12 +97,12 @@ export function SortableRegistrationRow({
             <span style={{ color: '#f59f00', fontSize: 11, marginLeft: 6, background: '#f59f0022', padding: '1px 6px', borderRadius: 4 }}>⏳ pendiente</span>
           )}
           {reg.registeredById && reg.registeredById !== reg.userId && !reg.isGuest && reg.registeredBy && (
-            <span style={{ color: '#7c8db5', fontSize: 11, marginLeft: 6 }}>por {reg.registeredBy.name}</span>
+            <span style={{ color: '#7c8db5', fontSize: 11, marginLeft: 6 }}>por {displayName(reg.registeredBy)}</span>
           )}
         </div>
       </div>
 
-      {isAdmin && !isReadonly && reg.pendingConfirmation && onConfirm && (
+      {isGameManager && !isReadonly && reg.pendingConfirmation && onConfirm && (
         <button
           onClick={onConfirm}
           title="Confirmar asistencia por este jugador"
@@ -126,7 +116,7 @@ export function SortableRegistrationRow({
         </button>
       )}
 
-      {isAdmin && !isReadonly && (
+      {isGameManager && !isReadonly && (
         <>
           <button
             onClick={onToggleAttended}
@@ -181,54 +171,53 @@ export function SortableRegistrationRow({
         </>
       )}
 
-      {isAdmin && !isReadonly && (
+      {isGameManager && !isReadonly && (
         <button
-          onClick={() => {
-            if (confirmRemove) {
-              if (confirmTimer.current) clearTimeout(confirmTimer.current);
-              setConfirmRemove(false);
-              onRemove?.();
-            } else {
-              setConfirmRemove(true);
-              confirmTimer.current = setTimeout(() => setConfirmRemove(false), 3000);
-            }
-          }}
-          title={confirmRemove ? 'Confirmar eliminación' : 'Eliminar'}
+          onClick={() => confirmRemove.press(() => onRemove?.())}
+          title={confirmRemove.isArmed() ? 'Confirmar eliminación' : 'Eliminar'}
           style={{
-            background: confirmRemove ? '#e031311a' : 'none',
-            border: confirmRemove ? '1px solid #e0313155' : '1px solid #2a2f5a',
+            background: confirmRemove.isArmed() ? '#e031311a' : 'none',
+            border: confirmRemove.isArmed() ? '1px solid #e0313155' : '1px solid #2a2f5a',
             borderRadius: 6, padding: '4px 8px',
-            color: confirmRemove ? '#ff6b6b' : '#7c8db5', cursor: 'pointer',
-            fontSize: confirmRemove ? 11 : 13, fontWeight: confirmRemove ? 600 : 400,
+            color: confirmRemove.isArmed() ? '#ff6b6b' : '#7c8db5', cursor: 'pointer',
+            fontSize: confirmRemove.isArmed() ? 11 : 13, fontWeight: confirmRemove.isArmed() ? 600 : 400,
             transition: 'all 0.15s ease', whiteSpace: 'nowrap',
           }}
         >
-          {confirmRemove ? '¿Seguro?' : '✕'}
+          {confirmRemove.isArmed() ? '¿Seguro?' : '✕'}
         </button>
       )}
 
-      {!isAdmin && allowSelfRemove && (isSelf || isOwnGuest) && (
-        <button
-          onClick={() => {
-            if (confirmRemove) {
-              if (confirmTimer.current) clearTimeout(confirmTimer.current);
-              setConfirmRemove(false);
-              onRemove?.();
-            } else {
-              setConfirmRemove(true);
-              confirmTimer.current = setTimeout(() => setConfirmRemove(false), 3000);
-            }
+      {draggable && (
+        <span
+          {...attributes}
+          {...listeners}
+          title="Reordenar"
+          style={{
+            color: '#7c8db5',
+            cursor: 'grab',
+            fontSize: 18,
+            lineHeight: 1,
+            touchAction: 'manipulation',
           }}
+        >
+          ⠿
+        </span>
+      )}
+
+      {!isGameManager && allowSelfRemove && (isSelf || isOwnGuest) && (
+        <button
+          onClick={() => confirmRemove.press(() => onRemove?.())}
           title={isOwnGuest ? 'Sacar a tu invitado' : undefined}
           style={{
-            background: confirmRemove ? '#e031311a' : 'none',
-            border: confirmRemove ? '1px solid #e0313155' : '1px solid #2a2f5a',
+            background: confirmRemove.isArmed() ? '#e031311a' : 'none',
+            border: confirmRemove.isArmed() ? '1px solid #e0313155' : '1px solid #2a2f5a',
             borderRadius: 8, padding: '4px 10px',
-            color: confirmRemove ? '#ff6b6b' : '#7c8db5', cursor: 'pointer',
+            color: confirmRemove.isArmed() ? '#ff6b6b' : '#7c8db5', cursor: 'pointer',
             fontSize: 12, fontWeight: 600, transition: 'all 0.15s ease', whiteSpace: 'nowrap',
           }}
         >
-          {confirmRemove ? '¿Seguro?' : isOwnGuest ? 'Sacar' : 'Salirme'}
+          {confirmRemove.isArmed() ? '¿Seguro?' : isOwnGuest ? 'Sacar' : 'Salirme'}
         </button>
       )}
     </div>

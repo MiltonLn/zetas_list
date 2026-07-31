@@ -9,14 +9,16 @@ import {
 import type { ReactNode } from 'react';
 import type { AuthUser } from '../types';
 import { authService } from '../services/auth.service';
+import { clearSessionCache } from '../lib/session-cache';
 
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<AuthUser>;
-  logout: () => void;
+  logout: () => Promise<void>;
   setUser: (u: AuthUser) => void;
   isAdmin: boolean;
+  isGameManager: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -25,13 +27,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    await clearSessionCache();
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     setUser(null);
   }, []);
 
   useEffect(() => {
+    // El bootstrap de sesión pertenece al ciclo de vida de autenticación, no al caché del API.
     const token = localStorage.getItem('accessToken');
     if (!token) {
       setLoading(false);
@@ -47,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string) => {
     const { data } = await authService.login(username, password);
+    await clearSessionCache();
     localStorage.setItem('accessToken', data.accessToken);
     localStorage.setItem('refreshToken', data.refreshToken);
     setUser(data.user);
@@ -54,7 +59,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, login, logout, setUser, isAdmin: user?.role === 'admin' }),
+    () => ({
+      user,
+      loading,
+      login,
+      logout,
+      setUser,
+      isAdmin: user?.role === 'admin',
+      isGameManager: user?.role === 'admin' || user?.role === 'ayudante',
+    }),
     [user, loading, login, logout],
   );
 

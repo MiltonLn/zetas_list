@@ -7,8 +7,8 @@
 }
 
 body {
-  background-color: #0f1020;
-  color: #e8eaf6;
+  background-color: var(--color-surface-0);
+  color: var(--color-text);
   font-family: system-ui, -apple-system, sans-serif;
   min-height: 100dvh;
 }
@@ -22,7 +22,7 @@ body {
   line-height: 1.4;
   outline: none;
   background: #13152a;
-  color: #e8eaf6;
+  color: var(--color-text);
   border: 2px solid #3d4580;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -45,7 +45,7 @@ body {
   outline: none;
   resize: none;
   background: #13152a;
-  color: #e8eaf6;
+  color: var(--color-text);
   border: 2px solid #3d4580;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   min-height: 220px;
@@ -89,7 +89,7 @@ body {
 }
 
 .btn-primary {
-  background: #3b5bdb;
+  background: var(--color-accent);
   color: white;
   box-shadow: 0 2px 8px rgba(59, 91, 219, 0.45);
 }
@@ -147,19 +147,19 @@ body {
 
 /* ── Section Panel ── */
 .section-panel {
-  background: #161829;
-  border: 1px solid #2a2f5a;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
   border-radius: 20px;
   overflow: hidden;
 }
 
 .section-panel-header {
   padding: 14px 16px 12px;
-  border-bottom: 1px solid #2a2f5a;
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #1a1d38;
+  background: var(--color-surface-3);
 }
 
 .section-panel-body {
@@ -681,12 +681,12 @@ select.zetas-input {
 .legacy-title {
   font-size: 22px;
   font-weight: 800;
-  color: #e8eaf6;
+  color: var(--color-text);
   margin: 0 0 4px;
 }
 
 .legacy-subtitle {
-  color: #7c8db5;
+  color: var(--color-text-muted);
   font-size: 13px;
   margin: 0 0 20px;
 }
@@ -696,9 +696,9 @@ select.zetas-input {
   min-height: 240px;
   padding: 14px;
   border-radius: 12px;
-  border: 2px solid #2a2f5a;
-  background: #0f1020;
-  color: #e8eaf6;
+  border: 2px solid var(--color-border);
+  background: var(--color-surface-0);
+  color: var(--color-text);
   font-size: 14px;
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   resize: vertical;
@@ -723,7 +723,7 @@ select.zetas-input {
   font-weight: 700;
   border-radius: 12px;
   border: none;
-  background: linear-gradient(135deg, #5c7cfa, #3b5bdb);
+  background: linear-gradient(135deg, #5c7cfa, var(--color-accent));
   color: white;
   cursor: pointer;
   transition: all 0.2s;
@@ -745,7 +745,7 @@ select.zetas-input {
   font-size: 14px;
   font-weight: 600;
   border-radius: 12px;
-  border: 1px solid #2a2f5a;
+  border: 1px solid var(--color-border);
   background: transparent;
   color: #8b92b8;
   cursor: pointer;
@@ -753,8 +753,8 @@ select.zetas-input {
 }
 
 .legacy-btn-ghost:hover {
-  background: #1a1d38;
-  color: #e8eaf6;
+  background: var(--color-surface-3);
+  color: var(--color-text);
 }
 
 .legacy-alert {
@@ -813,14 +813,14 @@ select.zetas-input {
 .legacy-game-title {
   font-size: 20px;
   font-weight: 800;
-  color: #e8eaf6;
+  color: var(--color-text);
   margin: 0;
 }
 
 /* Panel */
 .legacy-panel {
   background: #141726;
-  border: 1px solid #2a2f5a;
+  border: 1px solid var(--color-border);
   border-radius: 16px;
   overflow: hidden;
 }
@@ -838,7 +838,7 @@ select.zetas-input {
 .legacy-summary-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  border-bottom: 1px solid #2a2f5a;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .legacy-summary-cell {
@@ -846,7 +846,7 @@ select.zetas-input {
   flex-direction: column;
   align-items: center;
   padding: 16px 8px;
-  border-right: 1px solid #2a2f5a;
+  border-right: 1px solid var(--color-border);
 }
 
 .legacy-summary-cell:last-child { border-right: none; }
@@ -917,7 +917,7 @@ select.zetas-input {
 .legacy-section-title {
   font-size: 16px;
   font-weight: 800;
-  color: #e8eaf6;
+  color: var(--color-text);
   margin: 0;
 }
 
@@ -972,8 +972,8 @@ select.zetas-input {
   gap: 10px;
   padding: 12px 16px;
   border-radius: 12px;
-  background: #1a1d38;
-  border: 1px solid #2a2f5a;
+  background: var(--color-surface-3);
+  border: 1px solid var(--color-border);
   transition: border-color 0.15s;
 }
 
@@ -1040,7 +1040,7 @@ select.zetas-input {
   display: block;
   font-size: 14px;
   font-weight: 600;
-  color: #e8eaf6;
+  color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1054,7 +1054,7 @@ select.zetas-input {
 .legacy-player-note {
   display: block;
   font-size: 11px;
-  color: #7c8db5;
+  color: var(--color-text-muted);
   margin-top: 2px;
 }
 
@@ -1078,7 +1078,7 @@ select.zetas-input {
   height: 18px;
   border-radius: 4px;
   border: 2px solid #3d4580;
-  background: #0f1020;
+  background: var(--color-surface-0);
   appearance: none;
   -webkit-appearance: none;
   cursor: pointer;
@@ -1121,7 +1121,7 @@ select.zetas-input {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  border: 1px solid #2a2f5a;
+  border: 1px solid var(--color-border);
   background: #232645;
   color: #8b92b8;
   font-size: 16px;
@@ -1135,7 +1135,7 @@ select.zetas-input {
 
 .legacy-icon-btn:hover {
   background: #2d3461;
-  color: #e8eaf6;
+  color: var(--color-text);
 }
 
 .legacy-icon-btn.promote {
@@ -1152,6 +1152,59 @@ select.zetas-input {
   border-color: #e74c3c;
   color: white;
   box-shadow: 0 2px 8px rgba(231, 76, 60, 0.4);
+}
+
+/* ── Responsive form grids ── */
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.form-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 480px) {
+  .form-grid-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+/* ── Create-game card: tighter on small screens ── */
+.create-game-card {
+  padding: 16px;
+  gap: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 480px) {
+  .create-game-card {
+    padding: 24px;
+    gap: 20px;
+  }
+}
+
+/* field label */
+.field-label {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+/* helper text below inputs */
+.field-hint {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  margin-top: 5px;
+  line-height: 1.4;
 }
 
 /* ── Rules Page ── */

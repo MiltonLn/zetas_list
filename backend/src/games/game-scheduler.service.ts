@@ -2,9 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { GamesService } from './games.service';
-import { WhatsappService } from '../whatsapp/whatsapp.service';
+import { GameNotifier } from './events/game-notifier.service';
 import { GameStatus } from '@prisma/client';
+import { ACTIVE_GAME_STATUSES } from './games.utils';
 import { runWithLogContext, newReqId } from '../common/logging/log-context';
+import { reportCaughtError } from '../common/errors/report-caught-error';
 
 @Injectable()
 export class GameSchedulerService {
@@ -13,7 +15,7 @@ export class GameSchedulerService {
   constructor(
     private prisma: PrismaService,
     private games: GamesService,
-    private whatsapp: WhatsappService,
+    private notifier: GameNotifier,
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -32,8 +34,7 @@ export class GameSchedulerService {
         // Send the announcement first: only flip the game to "open" if it was
         // delivered. Otherwise the game stays "scheduled" and the next tick
         // retries, so a transient WhatsApp disconnect can't silently swallow it.
-        const message = this.games.buildRegistrationOpenMessage(game);
-        const sent = await this.whatsapp.sendToGroup(message);
+        const sent = await this.notifier.deliverRegistrationOpened({ game });
         if (!sent) {
           this.logger.warn(`No se pudo anunciar apertura de ${game.title}; se reintentará en el próximo ciclo`);
           continue;
@@ -42,7 +43,7 @@ export class GameSchedulerService {
         await this.games.openRegistration(game.id);
         this.logger.log(`Registro abierto para: ${game.title}`);
       } catch (e) {
-        this.logger.error(`Error abriendo registro para ${game.id}:`, e);
+        reportCaughtError(this.logger, `Error abriendo registro para ${game.id}`, e);
       }
     }
   }
@@ -70,7 +71,11 @@ export class GameSchedulerService {
           try {
             await this.games.handleConfirmationTimeout(reg.id);
           } catch (e) {
-            this.logger.error(`Error procesando timeout de confirmación ${reg.id}:`, e);
+            reportCaughtError(
+              this.logger,
+              `Error procesando timeout de confirmación ${reg.id}`,
+              e,
+            );
           }
         },
       );
@@ -81,7 +86,7 @@ export class GameSchedulerService {
   async checkGuestCutoff() {
     const activeGames = await this.prisma.game.findMany({
       where: {
-        status: { in: [GameStatus.registration_open, GameStatus.in_progress] },
+        status: { in: [...ACTIVE_GAME_STATUSES] },
         cutoffNotified: false,
       },
     });
@@ -94,10 +99,7 @@ export class GameSchedulerService {
         // Send first, persist `cutoffNotified` only on success. If the send is
         // dropped (e.g. WhatsApp reconnecting), the flag stays false and the
         // next tick retries instead of marking it notified forever.
-        const sent = await this.whatsapp.sendToGroup(
-          `⏰ *Hora de corte alcanzada* para *${game.title}*\n` +
-          `A partir de ahora, invitados y miembros en lista de espera tienen la misma prioridad para cupos libres.`,
-        );
+        const sent = await this.notifier.deliverGuestCutoffReached({ gameTitle: game.title });
         if (!sent) {
           this.logger.warn(`No se pudo notificar el corte de ${game.title}; se reintentará en el próximo ciclo`);
           continue;
@@ -115,7 +117,7 @@ export class GameSchedulerService {
         // not prematurely expire a still-pending auto-promotion.
         await this.games.autoPromoteIfNeeded(game.id, { skipMainListFullCheck: true });
       } catch (e) {
-        this.logger.error(`Error procesando cutoff para ${game.id}:`, e);
+        reportCaughtError(this.logger, `Error procesando cutoff para ${game.id}`, e);
       }
     }
   }

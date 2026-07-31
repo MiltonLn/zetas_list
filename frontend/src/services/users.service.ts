@@ -5,6 +5,7 @@ export interface CreateUserPayload {
   username?: string;
   password?: string;
   name: string;
+  alias?: string;
   phone: string;
   role?: Role;
   position?: Position;
@@ -16,6 +17,7 @@ export interface CreateUserPayload {
 
 export interface UpdateUserPayload {
   name?: string;
+  alias?: string;
   position?: Position;
   gender?: Gender;
   heightCm?: number;

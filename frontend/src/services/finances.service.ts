@@ -1,4 +1,10 @@
 import { api } from './api';
+import type {
+  FinanceTransactionBase,
+  FineBase,
+  FineStatus,
+  TransactionType,
+} from '../types';
 
 export interface DashboardData {
   year: number;
@@ -18,36 +24,17 @@ export interface PendingFine {
   date: string;
 }
 
-export interface FinanceTransaction {
-  id: string;
-  type: 'income' | 'expense';
-  date: string;
-  amount: number;
-  description: string;
-  gameId: string | null;
-  createdById: string;
+export interface FinanceTransaction extends FinanceTransactionBase {
   createdBy?: { id: string; name: string };
-  createdAt: string;
 }
 
-export interface Fine {
-  id: string;
-  userId: string | null;
-  userName: string | null;
-  date: string;
-  amount: number;
-  reason: string;
-  status: 'pending' | 'paid';
-  paidAt: string | null;
-  gameId: string | null;
-  createdById: string;
+export interface Fine extends FineBase {
   user?: { id: string; name: string; phone: string } | null;
   createdBy?: { id: string; name: string };
-  createdAt: string;
 }
 
 export interface CreateTransactionPayload {
-  type: 'income' | 'expense';
+  type: TransactionType;
   date: string;
   amount: number;
   description: string;
@@ -55,7 +42,7 @@ export interface CreateTransactionPayload {
 }
 
 export interface UpdateTransactionPayload {
-  type?: 'income' | 'expense';
+  type?: TransactionType;
   date?: string;
   amount?: number;
   description?: string;
@@ -66,7 +53,7 @@ export interface CreateFinePayload {
   date: string;
   amount: number;
   reason: string;
-  status?: 'pending' | 'paid';
+  status?: FineStatus;
   gameId?: string;
 }
 
@@ -75,12 +62,12 @@ export interface UpdateFinePayload {
   date?: string;
   amount?: number;
   reason?: string;
-  status?: 'pending' | 'paid';
+  status?: FineStatus;
 }
 
 export interface ImportPayload {
   transactions: {
-    type: 'income' | 'expense';
+    type: TransactionType;
     date: string;
     amount: number;
     description: string;
@@ -90,7 +77,7 @@ export interface ImportPayload {
     date: string;
     amount: number;
     reason: string;
-    status?: 'pending' | 'paid';
+    status?: FineStatus;
   }[];
 }
 
@@ -109,10 +96,10 @@ export const financesService = {
   getDashboard: (year?: number) =>
     api.get<DashboardData>('/finances/dashboard', { params: year ? { year } : undefined }),
 
-  getTransactions: (year?: number, type?: 'income' | 'expense') =>
+  getTransactions: (year?: number, type?: TransactionType) =>
     api.get<FinanceTransaction[]>('/finances/transactions', { params: { ...(year ? { year } : {}), ...(type ? { type } : {}) } }),
 
-  getFines: (year?: number, status?: 'pending' | 'paid') =>
+  getFines: (year?: number, status?: FineStatus) =>
     api.get<Fine[]>('/finances/fines', { params: { ...(year ? { year } : {}), ...(status ? { status } : {}) } }),
 
   getMyFines: () =>

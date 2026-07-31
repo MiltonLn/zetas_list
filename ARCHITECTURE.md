@@ -9,12 +9,19 @@ Frontend React + Backend NestJS + PostgreSQL + Bot de WhatsApp (Baileys).
 zetas_list/
   frontend/           React 19 + TypeScript + Vite
   backend/            NestJS + Prisma + PostgreSQL
-  .github/workflows/  CI pipeline (test, lint, typecheck)
-  .husky/             Pre-commit hooks (lint)
+  scripts/            Codegen de tipos compartidos
+  video/              Video promocional (Remotion) — no forma parte de la app
+  .github/workflows/  CI pipeline (install, codegen, typecheck, lint, coverage y build)
+  .husky/             Pre-commit hooks (lint de archivos staged)
   docker-compose.yml  Desarrollo local
+  Dockerfile          Build de producción (multi-stage, en la raíz)
   Makefile            Comandos de desarrollo
   railway.json        Configuración de producción
 ```
+
+"Monorepo" acá significa dos paquetes npm independientes en un mismo repo, cada
+uno con su propio `package.json` y `package-lock.json`. No hay workspaces ni
+herramientas de monorepo.
 
 ---
 
@@ -27,7 +34,8 @@ graph TB
     AuthCtx[AuthContext]
     Pages[Pages]
     Services[Services Layer]
-    SSE[useGameStream SSE]
+    Query[TanStack Query Hooks]
+    SSE[useGameStream fetch SSE]
   end
 
   subgraph server [Backend - NestJS]
@@ -35,6 +43,8 @@ graph TB
     GamesMod[Games Module]
     UsersMod[Users Module]
     WaMod[WhatsApp Module]
+    FinMod[Finances Module]
+    OrdMod[Orders Module]
     AuditMod[Audit Module]
     Scheduler[Game Scheduler]
     SSECtrl[SSE Controller]
@@ -48,22 +58,33 @@ graph TB
 
   App --> AuthCtx
   AuthCtx --> Pages
-  Pages --> Services
+  Pages --> Query
+  Query --> Services
   Services -->|HTTP| AuthMod
   Services -->|HTTP| GamesMod
   Services -->|HTTP| UsersMod
-  SSE -->|EventSource| SSECtrl
+  Services -->|HTTP| FinMod
+  Services -->|HTTP| OrdMod
+  SSE -->|fetch + Authorization| SSECtrl
 
   GamesMod --> DB
   UsersMod --> DB
   AuthMod --> DB
   AuditMod --> DB
+  FinMod --> DB
+  OrdMod --> DB
   GamesMod --> WaMod
   AuthMod --> WaMod
+  UsersMod --> WaMod
+  GamesMod --> FinMod
+  WaMod --> GamesMod
+  WaMod --> UsersMod
+  WaMod --> FinMod
   Scheduler --> GamesMod
   WaMod --> WA
   GamesMod --> AuditMod
   UsersMod --> AuditMod
+  OrdMod --> AuditMod
   SSECtrl --> GamesMod
 
   server --> Sentry
@@ -77,8 +98,8 @@ graph TB
 |--------|----------------|
 | `auth` | JWT login/refresh, cambio de contraseña, recuperación vía WhatsApp. `JwtUser` interface tipada en todos los controllers. |
 | `users` | CRUD de usuarios (admin), edición de perfil (self), subida de foto de perfil (multer). |
-| `games` | Partidos, registro con race-condition safety (serializable transactions), SSE en tiempo real, generación de reportes, mensajes WhatsApp. |
-| `whatsapp` | Bot Z — comandos `@Z anotame`, `@Z lista`, `@Z terminar`, `@Z salirme`. Proveedores: Baileys (producción) y CLI simulator (desarrollo). |
+| `games` | `GamesService` coordina `RegistrationService`, `WaitlistService`, `ConfirmationService`, `GameLifecycleService` y `GameQueryService`; transacciones serializables, SSE, scheduler y notificaciones quedan en servicios dedicados. |
+| `whatsapp` | `MessageHandlerService` despacha lectura a `InfoCommandsService` y mutaciones a `MutatingCommandsService`; listeners consumen eventos de dominio y providers Baileys/CLI aíslan el transporte. |
 | `audit` | Log inmutable de todas las mutaciones sobre partidos y usuarios. |
 | `prisma` | Servicio global de base de datos con client singleton. |
 
@@ -120,13 +141,27 @@ sequenceDiagram
 ## Real-time (SSE)
 
 ```
-GET /api/games/:id/stream  →  EventSource en el frontend
+GET /api/games/:id/stream  →  fetch streaming en el frontend
 Cada mutación al partido  →  GameEventsService.emit()
 Frontend escucha          →  re-fetch del partido completo
 Heartbeat cada 30s        →  mantiene conexión viva
 Reconexión automática     →  exponential backoff hasta 30s
-Token JWT                 →  pasado como query param (?token=...)
+Token JWT                 →  header Authorization: Bearer (nunca en URL)
 ```
+
+`useGameStream` parsea frames SSE (incluidos `\r\n` y múltiples líneas `data:`),
+aborta el reader al desmontar y reconecta con backoff exponencial acotado.
+
+---
+
+## Estado remoto y cache frontend
+
+Los hooks `use*Query` y `use*Mutations` encapsulan TanStack Query. Las claves
+centralizadas en `lib/query-client.ts` evitan caches divergentes. Una mutación
+invalida el detalle y las listas relacionadas; los eventos SSE invalidan el
+detalle del partido para que cualquier consumidor comparta el refetch. Al
+cerrar sesión se limpia primero la cache persistida de sesión y luego los tokens,
+evitando que datos de un usuario sobrevivan al siguiente login.
 
 ---
 
@@ -226,20 +261,27 @@ graph LR
 ## Deployment (Railway)
 
 ```
-railway.json → build con backend/Dockerfile (multi-stage)
-  Stage 1: build frontend (React → dist/)
+railway.json → build con ./Dockerfile en la raíz del repo (multi-stage)
+  Stage 1: build frontend (React → frontend/dist/)
   Stage 2: build backend (NestJS → dist/)
-  Stage 3: producción — backend sirve frontend estático + API
+  Stage 3: producción — backend sirve frontend estático (public/) + API
 
 Servicios Railway:
   1. Backend (siempre encendido — necesario para Baileys + SSE)
   2. PostgreSQL (managed plugin)
 ```
 
+Migraciones: `preDeployCommand` corre `npx prisma migrate deploy` antes de
+levantar la nueva versión. Healthcheck en `/health`.
+
 Variables de entorno en Railway:
-- `DATABASE_URL`, `JWT_SECRET`, `APP_URL`
+- `DATABASE_URL`, `JWT_SECRET`, `APP_URL`, `FRONTEND_URL`
 - `WHATSAPP_MODE=baileys`, `WHATSAPP_GROUP_ID`
 - `SENTRY_DSN`, `NODE_ENV=production`
+
+El backend valida todas estas variables al arrancar (`src/config/env.ts`); si
+falta alguna obligatoria el proceso termina en el bootstrap en vez de fallar
+más tarde en runtime.
 
 ---
 
@@ -258,7 +300,10 @@ make hooks           # Activa pre-commit hooks (una vez por clon)
 make migrate name=x  # Crea migración Prisma
 make seed            # Inserta datos iniciales
 make test            # Corre tests en ambos sub-proyectos
+make test-cov        # Coverage + thresholds en ambos paquetes
 make lint            # Lint en ambos sub-proyectos
+make gen-types       # Regenera los enums compartidos del frontend
+make check           # Gate completo equivalente a CI
 ```
 
 ### Volúmenes Docker
@@ -275,37 +320,65 @@ make lint            # Lint en ambos sub-proyectos
 
 ```mermaid
 graph LR
-  Push[Push/PR] --> Backend[Backend Job]
+  Push[Push a main / cualquier PR] --> Backend[Backend Job]
   Push --> Frontend[Frontend Job]
 
   Backend --> B_Install[npm ci]
-  B_Install --> B_Types[tsc --noEmit]
+  B_Install --> B_Prisma[prisma generate]
+  B_Prisma --> B_Types[tsc --noEmit]
   B_Types --> B_Lint[ESLint]
-  B_Lint --> B_Test[Jest - 108 tests]
+  B_Lint --> B_Test[Jest test:cov]
+  B_Test --> B_Artifact[upload backend/coverage siempre]
+  B_Artifact --> B_Build[npm run build]
 
   Frontend --> F_Install[npm ci]
-  F_Install --> F_Types[tsc -b --noEmit]
+  F_Install --> F_Gen[gen:api-types:check]
+  F_Gen --> F_CodegenTests[node --test fixtures codegen]
+  F_CodegenTests --> F_Types[tsc -b --noEmit]
   F_Types --> F_Lint[ESLint]
-  F_Lint --> F_Test[Vitest - 51 tests]
+  F_Lint --> F_Test[Vitest test:cov]
+  F_Test --> F_Artifact[upload frontend/coverage siempre]
+  F_Artifact --> F_Build[npm run build]
 ```
 
-- **Trigger**: push a `main` y `feat/phase-1-full-stack`, y todos los PRs.
+- **Trigger**: push a `main` y todos los PRs.
+- **Permisos**: solo lectura de contenidos; runs anteriores del mismo ref/PR se cancelan.
+- **Runtime**: Node 20, lockfiles instalados exclusivamente con `npm ci`.
+- **Artifacts**: coverage backend/frontend se publica aun si falla un gate y se retiene 14 días.
 - **Sin Docker/Postgres**: todos los tests son unitarios con mocks.
-- **Pre-commit hooks**: lint solo para archivos staged (`.husky/pre-commit`).
+- **Pre-commit hooks**: lint solo de los archivos staged (`.husky/pre-commit`).
+- **Drift de tipos**: el job de frontend falla si `api-types.gen.ts` no coincide
+  con `schema.prisma`.
 
 ---
 
 ## Testing
 
-| Suite | Framework | Archivos | Tests |
-|-------|-----------|----------|-------|
-| Backend: `games.service.spec.ts` | Jest | generateReport, create, complete, removeRegistration, buildCounts | ~40 |
-| Backend: `auth.service.spec.ts` | Jest | login, changePassword, recoverPassword | ~15 |
-| Backend: `users.service.spec.ts` | Jest | create con contraseña default, conflictos, audit | ~10 |
-| Backend: `message-handler.service.spec.ts` | Jest | regex patterns, handleMessage branches | ~43 |
-| Frontend: `parser.test.ts` | Vitest | normalize, tokenize, assemble, parseMessage | 51 |
+Las suites de Jest y Vitest corren sin Docker ni Postgres. El número de pruebas
+y la cobertura vigentes se publican en la salida de CI; ambos paquetes aplican
+umbrales globales mediante `test:cov`.
 
-Todos los tests backend mockean `PrismaService`, `AuditService`, `GameEventsService`, `WhatsappService`, y `JwtService` vía `@nestjs/testing`.
+| Área | Cobertura principal |
+|------|---------------------|
+| WhatsApp | regexes de comandos, dispatch, handlers, listeners y utilidades de JID |
+| Partidos | registro, promoción, confirmaciones, reportes, scheduler y escenarios stateful |
+| Usuarios y auth | CRUD, permisos, contraseñas, login, refresh y cumpleaños |
+| Pedidos y finanzas | catálogo, pedidos, estados, transacciones, multas y dashboard |
+| HTTP | rutas principales, validación de DTOs y autorización con JWT/roles |
+| Frontend | parser, servicios, hooks, componentes y flujos de páginas con Testing Library |
+
+Las suites `src/test/e2e/*.spec.ts` prueban el wiring HTTP de auth, permisos y
+controllers con la aplicación Nest en memoria; no requieren Postgres ni Docker.
+El codegen tiene fixtures independientes para enums, nullability, tipos de fecha,
+JSON, omisiones sensibles y escalares Prisma no soportados.
+
+Los tests unitarios mockean `PrismaService`, `AuditService`, `GameEventsService`,
+`WhatsappService`, `FinancesService` y `JwtService` vía `@nestjs/testing`.
+
+**Tests de escenario** (`*.scenario.spec.ts`): usan un Prisma en memoria
+(`games/testing/in-memory-prisma.ts`) que mantiene estado real entre llamadas,
+para reproducir flujos donde el estado evoluciona (llenar la lista, pasar el
+cutoff, promociones en cascada, timeouts de confirmación).
 
 ---
 
@@ -339,5 +412,11 @@ Todos los tests backend mockean `PrismaService`, `AuditService`, `GameEventsServ
 
 | Rol | Capacidades |
 |-----|------------|
-| `admin` | Todo: crear partidos, gestionar usuarios, ver historial, terminar partidos, comandos WhatsApp admin |
-| `member` | Ver partido activo, registrarse/desregistrarse, editar perfil propio |
+| `admin` | Todo: crear partidos, gestionar usuarios, finanzas, pedidos, historial |
+| `ayudante` | Gestiona el partido del día (promover, sacar, asistencia, pagos, terminar) pero no administra usuarios ni finanzas |
+| `member` | Ver partido activo, anotarse/salirse, invitar, editar su perfil |
+
+`admin` y `ayudante` comparten la constante `GAME_MANAGERS`
+(`common/constants/roles.ts`), que es la que usan `@Roles(...)` en
+`GamesController` y los chequeos de permisos del bot. Cualquier endpoint que
+gestione el partido del día debe usar `GAME_MANAGERS`, no `Role.admin` a secas.

@@ -21,5 +21,30 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('@tanstack/react-query')) return 'react-query';
+          if (id.includes('@sentry/')) return 'sentry';
+          if (
+            /node_modules\/(react|react-dom|react-router|react-router-dom|scheduler)\//.test(id)
+          ) {
+            return 'react';
+          }
+          if (
+            id.includes('/axios/') ||
+            id.includes('/@dnd-kit/') ||
+            id.includes('/react-easy-crop/') ||
+            id.includes('/react-markdown/') ||
+            id.includes('/remark-') ||
+            id.includes('/rehype-')
+          ) {
+            return 'vendor';
+          }
+          return undefined;
+        },
+      },
+    },
   },
 });

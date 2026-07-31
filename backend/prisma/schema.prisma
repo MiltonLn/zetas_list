@@ -10,6 +10,7 @@ datasource db {
 
 enum Role {
   admin
+  ayudante
   member
 }
 
@@ -132,6 +133,7 @@ model User {
   username     String     @unique
   passwordHash String
   name         String
+  alias        String?
   phone        String     @unique
   whatsappLid  String?    @unique
   role         Role       @default(member)

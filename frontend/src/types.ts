@@ -1,117 +1,94 @@
-export type Role = 'admin' | 'member';
-export type UserStatus = 'active' | 'inactive' | 'banned';
-export type Position = 'auxiliar' | 'libero' | 'armador' | 'central' | 'opuesto';
-export type Gender = 'masculino' | 'femenino' | 'otro';
-export type ShirtSize = 'XS' | 'S' | 'M' | 'L' | 'XL' | 'XXL';
-export type OrderStatus = 'pending' | 'deposit_paid' | 'paid' | 'delivered' | 'cancelled';
-export type Modalidad = 'seis_x_seis' | 'cuatro_x_cuatro';
-export type GameStatus =
-  | 'scheduled'
-  | 'registration_open'
-  | 'in_progress'
-  | 'completed'
-  | 'cancelled';
+// Domain enums are generated from backend/prisma/schema.prisma so they cannot
+// drift from the backend. See scripts/generate-api-types.mjs.
+export type {
+  AuditAction,
+  AuditLogBase,
+  FinanceTransactionBase,
+  FineStatus,
+  FineBase,
+  Gender,
+  GameBase,
+  GameRegistrationBase,
+  GameStatus,
+  Modalidad,
+  OrderBase,
+  OrderItemBase,
+  OrderStatus,
+  Position,
+  Role,
+  ShirtSize,
+  TransactionType,
+  UserBase,
+  UserStatus,
+} from './api-types.gen';
 
-export interface User {
-  id: string;
-  username: string;
-  name: string;
-  phone: string;
-  role: Role;
-  position?: Position;
-  gender?: Gender;
-  heightCm?: number;
-  birthDate?: string;
-  photoUrl?: string;
-  bio?: string;
-  shirtSize?: ShirtSize;
-  shirtNumber?: number;
-  status: UserStatus;
-  banReason?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import type {
+  AuditAction,
+  AuditLogBase,
+  Gender,
+  GameBase,
+  GameRegistrationBase,
+  GameStatus,
+  Modalidad,
+  OrderBase,
+  OrderItemBase,
+  OrderStatus,
+  Position,
+  ShirtSize,
+  UserBase,
+  UserStatus,
+} from './api-types.gen';
+import { SHIRT_SIZE_VALUES } from './api-types.gen';
 
-export interface AuthUser {
-  id: string;
-  username: string;
-  name: string;
-  role: Role;
-  phone: string;
-  position?: Position;
-  gender?: Gender;
-  photoUrl?: string;
+export type User = UserBase;
+
+export interface AuthUser extends Pick<
+  UserBase,
+  'id' | 'username' | 'name' | 'role' | 'phone'
+> {
+  alias?: string | null;
+  position?: Position | null;
+  gender?: Gender | null;
+  photoUrl?: string | null;
   mustChangePassword?: boolean;
 }
 
-export interface RegistrationUser {
-  id: string;
-  name: string;
-  username: string;
-  phone: string;
-  position?: Position;
-  gender?: Gender;
-  heightCm?: number;
-  birthDate?: string;
-  photoUrl?: string;
-  bio?: string;
+export interface RegistrationUser extends Pick<
+  UserBase,
+  'id' | 'name' | 'username' | 'phone'
+> {
+  alias?: string | null;
+  position?: Position | null;
+  gender?: Gender | null;
+  heightCm?: number | null;
+  birthDate?: string | null;
+  photoUrl?: string | null;
+  bio?: string | null;
 }
 
-export interface GameRegistration {
-  id: string;
-  gameId: string;
-  userId: string | null;
-  position: number;
-  isWaitingList: boolean;
-  attended: boolean;
-  paid: boolean;
-  note?: string;
-  fromWaitList: boolean;
-  registeredAt: string;
-  registeredById: string;
-  isGuest: boolean;
-  guestName?: string;
-  pendingConfirmation: boolean;
-  confirmationDeadline?: string;
-  confirmationDeclined: boolean;
-  originalWaitPosition?: number;
-  user: RegistrationUser;
-  registeredBy: { id: string; name: string; username: string };
+export interface GameRegistration extends Omit<
+  GameRegistrationBase,
+  'note' | 'guestName' | 'confirmationDeadline' | 'originalWaitPosition'
+> {
+  note?: string | null;
+  guestName?: string | null;
+  confirmationDeadline?: string | null;
+  originalWaitPosition?: number | null;
+  user: RegistrationUser | null;
+  registeredBy: { id: string; name: string; alias?: string | null; username: string } | null;
 }
 
-export interface Game {
-  id: string;
-  title: string;
-  modalidad: Modalidad;
-  gameDate: string;
-  startTime: string;
-  registrationOpenAt: string;
-  maxMainSpots: number;
-  pricePerPlayer: number;
-  vigilante: number;
-  guestCutoffTime: string;
-  maxProxyRegistrations: number;
-  mainListHasBeenFull: boolean;
-  status: GameStatus;
-  cancellationReason?: string;
-  createdById: string;
-  createdAt: string;
-  updatedAt: string;
+export interface Game extends GameBase {
   registrations: GameRegistration[];
-  createdBy?: { id: string; name: string };
+  createdBy?: { id: string; name: string } | null;
   _count?: { registrations: number };
 }
 
-export interface AuditLog {
-  id: string;
-  gameId?: string;
-  actorId: string;
-  targetUserId?: string;
-  action: string;
-  details: Record<string, unknown>;
-  createdAt: string;
-  actor: { id: string; name: string; username: string };
-  targetUser?: { id: string; name: string; username: string };
+export interface AuditLog extends Omit<AuditLogBase, 'gameId' | 'targetUserId'> {
+  gameId?: string | null;
+  targetUserId?: string | null;
+  actor: { id: string; name: string; username: string } | null;
+  targetUser?: { id: string; name: string; username: string } | null;
 }
 
 export const MODALIDAD_LABELS: Record<Modalidad, string> = {
@@ -133,7 +110,7 @@ export const GENDER_LABELS: Record<Gender, string> = {
   otro: 'Otro',
 };
 
-export const SHIRT_SIZES: ShirtSize[] = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+export const SHIRT_SIZES: readonly ShirtSize[] = SHIRT_SIZE_VALUES;
 
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   pending: 'Pendiente',
@@ -171,29 +148,14 @@ export interface CatalogProduct {
   variants: CatalogVariant[];
 }
 
-export interface OrderItem {
-  id: string;
-  orderId: string;
-  productId: string;
-  productName: string;
-  variantId: string;
-  variantName: string;
+export interface OrderItem extends Omit<OrderItemBase, 'size' | 'customName' | 'customNumber'> {
   size?: ShirtSize | null;
-  quantity: number;
   customName?: string | null;
   customNumber?: number | null;
-  unitPrice: number;
-  lineTotal: number;
 }
 
-export interface Order {
-  id: string;
-  userId: string;
-  status: OrderStatus;
-  totalAmount: number;
+export interface Order extends Omit<OrderBase, 'notes'> {
   notes?: string | null;
-  createdAt: string;
-  updatedAt: string;
   items: OrderItem[];
   user?: {
     id: string;
@@ -201,7 +163,7 @@ export interface Order {
     username: string;
     phone: string;
     gender?: Gender | null;
-  };
+  } | null;
 }
 
 export const USER_STATUS_LABELS: Record<UserStatus, string> = {
@@ -263,7 +225,9 @@ export interface GameList {
   waitList: Player[];
 }
 
-export const AUDIT_ACTION_LABELS: Record<string, string> = {
+// Exhaustive by type: adding an AuditAction in schema.prisma without a label
+// here breaks the frontend typecheck instead of rendering a raw enum value.
+export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   player_registered: 'Jugador anotado',
   proxy_registered: 'Jugador anotado (por otro)',
   guest_registered: 'Invitado anotado',
@@ -287,6 +251,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   user_updated: 'Usuario actualizado',
   user_status_changed: 'Estado de usuario cambiado',
   order_created: 'Pedido creado',
+  order_updated: 'Pedido actualizado',
   order_status_changed: 'Estado de pedido cambiado',
 };
 

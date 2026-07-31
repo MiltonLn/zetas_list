@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AxiosError, type InternalAxiosRequestConfig, type AxiosResponse } from 'axios';
 
 let responseInterceptor: (error: AxiosError) => Promise<unknown>;
+const clearSessionCache = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+
+vi.mock('../lib/session-cache', () => ({ clearSessionCache }));
 
 vi.mock('axios', async () => {
   const actual = await vi.importActual('axios');
@@ -34,6 +37,7 @@ vi.mock('axios', async () => {
 
 beforeEach(() => {
   vi.resetModules();
+  clearSessionCache.mockClear();
   Object.defineProperty(globalThis, 'localStorage', {
     value: {
       getItem: vi.fn(),
@@ -88,7 +92,19 @@ describe('Axios response interceptor', () => {
     const error = make401Error('/games');
 
     await expect(responseInterceptor(error)).rejects.toThrow();
+    expect(clearSessionCache).toHaveBeenCalledOnce();
     expect(globalThis.localStorage.clear).toHaveBeenCalled();
+    expect(globalThis.window.location.href).toBe('/login');
+  });
+
+  it('limpia el caché cuando falla el refresh', async () => {
+    vi.mocked(globalThis.localStorage.getItem).mockReturnValue('refresh-token');
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post).mockRejectedValue(new Error('refresh falló'));
+
+    await expect(responseInterceptor(make401Error('/games'))).rejects.toThrow('refresh falló');
+
+    expect(clearSessionCache).toHaveBeenCalledOnce();
     expect(globalThis.window.location.href).toBe('/login');
   });
 });

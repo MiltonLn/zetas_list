@@ -32,6 +32,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtUser } from '../auth/jwt-user.interface';
 import { AuditService } from '../audit/audit.service';
+import { GAME_MANAGERS } from '../common/constants/roles';
 
 @ApiTags('games')
 @ApiBearerAuth()
@@ -117,7 +118,7 @@ export class GamesController {
     return this.gamesService.confirmRegistration(id, user.id);
   }
 
-  @Roles(Role.admin)
+  @Roles(...GAME_MANAGERS)
   @Post(':id/confirm-reg/:regId')
   confirmRegById(
     @Param('id') id: string,
@@ -127,12 +128,13 @@ export class GamesController {
     return this.gamesService.confirmRegistrationById(id, regId, user.id);
   }
 
+  @Roles(...GAME_MANAGERS)
   @Get(':id/available-members')
   getAvailableMembers(@Param('id') id: string) {
     return this.gamesService.getAvailableMembers(id);
   }
 
-  @Roles(Role.admin)
+  @Roles(...GAME_MANAGERS)
   @Post(':id/register/:userId')
   registerUser(
     @Param('id') id: string,
@@ -152,7 +154,7 @@ export class GamesController {
     return this.gamesService.removeRegistration(id, userId, user.id, user.role as Role, { regId });
   }
 
-  @Roles(Role.admin)
+  @Roles(...GAME_MANAGERS)
   @Patch(':id/registrations/:regId')
   updateRegistration(
     @Param('id') id: string,
@@ -163,7 +165,7 @@ export class GamesController {
     return this.gamesService.updateRegistration(regId, dto, user.id, id);
   }
 
-  @Roles(Role.admin)
+  @Roles(...GAME_MANAGERS)
   @Post(':id/promote/:regId')
   promote(
     @Param('id') id: string,
@@ -173,7 +175,7 @@ export class GamesController {
     return this.gamesService.promote(id, regId, user.id);
   }
 
-  @Roles(Role.admin)
+  @Roles(...GAME_MANAGERS)
   @Post(':id/demote/:regId')
   demote(
     @Param('id') id: string,
@@ -183,7 +185,7 @@ export class GamesController {
     return this.gamesService.demote(id, regId, user.id);
   }
 
-  @Roles(Role.admin)
+  @Roles(...GAME_MANAGERS)
   @Patch(':id/reorder')
   reorder(
     @Param('id') id: string,
@@ -203,19 +205,19 @@ export class GamesController {
     return this.gamesService.cancel(id, dto, user.id);
   }
 
-  @Roles(Role.admin)
+  @Roles(...GAME_MANAGERS)
   @Post(':id/complete')
   complete(@Param('id') id: string, @CurrentUser() user: JwtUser) {
     return this.gamesService.complete(id, user.id);
   }
 
-  @Roles(Role.admin)
+  @Roles(...GAME_MANAGERS)
   @Get(':id/preview-report')
   previewReport(@Param('id') id: string) {
     return this.gamesService.previewReport(id);
   }
 
-  @Roles(Role.admin)
+  @Roles(...GAME_MANAGERS)
   @Patch(':id/registrations/:regId/fine-exempt')
   setFineExempt(
     @Param('id') id: string,

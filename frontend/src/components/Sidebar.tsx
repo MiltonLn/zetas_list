@@ -1,9 +1,21 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { displayName } from '../utils/display-name';
+import { ADMIN_ONLY, GAME_MANAGERS, hasRole } from '../utils/roles';
+import type { Role } from '../types';
+import { Avatar } from './Avatar';
 
 interface SidebarProps {
   open: boolean;
   onClose: () => void;
+}
+
+interface NavEntry {
+  to: string;
+  label: string;
+  icon: React.ReactNode;
+  /** Omit for entries every authenticated user can see. */
+  roles?: readonly Role[];
 }
 
 function NavItem({
@@ -30,8 +42,31 @@ function NavItem({
   );
 }
 
+const MAIN_NAV: NavEntry[] = [
+  { to: '/', label: 'Partidos', icon: <IconGames /> },
+  { to: '/finances', label: 'Finanzas', icon: <IconFinances /> },
+  { to: '/torneos', label: 'Torneos', icon: <IconTrophy /> },
+  { to: '/reglas', label: 'Reglas', icon: <IconRules /> },
+  { to: '/profile', label: 'Mi Perfil', icon: <IconUser /> },
+];
+
+// Roles must match the route guards in App.tsx, which in turn mirror the
+// backend's @Roles() decorators.
+const MANAGEMENT_NAV: NavEntry[] = [
+  { to: '/admin/games/new', label: 'Nuevo Partido', icon: <IconPlus />, roles: ADMIN_ONLY },
+  { to: '/admin/users', label: 'Usuarios', icon: <IconUsers />, roles: ADMIN_ONLY },
+  { to: '/admin/legacy-parser', label: 'Parser (Legacy)', icon: <IconClipboard />, roles: GAME_MANAGERS },
+  { to: '/admin/finances', label: 'Gestionar Finanzas', icon: <IconFinances />, roles: ADMIN_ONLY },
+  { to: '/admin/camisetas', label: 'Pedidos Camisetas', icon: <IconShirt />, roles: ADMIN_ONLY },
+  { to: '/admin/torneos', label: 'Gestionar Torneos', icon: <IconTrophy />, roles: ADMIN_ONLY },
+];
+
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { user, isAdmin, logout } = useAuth();
+  const shownName = user ? displayName(user) : undefined;
+  const managementNav = MANAGEMENT_NAV.filter(
+    (entry) => !entry.roles || hasRole(user?.role, entry.roles),
+  );
 
   return (
     <>
@@ -59,54 +94,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         <nav className="sidebar-nav">
           <div className="sidebar-section-label">Principal</div>
-          <NavItem to="/" icon={<IconGames />} label="Partidos" onClose={onClose} />
-          <NavItem to="/finances" icon={<IconFinances />} label="Finanzas" onClose={onClose} />
-          <NavItem to="/torneos" icon={<IconTrophy />} label="Torneos" onClose={onClose} />
-          <NavItem to="/camisetas" icon={<IconShirt />} label="Camisetas" onClose={onClose} />
-          <NavItem to="/reglas" icon={<IconRules />} label="Reglas" onClose={onClose} />
-          <NavItem to="/profile" icon={<IconUser />} label="Mi Perfil" onClose={onClose} />
+          {MAIN_NAV.map((entry) => (
+            <NavItem key={entry.to} to={entry.to} icon={entry.icon} label={entry.label} onClose={onClose} />
+          ))}
 
-          {isAdmin && (
+          {managementNav.length > 0 && (
             <>
               <div className="sidebar-section-label" style={{ marginTop: 16 }}>
                 Administración
               </div>
-              <NavItem
-                to="/admin/games/new"
-                icon={<IconPlus />}
-                label="Nuevo Partido"
-                onClose={onClose}
-              />
-              <NavItem
-                to="/admin/users"
-                icon={<IconUsers />}
-                label="Usuarios"
-                onClose={onClose}
-              />
-              <NavItem
-                to="/admin/legacy-parser"
-                icon={<IconClipboard />}
-                label="Parser (Legacy)"
-                onClose={onClose}
-              />
-              <NavItem
-                to="/admin/finances"
-                icon={<IconFinances />}
-                label="Gestionar Finanzas"
-                onClose={onClose}
-              />
-              <NavItem
-                to="/admin/camisetas"
-                icon={<IconShirt />}
-                label="Pedidos Camisetas"
-                onClose={onClose}
-              />
-              <NavItem
-                to="/admin/torneos"
-                icon={<IconTrophy />}
-                label="Gestionar Torneos"
-                onClose={onClose}
-              />
+              {managementNav.map((entry) => (
+                <NavItem key={entry.to} to={entry.to} icon={entry.icon} label={entry.label} onClose={onClose} />
+              ))}
             </>
           )}
         </nav>
@@ -114,11 +113,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <div className="sidebar-footer">
           <div className="sidebar-user">
             <div className="sidebar-avatar">
-              {user?.name?.[0]?.toUpperCase() ?? '?'}
+              <Avatar
+                name={shownName ?? '?'}
+                photoUrl={user?.photoUrl}
+                size={36}
+              />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ color: '#e8eaf6', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {user?.name}
+                {shownName}
               </div>
               <div style={{ color: '#7c8db5', fontSize: 11 }}>
                 @{user?.username}

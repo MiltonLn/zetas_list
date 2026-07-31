@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import * as Sentry from '@sentry/nestjs';
+import { reportCaughtError } from '../errors/report-caught-error';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -38,11 +38,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     if (status >= 500) {
-      // Unexpected failure: log full stack and forward to Sentry.
-      Sentry.captureException(exception);
-      this.logger.error(
+      reportCaughtError(
+        this.logger,
         `${request.method} ${request.url} -> ${status}`,
-        exception instanceof Error ? exception.stack : String(exception),
+        exception,
       );
     } else {
       // Expected business rejection (4xx): keep it at debug to avoid noise.

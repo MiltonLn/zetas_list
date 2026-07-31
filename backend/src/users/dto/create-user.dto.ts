@@ -10,6 +10,7 @@ import {
   IsUrl,
   MinLength,
   Matches,
+  MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Role, Position, Gender } from '@prisma/client';
@@ -30,6 +31,12 @@ export class CreateUserDto {
   @IsString()
   @IsNotEmpty()
   name: string;
+
+  @ApiPropertyOptional({ example: 'Juancho', description: 'Nombre que aparece en la lista de juego. Si está vacío se usa el nombre real.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  alias?: string;
 
   @ApiProperty({ example: '573001234567' })
   @IsString()

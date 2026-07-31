@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
-import { ordersService, type CreateOrderItemPayload } from '../services/orders.service';
-import { usersService } from '../services/users.service';
-import type { CatalogProduct, Order, ShirtSize, User } from '../types';
+import { useState } from 'react';
+import type { CreateOrderItemPayload } from '../services/orders.service';
+import type { Order, ShirtSize } from '../types';
 import { getApiError } from '../services/api';
 import { Spinner } from './Spinner';
+import { formatCurrency } from '../utils/currency';
+import { useOrdersCatalogQuery, useSaveAdminOrderMutation } from '../hooks/useOrdersQuery';
+import { useUsersQuery } from '../hooks/useUsersQuery';
 
 interface CartLine {
   key: number;
@@ -29,15 +31,15 @@ function emptyLine(): CartLine {
   return { key: nextKey(), productId: '', variantId: '', size: '', quantityStr: '1', customName: '' };
 }
 
-const money = (n: number) => `$${n.toLocaleString('es-CO')}`;
 
 export function AdminOrderFormModal({ order, onClose, onSaved }: Props) {
   const isEdit = !!order;
 
-  const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [loadingCatalog, setLoadingCatalog] = useState(true);
-  const [loadingUsers, setLoadingUsers] = useState(!isEdit);
+  const catalogQuery = useOrdersCatalogQuery();
+  const usersQuery = useUsersQuery(undefined, !isEdit);
+  const saveOrder = useSaveAdminOrderMutation();
+  const catalog = catalogQuery.data ?? [];
+  const users = usersQuery.data ?? [];
 
   const [targetUserId, setTargetUserId] = useState(order?.userId ?? '');
   const [shirtNumber, setShirtNumber] = useState<string>(
@@ -56,24 +58,7 @@ export function AdminOrderFormModal({ order, onClose, onSaved }: Props) {
     }));
   });
 
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    ordersService
-      .catalog()
-      .then(({ data }) => setCatalog(data))
-      .catch(() => {})
-      .finally(() => setLoadingCatalog(false));
-
-    if (!isEdit) {
-      usersService
-        .list()
-        .then(({ data }) => setUsers(data))
-        .catch(() => {})
-        .finally(() => setLoadingUsers(false));
-    }
-  }, [isEdit]);
 
   function getProduct(id: string) {
     return catalog.find((p) => p.id === id);
@@ -144,25 +129,20 @@ export function AdminOrderFormModal({ order, onClose, onSaved }: Props) {
       notes: notes.trim() || undefined,
     };
 
-    setSaving(true);
     try {
       let saved: Order;
       if (isEdit) {
-        const { data } = await ordersService.update(order!.id, payload);
-        saved = data;
+        saved = await saveOrder.mutateAsync({ kind: 'update', orderId: order!.id, payload });
       } else {
-        const { data } = await ordersService.adminCreate(targetUserId, payload);
-        saved = data;
+        saved = await saveOrder.mutateAsync({ kind: 'create', targetUserId, payload });
       }
       onSaved(saved);
     } catch (err) {
       setError(getApiError(err));
-    } finally {
-      setSaving(false);
     }
   }
 
-  const isLoading = loadingCatalog || loadingUsers;
+  const isLoading = catalogQuery.isPending || (!isEdit && usersQuery.isPending);
   const userName = isEdit
     ? (order!.user?.name ?? order!.userId)
     : users.find((u) => u.id === targetUserId)?.name ?? '';
@@ -412,7 +392,7 @@ export function AdminOrderFormModal({ order, onClose, onSaved }: Props) {
             {/* Total */}
             {totalAmount > 0 && (
               <p style={{ color: '#e8eaf6', fontWeight: 700, fontSize: 15, marginBottom: 16 }}>
-                Total: {money(totalAmount)}
+                Total: {formatCurrency(totalAmount)}
               </p>
             )}
 
@@ -425,16 +405,16 @@ export function AdminOrderFormModal({ order, onClose, onSaved }: Props) {
                 type="button"
                 className="btn btn-secondary"
                 onClick={onClose}
-                disabled={saving}
+                disabled={saveOrder.isPending}
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 className="btn btn-primary"
-                disabled={saving || (!isEdit && !targetUserId)}
+                disabled={saveOrder.isPending || (!isEdit && !targetUserId)}
               >
-                {saving ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Crear pedido'}
+                {saveOrder.isPending ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Crear pedido'}
               </button>
             </div>
           </form>

@@ -36,6 +36,7 @@ function makeReg(overrides: Partial<GameRegistration> = {}): GameRegistration {
     attended: false,
     paid: false,
     fromWaitList: false,
+    fineExempt: false,
     isGuest: false,
     pendingConfirmation: false,
     confirmationDeclined: false,
@@ -51,7 +52,7 @@ describe('SortableRegistrationRow', () => {
   const baseProps = {
     reg: makeReg(),
     index: 0,
-    isAdmin: true,
+    isGameManager: true,
     isSelf: false,
     allowSelfRemove: false,
     draggable: false,
@@ -64,6 +65,12 @@ describe('SortableRegistrationRow', () => {
   it('muestra el nombre del jugador', () => {
     render(<SortableRegistrationRow {...baseProps} />);
     expect(screen.getAllByText('Carlos').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('renderiza un fallback explícito si la relación user es null', () => {
+    render(<SortableRegistrationRow {...baseProps} reg={makeReg({ user: null })} />);
+
+    expect(screen.getAllByText('?').length).toBeGreaterThanOrEqual(1);
   });
 
   it('muestra botones de admin cuando NO es readonly', () => {
@@ -81,7 +88,7 @@ describe('SortableRegistrationRow', () => {
   });
 
   it('oculta botones de admin para miembros no-admin', () => {
-    render(<SortableRegistrationRow {...baseProps} isAdmin={false} />);
+    render(<SortableRegistrationRow {...baseProps} isGameManager={false} />);
     expect(screen.queryByTitle('Asistió')).not.toBeInTheDocument();
     expect(screen.queryByTitle('Pagó')).not.toBeInTheDocument();
   });
@@ -96,6 +103,16 @@ describe('SortableRegistrationRow', () => {
     expect(screen.getByText('⠿')).toBeInTheDocument();
   });
 
+  it('ubica el control de reordenar después del botón de eliminar', () => {
+    render(<SortableRegistrationRow {...baseProps} draggable={true} />);
+    const removeButton = screen.getByTitle('Eliminar');
+    const dragHandle = screen.getByTitle('Reordenar');
+
+    expect(
+      removeButton.compareDocumentPosition(dragHandle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('muestra "Tú" cuando isSelf=true', () => {
     render(<SortableRegistrationRow {...baseProps} isSelf={true} />);
     expect(screen.getByText('Tú')).toBeInTheDocument();
@@ -105,7 +122,7 @@ describe('SortableRegistrationRow', () => {
     render(
       <SortableRegistrationRow
         {...baseProps}
-        isAdmin={false}
+        isGameManager={false}
         isSelf={true}
         allowSelfRemove={true}
       />,
@@ -119,7 +136,7 @@ describe('SortableRegistrationRow', () => {
       <SortableRegistrationRow
         {...baseProps}
         reg={guestReg}
-        isAdmin={false}
+        isGameManager={false}
         isSelf={false}
         allowSelfRemove={true}
         isOwnGuest={true}
@@ -134,7 +151,7 @@ describe('SortableRegistrationRow', () => {
       <SortableRegistrationRow
         {...baseProps}
         reg={guestReg}
-        isAdmin={false}
+        isGameManager={false}
         isSelf={false}
         allowSelfRemove={true}
         isOwnGuest={false}
