@@ -135,4 +135,80 @@ describe('BaileysProvider', () => {
 
     await provider.onModuleDestroy();
   });
+
+  it('resuelve menciones por LID almacenado cuando WhatsApp oculta su teléfono', async () => {
+    const handlers = new Map<string, (payload: unknown) => Promise<void> | void>();
+    const socket = {
+      ev: {
+        on: jest.fn((event: string, handler: (payload: unknown) => Promise<void> | void) => {
+          handlers.set(event, handler);
+        }),
+        removeAllListeners: jest.fn(),
+      },
+      end: jest.fn(),
+      groupMetadata: jest.fn().mockResolvedValue({ participants: [] }),
+      user: {
+        id: '573000000000@s.whatsapp.net',
+        lid: '999999999999@lid',
+      },
+    };
+    const findByPhoneOrLid = jest.fn().mockResolvedValue({
+      phone: '573166160159',
+    });
+    const users = {
+      findByPhoneOrLid,
+    } as unknown as UsersService;
+    const handleMessage = jest.fn().mockResolvedValue(undefined);
+
+    jest.mocked(fetchLatestBaileysVersion).mockResolvedValue({
+      version: [2, 3000, 1035194821],
+      isLatest: true,
+      error: undefined,
+    });
+    jest.mocked(usePrismaAuthState).mockResolvedValue({
+      state: {
+        creds: {},
+        keys: {},
+      },
+      saveCreds: jest.fn(),
+    } as never);
+    jest.mocked(makeWASocket).mockReturnValue(socket as never);
+
+    const provider = createProvider(users);
+    provider.setMessageHandler({ handleMessage } as unknown as MessageHandlerService);
+    (provider as unknown as { groupId: string }).groupId = '120363000000000000@g.us';
+    await provider.onModuleInit();
+
+    await handlers.get('messages.upsert')?.({
+      type: 'notify',
+      messages: [
+        {
+          key: {
+            remoteJid: '120363000000000000@g.us',
+            participant: '573111111111@s.whatsapp.net',
+            fromMe: false,
+          },
+          message: {
+            extendedTextMessage: {
+              text: '@z anota a @203298149810413',
+              contextInfo: {
+                mentionedJid: ['203298149810413@lid'],
+              },
+            },
+          },
+          messageTimestamp: Date.now() / 1000,
+        },
+      ],
+    });
+
+    expect(findByPhoneOrLid).toHaveBeenCalledWith('203298149810413@lid');
+    expect(handleMessage).toHaveBeenCalledWith(
+      '573111111111',
+      '@z anota a @203298149810413',
+      '120363000000000000@g.us',
+      ['573166160159@s.whatsapp.net'],
+    );
+
+    await provider.onModuleDestroy();
+  });
 });

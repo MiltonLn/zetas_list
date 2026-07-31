@@ -251,18 +251,7 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
     if (!this.groupId || !isGroup || from !== this.groupId) return;
 
     const participant = msg.key.participant || '';
-    let phone = await this.resolvePhone(participant);
-
-    // WhatsApp may hide the phone number for accounts using usernames and send
-    // only their stable LID. Use the mapping already persisted on our user
-    // record instead of discarding commands from those accounts.
-    if (!phone && isLidJid(participant)) {
-      const user = await this.users.findByPhoneOrLid(participant);
-      phone = user?.phone ?? null;
-      if (phone) {
-        this.logger.log('[MSG] Remitente resuelto mediante LID almacenado');
-      }
-    }
+    const phone = await this.resolveKnownPhone(participant);
 
     if (!phone) {
       this.logger.warn(`[MSG] No se pudo resolver teléfono para participant=${participant}`);
@@ -287,12 +276,27 @@ export class BaileysProvider implements WhatsappProvider, OnModuleInit, OnModule
       mentionedJids,
       botJid,
       botLid,
-      (jid) => this.resolvePhone(jid),
+      (jid) => this.resolveKnownPhone(jid),
     );
 
     await this.messageHandler.handleMessage(phone, normalizedText, from, resolvedMentions).catch((e) =>
       this.logger.error('Error procesando mensaje:', e),
     );
+  }
+
+  private async resolveKnownPhone(participant: string): Promise<string | null> {
+    const phone = await this.resolvePhone(participant);
+    if (phone || !isLidJid(participant)) return phone;
+
+    // WhatsApp can expose only the stable LID for users with phone privacy
+    // enabled. Fall back to the identity persisted on the user record for both
+    // message senders and mentioned participants.
+    const user = await this.users.findByPhoneOrLid(participant);
+    const storedPhone = user?.phone ?? null;
+    if (storedPhone) {
+      this.logger.log('[MSG] Identidad resuelta mediante LID almacenado');
+    }
+    return storedPhone;
   }
 
   private async buildLidToPhoneMap(): Promise<void> {
