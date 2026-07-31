@@ -45,6 +45,7 @@ function NavItem({
 const MAIN_NAV: NavEntry[] = [
   { to: '/', label: 'Partidos', icon: <IconGames /> },
   { to: '/finances', label: 'Finanzas', icon: <IconFinances /> },
+  { to: '/torneos', label: 'Torneos', icon: <IconTrophy /> },
   { to: '/reglas', label: 'Reglas', icon: <IconRules /> },
   { to: '/profile', label: 'Mi Perfil', icon: <IconUser /> },
 ];
@@ -57,6 +58,7 @@ const MANAGEMENT_NAV: NavEntry[] = [
   { to: '/admin/legacy-parser', label: 'Parser (Legacy)', icon: <IconClipboard />, roles: GAME_MANAGERS },
   { to: '/admin/finances', label: 'Gestionar Finanzas', icon: <IconFinances />, roles: ADMIN_ONLY },
   { to: '/admin/camisetas', label: 'Pedidos Camisetas', icon: <IconShirt />, roles: ADMIN_ONLY },
+  { to: '/admin/torneos', label: 'Gestionar Torneos', icon: <IconTrophy />, roles: ADMIN_ONLY },
 ];
 
 export function Sidebar({ open, onClose }: SidebarProps) {
@@ -224,6 +226,19 @@ function IconRules() {
       <line x1="16" y1="13" x2="8" y2="13" />
       <line x1="16" y1="17" x2="8" y2="17" />
       <polyline points="10 9 9 9 8 9" />
+    </svg>
+  );
+}
+
+function IconTrophy() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+      <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+      <path d="M4 22h16" />
+      <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+      <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+      <path d="M18 2H6v7a6 6 0 0 0 12 0V2z" />
     </svg>
   );
 }

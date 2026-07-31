@@ -92,6 +92,12 @@ export const AUDIT_ACTION_VALUES = [
   'order_created',
   'order_updated',
   'order_status_changed',
+  'tournament_created',
+  'tournament_updated',
+  'tournament_status_changed',
+  'tournament_team_registered',
+  'tournament_team_removed',
+  'tournament_match_updated',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTION_VALUES)[number];
 

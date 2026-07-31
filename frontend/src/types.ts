@@ -253,4 +253,216 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   order_created: 'Pedido creado',
   order_updated: 'Pedido actualizado',
   order_status_changed: 'Estado de pedido cambiado',
+  tournament_created: 'Torneo creado',
+  tournament_updated: 'Torneo actualizado',
+  tournament_status_changed: 'Estado del torneo cambiado',
+  tournament_team_registered: 'Equipo inscrito en torneo',
+  tournament_team_removed: 'Equipo eliminado del torneo',
+  tournament_match_updated: 'Resultado del torneo actualizado',
 };
+
+// ---------------------------------------------------------------------------
+// Tournaments
+// ---------------------------------------------------------------------------
+
+export type TournamentStatus =
+  | 'draft'
+  | 'registration_open'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled';
+
+export type TournamentFormat =
+  | 'league_and_knockout'
+  | 'groups_and_knockout'
+  | 'knockout_only';
+
+export type GroupMatchFormat = 'two_sets_point_difference' | 'best_of_three';
+export type StandingsTiebreaker =
+  | 'wins'
+  | 'setDifference'
+  | 'pointDifference'
+  | 'headToHead';
+
+export interface CompetitionRulesV1 {
+  version: 1;
+  groupStage: {
+    matchFormat: GroupMatchFormat;
+    qualifiersPerGroup: number;
+    standingsPoints: {
+      straightWin: number;
+      splitWin: number;
+      splitLoss: number;
+      straightLoss: number;
+    };
+    tiebreakers: StandingsTiebreaker[];
+    regularSetPoints: number;
+    tiebreakSetPoints: number;
+    winByTwo: boolean;
+  };
+  knockoutStage: {
+    matchFormat: 'best_of_three';
+    regularSetPoints: number;
+    tiebreakSetPoints: number;
+    winByTwo: boolean;
+    includeThirdPlace: boolean;
+    pairingStrategy: 'high_low' | 'cross_group';
+  };
+}
+
+export type MatchStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+
+export interface TournamentPlayer {
+  id: string;
+  teamId: string;
+  userId?: string;
+  guestName?: string;
+  isCaptain: boolean;
+  user?: { id: string; name: string; phone: string };
+}
+
+export interface TournamentTeam {
+  id: string;
+  tournamentId: string;
+  name: string;
+  paid: boolean;
+  seed?: number;
+  groupLabel?: string;
+  registeredById: string;
+  createdAt: string;
+  players: TournamentPlayer[];
+  registeredBy: { id: string; name: string };
+}
+
+export interface TournamentSet {
+  id: string;
+  matchId: string;
+  setNumber: number;
+  scoreA: number;
+  scoreB: number;
+}
+
+export interface TournamentMatch {
+  id: string;
+  tournamentId: string;
+  phase: string;
+  groupLabel?: string;
+  roundNumber: number;
+  matchOrder: number;
+  teamAId?: string;
+  teamBId?: string;
+  winnerId?: string;
+  status: MatchStatus;
+  scheduledAt?: string;
+  court?: string;
+  teamA?: { id: string; name: string };
+  teamB?: { id: string; name: string };
+  winner?: { id: string; name: string };
+  sets: TournamentSet[];
+}
+
+export interface Tournament {
+  id: string;
+  name: string;
+  format: TournamentFormat;
+  modalidad: Modalidad;
+  status: TournamentStatus;
+  registrationOpenAt: string;
+  startDate: string;
+  endDate: string;
+  pricePerTeam: number;
+  prizeDescription?: string;
+  maxTeams: number;
+  minPlayersPerTeam: number;
+  maxPlayersPerTeam: number;
+  minZetasMembers: number;
+  allowExternalTeams: boolean;
+  numberOfGroups?: number;
+  competitionRules: CompetitionRulesV1;
+  rules?: string;
+  rulesFileUrl?: string;
+  flyerUrl?: string;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+  teams: TournamentTeam[];
+  matches: TournamentMatch[];
+  createdBy: { id: string; name: string };
+}
+
+export type TournamentSummary = Pick<
+  Tournament,
+  | 'id' | 'name' | 'format' | 'modalidad' | 'status'
+  | 'startDate' | 'endDate' | 'pricePerTeam' | 'prizeDescription'
+  | 'maxTeams' | 'registrationOpenAt' | 'createdAt' | 'updatedAt'
+  | 'createdBy'
+> & { teams: { id: string; paid: boolean }[] };
+
+export const TOURNAMENT_STATUS_LABELS: Record<TournamentStatus, string> = {
+  draft: 'Borrador',
+  registration_open: 'Inscripciones abiertas',
+  in_progress: 'En curso',
+  completed: 'Completado',
+  cancelled: 'Cancelado',
+};
+
+export const TOURNAMENT_STATUS_COLORS: Record<TournamentStatus, string> = {
+  draft: '#7c8db5',
+  registration_open: '#4caf50',
+  in_progress: '#ff9800',
+  completed: '#6e8efb',
+  cancelled: '#e53935',
+};
+
+export const TOURNAMENT_FORMAT_LABELS: Record<TournamentFormat, string> = {
+  league_and_knockout: 'Liga + semifinales',
+  groups_and_knockout: 'Fase de grupos + eliminación',
+  knockout_only: 'Solo llaves (eliminación directa)',
+};
+
+export interface TeamStanding {
+  teamId: string;
+  teamName?: string;
+  groupLabel: string;
+  position: number;
+  qualified: boolean;
+  wins: number;
+  losses: number;
+  points: number;
+  setsWon: number;
+  setsLost: number;
+  setDiff?: number;
+  setDifference?: number;
+  pointsScored: number;
+  pointsConceded: number;
+  pointDiff?: number;
+  pointDifference?: number;
+  resolvedBy?: StandingsTiebreaker | 'teamId';
+}
+
+export interface BracketPreviewTeam {
+  id?: string;
+  teamId?: string;
+  name?: string;
+  teamName?: string;
+  seed?: number;
+  groupLabel?: string;
+  position?: number;
+}
+
+export interface BracketPreviewPair {
+  teamA?: BracketPreviewTeam | null;
+  teamB?: BracketPreviewTeam | null;
+  teamAId?: string;
+  teamBId?: string;
+  seedA?: number;
+  seedB?: number;
+}
+
+export interface BracketPreviewResponse {
+  seeds?: BracketPreviewTeam[];
+  seeding?: Array<string | BracketPreviewTeam>;
+  firstRound: BracketPreviewPair[];
+  totalRounds?: number;
+  includeThirdPlace?: boolean;
+}

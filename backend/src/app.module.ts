@@ -21,6 +21,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { AuditModule } from './audit/audit.module';
 import { FinancesModule } from './finances/finances.module';
 import { OrdersModule } from './orders/orders.module';
+import { TournamentsModule } from './tournaments/tournaments.module';
 import { HealthController } from './health.controller';
 import { isProduction } from './config/env';
 
@@ -50,6 +51,7 @@ import { isProduction } from './config/env';
     AuditModule,
     FinancesModule,
     OrdersModule,
+    TournamentsModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

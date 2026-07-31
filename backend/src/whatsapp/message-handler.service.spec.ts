@@ -4,6 +4,7 @@ import { WHATSAPP_PROVIDER } from './whatsapp.interface';
 import { GamesService } from '../games/games.service';
 import { UsersService } from '../users/users.service';
 import { FinancesService } from '../finances/finances.service';
+import { TournamentsService } from '../tournaments/tournaments.service';
 import { InfoCommandsService } from './commands/info-commands.service';
 import { MutatingCommandsService } from './commands/mutating-commands.service';
 import { Role } from '@prisma/client';
@@ -27,6 +28,9 @@ const mockUsers = { findByPhone: jest.fn(), setWhatsappLid: jest.fn().mockResolv
 const mockFinances = {
   getPendingFines: jest.fn().mockResolvedValue([]),
   hasUnpaidFines: jest.fn().mockResolvedValue(false),
+};
+const mockTournaments = {
+  findAll: jest.fn().mockResolvedValue([]),
 };
 
 function makeActiveGame(regs: any[] = []) {
@@ -232,6 +236,7 @@ describe('MessageHandlerService — handleMessage', () => {
     jest.clearAllMocks();
     mockWp.sendToGroup.mockResolvedValue(undefined);
     mockGames.retryFromWaitingList.mockResolvedValue({ promoted: false, game: null });
+    mockTournaments.findAll.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -244,6 +249,7 @@ describe('MessageHandlerService — handleMessage', () => {
         { provide: GamesService, useValue: mockGames },
         { provide: UsersService, useValue: mockUsers },
         { provide: FinancesService, useValue: mockFinances },
+        { provide: TournamentsService, useValue: mockTournaments },
       ],
     }).compile();
 
@@ -276,6 +282,42 @@ describe('MessageHandlerService — handleMessage', () => {
 
     // The alias-loading contract now lives with the query itself, in
     // games.service.spec.ts ("findActiveGame").
+  });
+
+  describe('comando torneos', () => {
+    it('informa cuando no hay torneos con inscripciones abiertas', async () => {
+      mockGames.findActiveGame.mockResolvedValue(null);
+
+      await service.handleMessage('111', '@Z torneos', 'group-1');
+
+      expect(mockTournaments.findAll).toHaveBeenCalledWith('registration_open');
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('No hay torneos'),
+      );
+    });
+
+    it('publica los torneos abiertos con sus cupos disponibles', async () => {
+      mockGames.findActiveGame.mockResolvedValue(null);
+      mockTournaments.findAll.mockResolvedValue([
+        {
+          id: 'tournament-1',
+          name: 'Copa Zetas',
+          startDate: new Date('2026-08-15T12:00:00Z'),
+          maxTeams: 8,
+          pricePerTeam: 120000,
+          teams: [{ id: 'team-1' }, { id: 'team-2' }],
+        },
+      ]);
+
+      await service.handleMessage('111', '@Z competencia', 'group-1');
+
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('Copa Zetas'),
+      );
+      expect(mockWp.sendToGroup).toHaveBeenCalledWith(
+        expect.stringContaining('6 cupos disponibles'),
+      );
+    });
   });
 
   // ─── terminar ──────────────────────────────────────────────────────────────

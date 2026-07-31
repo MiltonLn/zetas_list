@@ -13,6 +13,7 @@ import { GamesModule } from '../games/games.module';
 import { UsersModule } from '../users/users.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { FinancesModule } from '../finances/finances.module';
+import { TournamentsModule } from '../tournaments/tournaments.module';
 import { env } from '../config/env';
 
 const isBaileys = env.WHATSAPP_MODE === 'baileys';
@@ -24,6 +25,7 @@ const providerClass = isBaileys ? BaileysProvider : CliSimulatorProvider;
     UsersModule,
     PrismaModule,
     FinancesModule,
+    TournamentsModule,
   ],
   controllers: isBaileys ? [WhatsappController] : [],
   providers: [

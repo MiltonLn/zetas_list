@@ -29,7 +29,8 @@ export const MSG_HELP =
   `• *${BOT_MENTION} lista* — Ver la lista actual y cupos\n` +
   `• *${BOT_MENTION} reglas* — Ver las reglas del grupo\n` +
   `• *${BOT_MENTION} finanzas* — Ver el presupuesto del grupo\n` +
-  `• *${BOT_MENTION} multados* — Ver personas con multas pendientes\n\n` +
+  `• *${BOT_MENTION} multados* — Ver personas con multas pendientes\n` +
+  `• *${BOT_MENTION} torneos* — Ver torneos con inscripciones abiertas\n\n` +
   `✅ *Confirmación:*\n` +
   `• *${BOT_MENTION} confirmar* — Confirmar asistencia cuando te promueven\n\n` +
   `⬆️ *Gestión de espera:*\n` +
@@ -65,6 +66,7 @@ export const MSG_ALIASES =
   `💳 *Medio de pago:*\n` +
   `llave · pago · pagos · transferencia · nequi\n\n` +
   `📜 *Reglas:* reglas · reglamento · normas\n` +
+  `🏆 *Torneos:* torneos · torneo · competencias · competencia\n` +
   `❓ *Ayuda:* ayuda · help · comandos · info\n` +
   `📖 *Alias:* alias · variantes · sinónimos · alternativas`;
 
@@ -82,6 +84,11 @@ export const MSG_NO_PENDING_FINES =
   '✅ No hay personas con multas o deudas pendientes. ¡Todos al día! 🎉';
 
 export const MSG_FINED_ERROR = '❌ No se pudo consultar los multados. Intenta de nuevo.';
+
+export const MSG_NO_OPEN_TOURNAMENTS =
+  '🏐 No hay torneos con inscripciones abiertas en este momento.';
+
+export const MSG_TOURNAMENTS_ERROR = '❌ No se pudieron consultar los torneos. Intenta de nuevo.';
 
 export function buildPaymentMessage(brebKey: string): string {
   return `💳 *Medio de pago*\n\n` + `Bre-B: *${brebKey}*`;

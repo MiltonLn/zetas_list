@@ -23,6 +23,11 @@ const GuidePage = lazy(() => import('./pages/GuidePage'));
 const FinancesDashboardPage = lazy(() => import('./pages/FinancesDashboardPage'));
 const AdminFinancesPage = lazy(() => import('./pages/AdminFinancesPage'));
 const AdminOrdersPage = lazy(() => import('./pages/AdminOrdersPage'));
+const TournamentsPage = lazy(() => import('./pages/TournamentsPage'));
+const TournamentDetailPage = lazy(() => import('./pages/TournamentDetailPage'));
+const PublicTournamentPage = lazy(() => import('./pages/PublicTournamentPage'));
+const AdminTournamentsPage = lazy(() => import('./pages/AdminTournamentsPage'));
+const AdminTournamentDetailPage = lazy(() => import('./pages/AdminTournamentDetailPage'));
 
 function PageFallback() {
   return (
@@ -143,6 +148,39 @@ export default function App() {
               element={
                 <AuthenticatedApp allowedRoles={ADMIN_ONLY}>
                   <AdminOrdersPage />
+                </AuthenticatedApp>
+              }
+            />
+            <Route
+              path="/torneos"
+              element={
+                <AuthenticatedApp>
+                  <TournamentsPage />
+                </AuthenticatedApp>
+              }
+            />
+            <Route
+              path="/torneos/:id"
+              element={
+                <AuthenticatedApp>
+                  <TournamentDetailPage />
+                </AuthenticatedApp>
+              }
+            />
+            <Route path="/t/:id" element={<PublicTournamentPage />} />
+            <Route
+              path="/admin/torneos"
+              element={
+                <AuthenticatedApp allowedRoles={ADMIN_ONLY}>
+                  <AdminTournamentsPage />
+                </AuthenticatedApp>
+              }
+            />
+            <Route
+              path="/admin/torneos/:id"
+              element={
+                <AuthenticatedApp allowedRoles={ADMIN_ONLY}>
+                  <AdminTournamentDetailPage />
                 </AuthenticatedApp>
               }
             />

@@ -14,6 +14,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "ts-node prisma/seed.ts",
+    "seed:players": "ts-node prisma/seed-test-players.ts",
+    "seed:tournaments": "ts-node prisma/seed-tournaments.ts",
     "prisma:studio": "prisma studio",
     "typecheck": "tsc --noEmit"
   },

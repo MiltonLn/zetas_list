@@ -1,17 +1,21 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { TournamentStatus } from '@prisma/client';
 import { WhatsappProvider, WHATSAPP_PROVIDER } from '../whatsapp.interface';
 import { FinancesService } from '../../finances/finances.service';
 import { userDisplayName } from '../../games/games.utils';
 import { reportCaughtError } from '../../common/errors/report-caught-error';
 import { env } from '../../config/env';
+import { TournamentsService } from '../../tournaments/tournaments.service';
 import {
   MSG_ALIASES,
   MSG_FINANCES,
   MSG_FINED_ERROR,
   MSG_HELP,
   MSG_NO_ACTIVE_GAME,
+  MSG_NO_OPEN_TOURNAMENTS,
   MSG_NO_PENDING_FINES,
   MSG_RULES,
+  MSG_TOURNAMENTS_ERROR,
   buildPaymentMessage,
 } from './messages';
 import { ActiveGame, formatListForWhatsapp } from './list-formatter';
@@ -28,6 +32,7 @@ export class InfoCommandsService {
   constructor(
     @Inject(WHATSAPP_PROVIDER) private wp: WhatsappProvider,
     private finances: FinancesService,
+    private tournaments: TournamentsService,
   ) {}
 
   async list(activeGame: ActiveGame | null): Promise<void> {
@@ -56,6 +61,42 @@ export class InfoCommandsService {
 
   async payment(): Promise<void> {
     await this.wp.sendToGroup(buildPaymentMessage(env.BREB_KEY));
+  }
+
+  async tournamentsInfo(): Promise<void> {
+    try {
+      const openTournaments = await this.tournaments.findAll(TournamentStatus.registration_open);
+      if (openTournaments.length === 0) {
+        await this.wp.sendToGroup(MSG_NO_OPEN_TOURNAMENTS);
+        return;
+      }
+
+      const lines: string[] = ['🏆 *Torneos con inscripciones abiertas:*\n'];
+      for (const tournament of openTournaments) {
+        const date = new Date(tournament.startDate).toLocaleDateString('es-CO', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        });
+        const slots = tournament.maxTeams - tournament.teams.length;
+        const price = tournament.pricePerTeam > 0
+          ? `$${tournament.pricePerTeam.toLocaleString('es-CO')} por equipo`
+          : 'Gratis';
+
+        lines.push(
+          `📌 *${tournament.name}*\n` +
+          `📅 ${date}\n` +
+          `💰 ${price}\n` +
+          `👥 ${slots} cupo${slots === 1 ? '' : 's'} disponible${slots === 1 ? '' : 's'}\n` +
+          `🔗 https://zetas.club/torneos/${tournament.id}`,
+        );
+      }
+
+      await this.wp.sendToGroup(lines.join('\n\n'));
+    } catch (error: unknown) {
+      reportCaughtError(this.logger, 'Error al consultar torneos', error);
+      await this.wp.sendToGroup(MSG_TOURNAMENTS_ERROR);
+    }
   }
 
   async fined(): Promise<void> {

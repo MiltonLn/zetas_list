@@ -90,6 +90,33 @@ enum AuditAction {
   order_created
   order_updated
   order_status_changed
+  tournament_created
+  tournament_updated
+  tournament_status_changed
+  tournament_team_registered
+  tournament_team_removed
+  tournament_match_updated
+}
+
+enum TournamentStatus {
+  draft
+  registration_open
+  in_progress
+  completed
+  cancelled
+}
+
+enum TournamentFormat {
+  groups_and_knockout
+  league_and_knockout
+  knockout_only
+}
+
+enum MatchStatus {
+  scheduled
+  in_progress
+  completed
+  cancelled
 }
 
 enum TransactionType {
@@ -134,6 +161,9 @@ model User {
   createdFines       Fine[]               @relation("FineCreator")
   transactions       FinanceTransaction[] @relation("TransactionCreator")
   orders             Order[]              @relation("OrderUser")
+  createdTournaments Tournament[]         @relation("TournamentCreatedBy")
+  tournamentTeams    TournamentTeam[]     @relation("TeamRegisteredBy")
+  tournamentPlayers  TournamentPlayer[]   @relation("PlayerUser")
 
   @@map("users")
 }
@@ -302,4 +332,111 @@ model OrderItem {
 
   @@map("order_items")
   @@index([orderId])
+}
+
+model Tournament {
+  id                 String           @id @default(uuid())
+  name               String
+  format             TournamentFormat
+  modalidad          Modalidad
+  status             TournamentStatus @default(draft)
+  registrationOpenAt DateTime
+  startDate          DateTime
+  endDate            DateTime
+  pricePerTeam       Int              @default(0)
+  prizeDescription   String?
+  maxTeams           Int
+  minPlayersPerTeam  Int              @default(4)
+  maxPlayersPerTeam  Int              @default(8)
+  minZetasMembers    Int              @default(0)
+  allowExternalTeams Boolean          @default(true)
+  numberOfGroups     Int?
+  competitionRules   Json             @default("{\"version\":1,\"groupStage\":{\"matchFormat\":\"best_of_three\",\"qualifiersPerGroup\":2,\"standingsPoints\":{\"straightWin\":3,\"splitWin\":2,\"splitLoss\":1,\"straightLoss\":0},\"tiebreakers\":[\"wins\",\"setDifference\",\"pointDifference\",\"headToHead\"],\"regularSetPoints\":25,\"tiebreakSetPoints\":15},\"knockoutStage\":{\"matchFormat\":\"best_of_three\",\"regularSetPoints\":25,\"tiebreakSetPoints\":15,\"includeThirdPlace\":true,\"pairingStrategy\":\"cross_group\"}}")
+  rules              String?
+  rulesFileUrl       String?
+  flyerUrl           String?
+  createdById        String
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  createdBy User             @relation("TournamentCreatedBy", fields: [createdById], references: [id])
+  teams     TournamentTeam[]
+  matches   TournamentMatch[]
+
+  @@map("tournaments")
+  @@index([status, startDate])
+}
+
+model TournamentTeam {
+  id             String     @id @default(uuid())
+  tournamentId   String
+  name           String
+  paid           Boolean    @default(false)
+  seed           Int?
+  groupLabel     String?
+  registeredById String
+  createdAt      DateTime   @default(now())
+
+  tournament   Tournament         @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  registeredBy User               @relation("TeamRegisteredBy", fields: [registeredById], references: [id])
+  players      TournamentPlayer[]
+  matchesAsA   TournamentMatch[]  @relation("MatchTeamA")
+  matchesAsB   TournamentMatch[]  @relation("MatchTeamB")
+  wonMatches   TournamentMatch[]  @relation("MatchWinner")
+
+  @@map("tournament_teams")
+  @@index([tournamentId])
+}
+
+model TournamentPlayer {
+  id         String  @id @default(uuid())
+  teamId     String
+  userId     String?
+  guestName  String?
+  isCaptain  Boolean @default(false)
+
+  team TournamentTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User?         @relation("PlayerUser", fields: [userId], references: [id])
+
+  @@map("tournament_players")
+  @@index([teamId])
+}
+
+model TournamentMatch {
+  id           String      @id @default(uuid())
+  tournamentId String
+  phase        String
+  groupLabel   String?
+  roundNumber  Int
+  matchOrder   Int
+  teamAId      String?
+  teamBId      String?
+  winnerId     String?
+  status       MatchStatus @default(scheduled)
+  scheduledAt  DateTime?
+  court        String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  tournament Tournament      @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  teamA      TournamentTeam? @relation("MatchTeamA", fields: [teamAId], references: [id])
+  teamB      TournamentTeam? @relation("MatchTeamB", fields: [teamBId], references: [id])
+  winner     TournamentTeam? @relation("MatchWinner", fields: [winnerId], references: [id])
+  sets       TournamentSet[]
+
+  @@map("tournament_matches")
+  @@index([tournamentId, phase])
+}
+
+model TournamentSet {
+  id       String @id @default(uuid())
+  matchId  String
+  setNumber Int
+  scoreA   Int
+  scoreB   Int
+
+  match TournamentMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, setNumber])
+  @@map("tournament_sets")
 }

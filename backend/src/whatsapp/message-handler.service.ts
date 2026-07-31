@@ -37,6 +37,7 @@ const CMD_RULES = /^@z\s+(reglas|reglamento|normas)\b/i;
 const CMD_FINANCES = /^@z\s+(finanzas|presupuesto|plata|dinero|caja|lucas|fondos)\b/i;
 const CMD_FINED = /^@z\s+(multados|deudores|morosos|multas|deudas)\b/i;
 const CMD_PAYMENT = /^@z\s+(llave|pago|pagos|transferencia|nequi)\b/i;
+const CMD_TOURNAMENTS = /^@z\s+(torneos?|competencias?)\b/i;
 const CMD_ALIASES = /^@z\s+(alias|variantes|sinonimos|alternativas)\b/i;
 const CMD_IS_BOT_MENTION = /^@z\b/i;
 
@@ -72,6 +73,7 @@ export class MessageHandlerService {
       { regex: CMD_FINANCES, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.info.financesInfo() },
       { regex: CMD_FINED, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.info.fined() },
       { regex: CMD_PAYMENT, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.info.payment() },
+      { regex: CMD_TOURNAMENTS, requiresGame: false, requiresUser: false, requiresActiveAccount: false, handler: () => this.info.tournamentsInfo() },
       { regex: CMD_FINISH, requiresGame: true, requiresUser: true, requiresActiveAccount: true, managerOnly: '⛔ Solo los administradores pueden usar este comando.', handler: (ctx) => this.mutating.handleFinish(ctx) },
       { regex: CMD_REMOVE_OTHER, requiresGame: true, requiresUser: true, requiresActiveAccount: true, managerOnly: '⛔ Solo los administradores pueden sacar a otros de la lista.', handler: (ctx) => this.mutating.handleRemoveOther(ctx) },
       { regex: CMD_CONFIRM, requiresGame: true, requiresUser: true, requiresActiveAccount: true, handler: (ctx) => this.mutating.handleConfirm(ctx) },
