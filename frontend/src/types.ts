@@ -253,6 +253,12 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   order_created: 'Pedido creado',
   order_updated: 'Pedido actualizado',
   order_status_changed: 'Estado de pedido cambiado',
+  tournament_created: 'Torneo creado',
+  tournament_updated: 'Torneo actualizado',
+  tournament_status_changed: 'Estado del torneo cambiado',
+  tournament_team_registered: 'Equipo inscrito en torneo',
+  tournament_team_removed: 'Equipo eliminado del torneo',
+  tournament_match_updated: 'Resultado del torneo actualizado',
 };
 
 // ---------------------------------------------------------------------------
